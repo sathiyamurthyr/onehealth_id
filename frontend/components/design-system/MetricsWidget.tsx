@@ -36,13 +36,13 @@ export const MetricsWidget: React.FC<MetricsWidgetProps> = ({
     <div
       onClick={onClick}
       className={cn(
-        "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between",
-        onClick && "cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 active:scale-[0.99]",
+        "bg-white  border border-slate-200  rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between",
+        onClick && "cursor-pointer hover:border-slate-300  active:scale-[0.99]",
         className
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 ">
           {title}
         </span>
         {Icon && (
@@ -60,23 +60,23 @@ export const MetricsWidget: React.FC<MetricsWidgetProps> = ({
       </div>
 
       <div className="my-2">
-        <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+        <div className="text-2xl sm:text-3xl font-black text-slate-900  tracking-tight">
           {value}
         </div>
         {subtitle && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
+          <p className="text-xs text-slate-500  mt-1 line-clamp-1">
             {subtitle}
           </p>
         )}
       </div>
 
       {delta && (
-        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+        <div className="mt-2 pt-2 border-t border-slate-100  flex items-center justify-between text-xs">
           <div
             className={cn(
               "flex items-center gap-1 font-semibold",
-              delta.trend === "up" && "text-emerald-600 dark:text-emerald-400",
-              delta.trend === "down" && "text-rose-600 dark:text-rose-400",
+              delta.trend === "up" && "text-emerald-600 ",
+              delta.trend === "down" && "text-rose-600 ",
               delta.trend === "neutral" && "text-slate-500"
             )}
           >

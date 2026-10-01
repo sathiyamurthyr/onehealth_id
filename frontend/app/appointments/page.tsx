@@ -146,10 +146,10 @@ export default function AppointmentsPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Appointments & Scheduling
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -173,14 +173,14 @@ export default function AppointmentsPage() {
         </div>
 
         {actionMessage && (
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="p-4 rounded-2xl bg-emerald-50  border border-emerald-200  text-xs font-semibold text-emerald-800  flex items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{actionMessage}</span>
             </div>
             <button
               onClick={() => setActionMessage("")}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              className="text-slate-400 hover:text-slate-600"
             >
               <XCircle className="w-4 h-4" />
             </button>
@@ -188,7 +188,7 @@ export default function AppointmentsPage() {
         )}
 
         {/* Filter & Search Bar */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -196,7 +196,7 @@ export default function AppointmentsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by patient, doctor, or specialty..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
 
@@ -210,7 +210,7 @@ export default function AppointmentsPage() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all min-h-[40px] ${
                     statusFilter === status
                       ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                      : "bg-slate-100  text-slate-600  hover:bg-slate-200"
                   }`}
                 >
                   {status}
@@ -243,9 +243,9 @@ export default function AppointmentsPage() {
         ) : (
           <div className="space-y-4">
             {/* Desktop Table View (>= 1024px) */}
-            <div className="hidden lg:block bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="hidden lg:block bg-white  rounded-3xl border border-slate-200  overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase tracking-wider font-semibold">
+                <thead className="bg-slate-50  border-b border-slate-200  text-slate-500 uppercase tracking-wider font-semibold">
                   <tr>
                     <th className="py-4 px-6">Patient Name</th>
                     <th className="py-4 px-6">Attending Doctor</th>
@@ -256,16 +256,16 @@ export default function AppointmentsPage() {
                     <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100 ">
                   {filteredAppointments.map((appt) => (
                     <tr
                       key={appt.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      className="hover:bg-slate-50/60  transition-colors"
                     >
                       <td className="py-4 px-6">
                         <Link
                           href={`/patients/${appt.patient_id}`}
-                          className="font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 block"
+                          className="font-bold text-slate-900  hover:text-blue-600  block"
                         >
                           {appt.patient_name}
                         </Link>
@@ -275,14 +275,14 @@ export default function AppointmentsPage() {
                       </td>
 
                       <td className="py-4 px-6">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="font-semibold text-slate-800 ">
                           Dr. {appt.doctor_name}
                         </div>
                         <div className="text-[11px] text-slate-500">{appt.department_name}</div>
                       </td>
 
                       <td className="py-4 px-6">
-                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                        <div className="font-medium text-slate-700 ">
                           {appt.appointment_date}
                         </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
@@ -292,7 +292,7 @@ export default function AppointmentsPage() {
                       </td>
 
                       <td className="py-4 px-6">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-mono font-bold text-xs border border-blue-200 dark:border-blue-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50  text-blue-700  font-mono font-bold text-xs border border-blue-200 ">
                           #{appt.token_number || "—"}
                         </span>
                       </td>
@@ -358,7 +358,7 @@ export default function AppointmentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleStatusUpdate(appt.id, "CANCELLED")}
-                              className="text-[11px] h-8 px-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              className="text-[11px] h-8 px-2 text-rose-500 hover:bg-rose-50"
                               title="Cancel Appointment"
                             >
                               <XCircle className="w-3.5 h-3.5" />
@@ -377,13 +377,13 @@ export default function AppointmentsPage() {
               {filteredAppointments.map((appt) => (
                 <div
                   key={appt.id}
-                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-3"
+                  className="p-4 bg-white  border border-slate-200  rounded-2xl shadow-sm space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div>
                       <Link
                         href={`/patients/${appt.patient_id}`}
-                        className="font-bold text-sm text-slate-900 dark:text-white hover:text-blue-600 block"
+                        className="font-bold text-sm text-slate-900  hover:text-blue-600 block"
                       >
                         {appt.patient_name}
                       </Link>
@@ -407,15 +407,15 @@ export default function AppointmentsPage() {
                     </Badge>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 ">
+                    <div className="flex items-center gap-2 text-slate-600 ">
                       <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
                       <span>{appt.appointment_date}</span>
                       <span className="font-mono text-slate-500 font-medium">({appt.appointment_time})</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-bold text-blue-600 px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+                      <span className="font-mono text-xs font-bold text-blue-600 px-2 py-0.5 bg-blue-50  rounded-md">
                         #{appt.token_number || "—"}
                       </span>
                     </div>
@@ -458,32 +458,32 @@ export default function AppointmentsPage() {
         {/* Book Appointment Modal */}
         {showBookModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-lg shadow-2xl p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="bg-white  rounded-3xl border border-slate-200  w-full max-w-lg shadow-2xl p-6 space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100  pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100  text-blue-600 flex items-center justify-center">
                     <CalendarIcon className="w-4 h-4" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-base font-bold text-slate-900 ">
                     Book Outpatient Consultation
                   </h3>
                 </div>
                 <button
                   onClick={() => setShowBookModal(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                  className="text-slate-400 hover:text-slate-600  p-1"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
               {bookError && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-medium">
+                <div className="p-3 rounded-xl bg-rose-50  text-rose-700  text-xs font-medium">
                   {bookError}
                 </div>
               )}
 
               {bookSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-emerald-50  text-emerald-700  text-xs font-medium flex items-center gap-2">
                   <Check className="w-4 h-4" />
                   <span>{bookSuccess}</span>
                 </div>
@@ -492,13 +492,13 @@ export default function AppointmentsPage() {
               <form onSubmit={handleBookSubmit} className="space-y-4 text-xs">
                 {/* Select Patient */}
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Select Patient <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={newAppt.patient_id}
                     onChange={(e) => setNewAppt({ ...newAppt, patient_id: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   >
                     {patients.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -510,13 +510,13 @@ export default function AppointmentsPage() {
 
                 {/* Select Doctor */}
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Select Attending Specialist <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={newAppt.doctor_id}
                     onChange={(e) => setNewAppt({ ...newAppt, doctor_id: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   >
                     {doctors.map((d) => (
                       <option key={d.id} value={d.id}>
@@ -529,24 +529,24 @@ export default function AppointmentsPage() {
                 {/* Date & Time Slot */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block font-semibold text-slate-700  mb-1">
                       Date <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="date"
                       value={newAppt.appointment_date}
                       onChange={(e) => setNewAppt({ ...newAppt, appointment_date: e.target.value })}
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block font-semibold text-slate-700  mb-1">
                       Time Slot <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={newAppt.appointment_time}
                       onChange={(e) => setNewAppt({ ...newAppt, appointment_time: e.target.value })}
-                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     >
                       {["09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "02:00 PM", "02:30 PM", "03:00 PM", "04:00 PM"].map((t) => (
                         <option key={t} value={t}>{t}</option>
@@ -557,13 +557,13 @@ export default function AppointmentsPage() {
 
                 {/* Priority */}
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Triage Priority
                   </label>
                   <select
                     value={newAppt.priority}
                     onChange={(e) => setNewAppt({ ...newAppt, priority: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   >
                     <option value="NORMAL">Normal Routine</option>
                     <option value="URGENT">Urgent Consultation</option>

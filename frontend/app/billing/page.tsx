@@ -110,10 +110,10 @@ export default function BillingPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Billing & Revenue Operations
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -128,25 +128,25 @@ export default function BillingPage() {
 
         {/* Financial KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-5 bg-white  rounded-3xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Billed Tariff</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+            <div className="text-2xl font-black text-slate-900  mt-1">
               ₹{totalInvoiced.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">Cumulative gross billing</span>
           </div>
 
-          <div className="p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-5 bg-white  rounded-3xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-emerald-500 uppercase font-bold block">Collected Revenue</span>
-            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+            <div className="text-2xl font-black text-emerald-600  mt-1">
               ₹{totalCollected.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">Realized through UPI & Cash</span>
           </div>
 
-          <div className="p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-5 bg-white  rounded-3xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-rose-500 uppercase font-bold block">Outstanding Balance</span>
-            <div className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
+            <div className="text-2xl font-black text-rose-600  mt-1">
               ₹{totalOutstanding.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">Pending patient or TPA clearance</span>
@@ -154,7 +154,7 @@ export default function BillingPage() {
         </div>
 
         {/* Search & Status Filters */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -162,7 +162,7 @@ export default function BillingPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by invoice number (e.g. INV-2026-001) or patient name..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
 
@@ -174,7 +174,7 @@ export default function BillingPage() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all min-h-[40px] ${
                   statusFilter === st
                     ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                    : "bg-slate-100  text-slate-600  hover:bg-slate-200"
                 }`}
               >
                 {st}
@@ -200,9 +200,9 @@ export default function BillingPage() {
         ) : (
           <div className="space-y-4">
             {/* Desktop Table View */}
-            <div className="hidden lg:block bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="hidden lg:block bg-white  rounded-3xl border border-slate-200  overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase tracking-wider font-semibold">
+                <thead className="bg-slate-50  border-b border-slate-200  text-slate-500 uppercase tracking-wider font-semibold">
                   <tr>
                     <th className="py-4 px-6">Invoice #</th>
                     <th className="py-4 px-6">Patient Name</th>
@@ -214,14 +214,14 @@ export default function BillingPage() {
                     <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100 ">
                   {filteredInvoices.map((inv) => (
                     <tr
                       key={inv.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      className="hover:bg-slate-50/60  transition-colors"
                     >
                       <td className="py-4 px-6">
-                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
+                        <span className="font-mono font-bold text-blue-600  text-xs">
                           {inv.invoice_number}
                         </span>
                       </td>
@@ -229,7 +229,7 @@ export default function BillingPage() {
                       <td className="py-4 px-6">
                         <Link
                           href={`/patients/${inv.patient_id}`}
-                          className="font-bold text-slate-800 dark:text-slate-200 hover:text-blue-600 block"
+                          className="font-bold text-slate-800  hover:text-blue-600 block"
                         >
                           {inv.patient_name}
                         </Link>
@@ -242,13 +242,13 @@ export default function BillingPage() {
                       </td>
 
                       <td className="py-4 px-6">
-                        <span className="text-slate-600 dark:text-slate-400 font-mono">
+                        <span className="text-slate-600  font-mono">
                           ₹{(inv.tax_amount ?? inv.tax_gst ?? 0).toFixed(2)}
                         </span>
                       </td>
 
                       <td className="py-4 px-6">
-                        <span className="font-bold text-slate-900 dark:text-white font-mono text-sm">
+                        <span className="font-bold text-slate-900  font-mono text-sm">
                           ₹{inv.total_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </span>
                       </td>
@@ -256,7 +256,7 @@ export default function BillingPage() {
                       <td className="py-4 px-6">
                         <span
                           className={`font-mono font-bold text-sm ${
-                            (inv.balance_due ?? inv.balance_amount ?? 0) > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600"
+                            (inv.balance_due ?? inv.balance_amount ?? 0) > 0 ? "text-rose-600 " : "text-emerald-600"
                           }`}
                         >
                           ₹{(inv.balance_due ?? inv.balance_amount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -312,14 +312,14 @@ export default function BillingPage() {
               {filteredInvoices.map((inv) => (
                 <div
                   key={inv.id}
-                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-3"
+                  className="p-4 bg-white  border border-slate-200  rounded-2xl shadow-sm space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
+                      <span className="font-mono font-bold text-xs text-blue-600 ">
                         {inv.invoice_number}
                       </span>
-                      <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-0.5">
+                      <h3 className="font-bold text-sm text-slate-900  mt-0.5">
                         {inv.patient_name}
                       </h3>
                     </div>
@@ -337,10 +337,10 @@ export default function BillingPage() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100 ">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Total Billed</span>
-                      <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
+                      <span className="font-mono font-bold text-sm text-slate-900 ">
                         ₹{inv.total_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </span>
                     </div>
@@ -369,7 +369,7 @@ export default function BillingPage() {
                         Pay Balance
                       </Button>
                     ) : (
-                      <div className="flex-1 text-center py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5">
+                      <div className="flex-1 text-center py-2 text-xs font-semibold text-emerald-600  flex items-center justify-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Fully Settled</span>
                       </div>
@@ -389,10 +389,10 @@ export default function BillingPage() {
         {/* Record Payment Modal */}
         {activeInvoice && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="bg-white  rounded-3xl border border-slate-200  w-full max-w-md shadow-2xl p-6 space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100  pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-base font-bold text-slate-900 ">
                     Record Patient Payment
                   </h3>
                   <p className="text-xs text-slate-500">
@@ -401,20 +401,20 @@ export default function BillingPage() {
                 </div>
                 <button
                   onClick={() => setActiveInvoice(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                  className="text-slate-400 hover:text-slate-600  p-1"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
               {payError && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-medium">
+                <div className="p-3 rounded-xl bg-rose-50  text-rose-700  text-xs font-medium">
                   {payError}
                 </div>
               )}
 
               {paySuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-emerald-50  text-emerald-700  text-xs font-medium flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{paySuccess}</span>
                 </div>
@@ -422,7 +422,7 @@ export default function BillingPage() {
 
               <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Amount to Settle (INR)
                   </label>
                   <div className="relative">
@@ -433,7 +433,7 @@ export default function BillingPage() {
                       required
                       value={payAmount}
                       onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
-                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     />
                   </div>
                   <span className="text-[10px] text-slate-400 mt-1 block">
@@ -442,13 +442,13 @@ export default function BillingPage() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Payment Instrument
                   </label>
                   <select
                     value={paymentMode}
                     onChange={(e) => setPaymentMode(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   >
                     <option value="UPI">UPI (Google Pay / PhonePe / Paytm)</option>
                     <option value="CASH">Cash at Hospital Counter</option>
@@ -459,7 +459,7 @@ export default function BillingPage() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700  mb-1">
                     Transaction / Bank UTR Reference
                   </label>
                   <input
@@ -467,7 +467,7 @@ export default function BillingPage() {
                     value={transactionRef}
                     onChange={(e) => setTransactionRef(e.target.value)}
                     placeholder="e.g. UPI-99882211"
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   />
                 </div>
 

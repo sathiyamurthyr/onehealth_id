@@ -1,6 +1,9 @@
+import os
 import psycopg2
+from backend.app.core.config import settings
 
-conn = psycopg2.connect('postgresql://postgres:AivioSathus!321@db.arkoolfygfqawyvwnldv.supabase.co:5432/postgres')
+db_url = settings.DATABASE_URL or os.getenv("DATABASE_URL")
+conn = psycopg2.connect(db_url)
 cur = conn.cursor()
 
 # Test calling Stored Procedure

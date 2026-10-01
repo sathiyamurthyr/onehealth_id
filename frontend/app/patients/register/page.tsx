@@ -146,7 +146,7 @@ export default function RegisterPatientPage() {
         <div className="flex items-center justify-between">
           <Link
             href="/patients"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 min-h-[44px]"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800  min-h-[44px]"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Patient Registry</span>
@@ -159,16 +159,16 @@ export default function RegisterPatientPage() {
         {createdPatient ? (
           /* Registration Success Screen with Generated QR & Digital Card */
           <div className="space-y-6 animate-fadeIn">
-            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="bg-emerald-50  border border-emerald-200  p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4 text-center sm:text-left">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/20">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
+                  <h2 className="text-lg font-bold text-emerald-900 ">
                     Patient Successfully Registered!
                   </h2>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  <p className="text-xs text-emerald-700 ">
                     Persistent OneHealth ID & Zero-Knowledge QR Token generated.
                   </p>
                 </div>
@@ -204,34 +204,34 @@ export default function RegisterPatientPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-xs">
-                  <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl">
+                  <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50  rounded-xl">
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Registered Name</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{createdPatient.name}</span>
+                      <span className="font-semibold text-slate-800 ">{createdPatient.name}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">OneHealth ID</span>
-                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{createdPatient.onehealth_id}</span>
+                      <span className="font-mono font-bold text-blue-600 ">{createdPatient.onehealth_id}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Age / Gender</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                      <span className="font-medium text-slate-700 ">
                         {createdPatient.age} yrs • {createdPatient.gender}
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Blood Group</span>
-                      <span className="font-bold text-rose-600 dark:text-rose-400">{createdPatient.blood_group}</span>
+                      <span className="font-bold text-rose-600 ">{createdPatient.blood_group}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Registered Facility</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                      <span className="font-medium text-slate-700 ">
                         Kedar Hospital (Mugalivakkam)
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Identity Ref</span>
-                      <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                      <span className="font-mono font-medium text-slate-700 ">
                         {createdPatient.identity_type}: {createdPatient.identity_number || "Not specified"}
                       </span>
                     </div>
@@ -278,9 +278,9 @@ export default function RegisterPatientPage() {
         ) : (
           /* Registration Form */
           <Card>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 ">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-blue-100  text-blue-600  flex items-center justify-center">
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
@@ -293,21 +293,21 @@ export default function RegisterPatientPage() {
             </CardHeader>
             <CardContent className="pt-6">
               {error && (
-                <div className="mb-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-medium">
+                <div className="mb-6 p-4 rounded-2xl bg-rose-50  border border-rose-200  text-rose-700  text-xs font-medium">
                   {error}
                 </div>
               )}
 
               {/* Duplicate Patient Alert Banner (Section 13) */}
               {duplicateMatches.length > 0 && !duplicateDismissed && (
-                <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs animate-in fade-in">
+                <div className="mb-6 p-4 rounded-2xl bg-amber-50  border border-amber-300  text-amber-900  text-xs animate-in fade-in">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <div className="font-bold text-sm text-amber-900 dark:text-amber-100 mb-1">
+                      <div className="font-bold text-sm text-amber-900  mb-1">
                         Possible Existing Patient Found!
                       </div>
-                      <p className="text-amber-800 dark:text-amber-300 mb-3">
+                      <p className="text-amber-800  mb-3">
                         The registry found matching records with the same contact or identity credentials. Please review to avoid duplicate registrations.
                       </p>
 
@@ -315,11 +315,11 @@ export default function RegisterPatientPage() {
                         {duplicateMatches.map((match) => (
                           <div
                             key={match.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-900"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white  rounded-xl border border-amber-200 "
                           >
                             <div>
-                              <span className="font-bold text-slate-900 dark:text-white mr-2">{match.name}</span>
-                              <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400 mr-2">{match.onehealth_id}</span>
+                              <span className="font-bold text-slate-900  mr-2">{match.name}</span>
+                              <span className="font-mono text-[11px] text-blue-600  mr-2">{match.onehealth_id}</span>
                               <span className="text-[11px] text-slate-500">({match.phone})</span>
                             </div>
                             <Link href={`/patients/${match.id}`}>
@@ -356,7 +356,7 @@ export default function RegisterPatientPage() {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Full Name <span className="text-rose-500">*</span>
                       </label>
                       <input
@@ -366,12 +366,12 @@ export default function RegisterPatientPage() {
                         onChange={handleChange}
                         required
                         placeholder="e.g. S. Ramanathan"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Age <span className="text-rose-500">*</span>
                       </label>
                       <input
@@ -383,19 +383,19 @@ export default function RegisterPatientPage() {
                         min="1"
                         max="130"
                         placeholder="e.g. 45"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Gender <span className="text-rose-500">*</span>
                       </label>
                       <select
                         name="gender"
                         value={formData.gender}
                         onChange={handleChange}
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       >
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
@@ -404,14 +404,14 @@ export default function RegisterPatientPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Blood Group
                       </label>
                       <select
                         name="blood_group"
                         value={formData.blood_group}
                         onChange={handleChange}
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       >
                         <option value="O+">O+ Positive</option>
                         <option value="O-">O- Negative</option>
@@ -433,7 +433,7 @@ export default function RegisterPatientPage() {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Mobile Number <span className="text-rose-500">*</span>
                       </label>
                       <input
@@ -443,12 +443,12 @@ export default function RegisterPatientPage() {
                         onChange={handleChange}
                         required
                         placeholder="10-digit mobile number"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Email Address
                       </label>
                       <input
@@ -457,12 +457,12 @@ export default function RegisterPatientPage() {
                         value={formData.email}
                         onChange={handleChange}
                         placeholder="e.g. patient@example.com"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Emergency Contact
                       </label>
                       <input
@@ -471,19 +471,19 @@ export default function RegisterPatientPage() {
                         value={formData.emergency_contact}
                         onChange={handleChange}
                         placeholder="e.g. +91 98401 22334 (Spouse)"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Identity Type (Configurable)
                       </label>
                       <select
                         name="identity_type"
                         value={formData.identity_type}
                         onChange={handleChange}
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       >
                         <option value="VOTER_ID">Voter ID (Election Card)</option>
                         <option value="DRIVING_LICENSE">Driving License</option>
@@ -494,7 +494,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Identity Reference Number
                       </label>
                       <input
@@ -503,12 +503,12 @@ export default function RegisterPatientPage() {
                         value={formData.identity_number}
                         onChange={handleChange}
                         placeholder="e.g. TN/02/124/88921"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
                     <div className="sm:col-span-3">
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Residential Address
                       </label>
                       <input
@@ -517,7 +517,7 @@ export default function RegisterPatientPage() {
                         value={formData.address}
                         onChange={handleChange}
                         placeholder="e.g. 14 Sabari Nagar, Mugalivakkam, Chennai 600125"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
                   </div>
@@ -530,7 +530,7 @@ export default function RegisterPatientPage() {
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700  mb-1.5">
                         Initial Reason / Complaint
                       </label>
                       <input
@@ -539,11 +539,11 @@ export default function RegisterPatientPage() {
                         value={formData.diagnosis}
                         onChange={handleChange}
                         placeholder="e.g. Routine OPD Consultation, Diabetology Follow-up, Fever"
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
 
-                    <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="p-3.5 bg-slate-50  rounded-xl border border-slate-200 ">
                       <label className="flex items-start gap-3 cursor-pointer">
                         <input
                           type="checkbox"
@@ -552,7 +552,7 @@ export default function RegisterPatientPage() {
                           onChange={handleChange}
                           className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                         />
-                        <span className="text-xs text-slate-600 dark:text-slate-300">
+                        <span className="text-xs text-slate-600 ">
                           <strong>Patient Consent:</strong> Patient consents to create a secure OneHealth ID, generate a zero-knowledge QR identity token, and permit authorized Kedar Hospital clinicians to view health records.
                         </span>
                       </label>
@@ -561,7 +561,7 @@ export default function RegisterPatientPage() {
                 </div>
 
                 {/* Submit Actions */}
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-end gap-3">
+                <div className="pt-4 border-t border-slate-100  flex flex-col sm:flex-row items-center justify-end gap-3">
                   <Link href="/patients" className="w-full sm:w-auto">
                     <Button variant="outline" size="md" type="button" className="w-full sm:w-auto min-h-[44px]">
                       Cancel

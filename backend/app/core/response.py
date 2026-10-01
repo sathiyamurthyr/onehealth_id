@@ -22,6 +22,9 @@ class StandardResponse(BaseModel):
     error: Optional[ErrorDetails] = None
 
 
+from fastapi.encoders import jsonable_encoder
+
+
 def success_response(
     data: Any = None,
     message: Optional[str] = None,
@@ -34,7 +37,7 @@ def success_response(
         "message": message,
         "meta": meta or {}
     }
-    return JSONResponse(status_code=status_code, content=payload)
+    return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
 
 
 def error_response(
@@ -51,4 +54,4 @@ def error_response(
             "details": details or {}
         }
     }
-    return JSONResponse(status_code=status_code, content=payload)
+    return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))

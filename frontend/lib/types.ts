@@ -1,15 +1,69 @@
 export interface UserProfile {
   id?: string;
+  user_ref_id?: string;
   username: string;
   name?: string;
   full_name?: string;
   email: string;
   role: string;
+  usertype_ref_id?: string;
   hospital_id?: string;
+  hospital_ref_id?: string;
   hospital_name?: string;
   tenant_name?: string;
   roles?: string[];
   permissions?: string[];
+}
+
+export interface NavigationItem {
+  title: string;
+  href: string;
+  icon?: string;
+  section?: string;
+  badge?: string;
+  permission?: string;
+}
+
+export interface WorkspaceDefinition {
+  id: string;
+  workspace_type: "SUPER_ADMIN" | "HOSPITAL_ADMIN" | "DOCTOR" | "NURSE" | "EMPLOYEE" | "PATIENT" | "OTHER";
+  role_code: string;
+  role_name: string;
+  default_route: string;
+  hospital_ref_id: string;
+  hospital_name: string;
+  hospital_code?: string;
+  branch_ref_id?: string;
+  branch_name?: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  is_primary?: boolean;
+}
+
+export interface DashboardConfig {
+  layout: string[];
+  widgets: any[];
+}
+
+export interface WorkspaceResponse {
+  user: UserProfile;
+  workspace: WorkspaceDefinition;
+  navigation: NavigationItem[];
+  permissions: string[];
+  dashboard: DashboardConfig;
+  available_workspaces: any[];
+  available_hospitals: any[];
+}
+
+export interface SwitchContextRequest {
+  hospital_ref_id?: string;
+  usertype_ref_id?: string;
+}
+
+export interface SwitchContextResponse {
+  access_token: string;
+  token_type?: string;
+  workspace: WorkspaceResponse;
 }
 
 export interface Patient {

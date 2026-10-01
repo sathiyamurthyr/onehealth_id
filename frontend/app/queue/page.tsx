@@ -93,10 +93,10 @@ export default function QueuePage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Live OPD Queue Orchestrator
               </h1>
               <span className="flex h-2.5 w-2.5 relative">
@@ -116,7 +116,7 @@ export default function QueuePage() {
             <select
               value={selectedDoctorId}
               onChange={(e) => setSelectedDoctorId(e.target.value)}
-              className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 min-h-[44px]"
+              className="px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-semibold text-slate-700  min-h-[44px]"
             >
               <option value="ALL">All Consulting Doctors</option>
               {doctors.map((d) => (
@@ -246,7 +246,7 @@ export default function QueuePage() {
 
             {/* Waiting Queue List */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 ">
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-amber-500" />
                   <CardTitle className="text-base">
@@ -263,19 +263,19 @@ export default function QueuePage() {
                     No patients currently waiting in this queue.
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="divide-y divide-slate-100 ">
                     {waitingPatients.map((item, idx) => (
                       <div
                         key={item.id}
                         className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center justify-center font-mono font-black text-sm shrink-0">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-50  text-amber-700  border border-amber-200  flex items-center justify-center font-mono font-black text-sm shrink-0">
                             #{item.token_number}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-xs text-slate-900 dark:text-white">
+                              <span className="font-bold text-xs text-slate-900 ">
                                 {item.patient_name}
                               </span>
                               <Badge
@@ -345,11 +345,11 @@ export default function QueuePage() {
                     {completedPatients.map((item) => (
                       <div
                         key={item.id}
-                        className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs"
+                        className="p-3 bg-slate-50  rounded-xl border border-slate-100  flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-slate-500">#{item.token_number}</span>
-                          <span className="font-medium text-slate-700 dark:text-slate-300">{item.patient_name}</span>
+                          <span className="font-medium text-slate-700 ">{item.patient_name}</span>
                         </div>
                         <Badge
                           variant={item.status === "COMPLETED" ? "success" : "outline"}

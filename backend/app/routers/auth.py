@@ -7,6 +7,8 @@ from backend.app.repositories.sp_views_repository import sp_repository
 from jose import jwt
 from backend.app.core.config import settings
 
+from backend.app.core.rate_limit import rate_limit_login
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
@@ -22,7 +24,7 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[di
         return None
     return None
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit_login)])
 def login(creds: LoginRequest):
     # 1. Fetch user from PostgreSQL oh_id.vw_user_auth
     user_row = sp_repository.get_user_by_username(creds.username)
@@ -36,26 +38,38 @@ def login(creds: LoginRequest):
     if not verify_password(creds.password, user_row.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    # 3. Build enriched UserProfile with real roles and permissions
+    user_ref_id = user_row.get("user_ref_id") or user_row.get("id")
+
+    # 3. Resolve active workspace context
+    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id)
+    active_role = ws.get("role_code") if ws else user_row.get("role", "STAFF")
+    active_usertype = ws.get("usertype_ref_id") if ws else user_row.get("usertype_ref_id")
+    active_hospital = ws.get("hospital_ref_id") if ws else user_row.get("hospital_ref_id") or user_row.get("hospital_id")
+    active_perms = ws.get("permissions") if ws else user_row.get("permissions") or []
+
     profile = UserProfile(
         id=user_row.get("id"),
+        user_ref_id=user_ref_id,
         username=user_row["username"],
         name=user_row.get("full_name", creds.username),
-        role=user_row.get("role", "STAFF"),
+        role=active_role,
+        usertype_ref_id=active_usertype,
         email=user_row.get("email", ""),
-        hospital_id=user_row.get("hospital_id"),
-        hospital_name=user_row.get("hospital_name") or "Kedar Hospital",
+        hospital_id=active_hospital,
+        hospital_ref_id=active_hospital,
+        hospital_name=ws.get("hospital_name") if ws else user_row.get("hospital_name") or "Kedar Hospital",
         tenant_name=user_row.get("tenant_name") or "Kedar Healthcare Group",
-        roles=user_row.get("roles") or [user_row.get("role", "STAFF")],
-        permissions=user_row.get("permissions") or []
+        roles=[active_role],
+        permissions=active_perms
     )
 
     token = create_access_token({
         "sub": profile.username,
-        "uid": profile.id,
+        "uid": profile.user_ref_id,
         "role": profile.role,
-        "roles": profile.roles,
-        "hospital_id": profile.hospital_id
+        "usertype_ref_id": profile.usertype_ref_id,
+        "hospital_id": profile.hospital_ref_id,
+        "hospital_ref_id": profile.hospital_ref_id
     })
 
     return LoginResponse(access_token=token, user=profile)
@@ -66,16 +80,26 @@ def get_me(authorization: Optional[str] = Header(None)):
     if not user_row:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    user_ref_id = user_row.get("user_ref_id") or user_row.get("id")
+    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id)
+    active_role = ws.get("role_code") if ws else user_row.get("role", "STAFF")
+    active_usertype = ws.get("usertype_ref_id") if ws else user_row.get("usertype_ref_id")
+    active_hospital = ws.get("hospital_ref_id") if ws else user_row.get("hospital_ref_id") or user_row.get("hospital_id")
+    active_perms = ws.get("permissions") if ws else user_row.get("permissions") or []
+
     profile = UserProfile(
         id=user_row.get("id"),
+        user_ref_id=user_ref_id,
         username=user_row["username"],
         name=user_row.get("full_name", user_row["username"]),
-        role=user_row.get("role", "STAFF"),
+        role=active_role,
+        usertype_ref_id=active_usertype,
         email=user_row.get("email", ""),
-        hospital_id=user_row.get("hospital_id"),
-        hospital_name=user_row.get("hospital_name") or "Kedar Hospital",
+        hospital_id=active_hospital,
+        hospital_ref_id=active_hospital,
+        hospital_name=ws.get("hospital_name") if ws else user_row.get("hospital_name") or "Kedar Hospital",
         tenant_name=user_row.get("tenant_name") or "Kedar Healthcare Group",
-        roles=user_row.get("roles") or [user_row.get("role", "STAFF")],
-        permissions=user_row.get("permissions") or []
+        roles=[active_role],
+        permissions=active_perms
     )
     return success_response(data=profile.model_dump())

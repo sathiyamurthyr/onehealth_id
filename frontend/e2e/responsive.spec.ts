@@ -7,7 +7,7 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
     await page.locator('input[type="text"]').fill("admin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await page.waitForURL("**/dashboard");
+    await page.waitForURL(/.*(admin|dashboard)/);
 
     // Sidebar should be visible on desktop
     const sidebar = page.locator("aside");
@@ -23,10 +23,10 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
   test("Tablet Viewport (768x1024): Adaptive layout without content clipping", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="text"]').fill("hospadmin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await page.waitForURL("**/dashboard");
+    await page.waitForURL(/.*(admin|dashboard|hospital)/);
 
     // Verify no horizontal overflow
     const hasHorizontalOverflow = await page.evaluate(() => {
@@ -38,10 +38,10 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
   test("Mobile Viewport (390x844): Sticky bottom navigation, cards stack vertically, touch targets >= 44px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("admin");
-    await page.locator('input[type="password"]').fill("admin123");
+    await page.locator('input[type="text"]').fill("dr.senthil");
+    await page.locator('input[type="password"]').fill("doctor123");
     await page.locator('button[type="submit"]').click();
-    await page.waitForURL("**/dashboard");
+    await page.waitForURL(/.*(admin|dashboard|hospital|doctor)/);
 
     // Desktop sidebar should be hidden
     const sidebar = page.locator("aside");

@@ -100,12 +100,12 @@ export const ClinicalVitalsGrid: React.FC<ClinicalVitalsGridProps> = ({
             className={cn(
               "p-3.5 rounded-2xl border transition-all flex flex-col justify-between",
               item.abnormal
-                ? "bg-rose-50/60 dark:bg-rose-950/20 border-rose-300 dark:border-rose-900/60 text-rose-900 dark:text-rose-200"
-                : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200"
+                ? "bg-rose-50/60  border-rose-300  text-rose-900 "
+                : "bg-slate-50  border-slate-200  text-slate-800 "
             )}
           >
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+              <span className="text-[11px] font-semibold text-slate-500  truncate">
                 {item.label}
               </span>
               <Icon
@@ -120,7 +120,7 @@ export const ClinicalVitalsGrid: React.FC<ClinicalVitalsGridProps> = ({
               <span
                 className={cn(
                   "text-lg sm:text-xl font-black tracking-tight",
-                  item.abnormal ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"
+                  item.abnormal ? "text-rose-600 " : "text-slate-900 "
                 )}
               >
                 {item.value}
@@ -131,7 +131,7 @@ export const ClinicalVitalsGrid: React.FC<ClinicalVitalsGridProps> = ({
             <div className="mt-1 flex items-center justify-between text-[10px]">
               <span className="text-slate-400 font-mono">Norm: {item.target}</span>
               {item.abnormal && (
-                <span className="inline-flex items-center gap-0.5 font-bold text-rose-600 dark:text-rose-400">
+                <span className="inline-flex items-center gap-0.5 font-bold text-rose-600 ">
                   <AlertTriangle className="w-2.5 h-2.5" />
                   Alert
                 </span>

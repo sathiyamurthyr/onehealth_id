@@ -563,9 +563,27 @@ class SPViewsRepository:
     # ADMINISTRATION & RBAC AUTHENTICATION (Reads from vw_user_auth, vw_audit_logs, vw_departments)
     # --------------------------------------------------------------------------
 
-    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+    def get_doctor_by_user_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
-            cur.execute("SELECT * FROM oh_id.vw_user_auth WHERE username = %s;", (username,))
+            cur.execute("SELECT * FROM oh_id.vw_doctors WHERE user_id = %s LIMIT 1;", (user_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            cur.execute("SELECT * FROM oh_id.vw_doctors WHERE id = %s LIMIT 1;", (user_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        clean_user = (username or "").strip()
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.vw_user_auth 
+                WHERE LOWER(username) = LOWER(%s)
+                   OR LOWER(id) = LOWER(%s)
+                   OR LOWER(user_ref_id) = LOWER(%s)
+                   OR LOWER(email) = LOWER(%s)
+                LIMIT 1;
+            """, (clean_user, clean_user, clean_user, clean_user))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -631,6 +649,104 @@ class SPViewsRepository:
                 "payment_id": res.get("o_payment_id") if res else None,
                 "payment_status": res.get("o_payment_status") if res else "SUCCESS"
             }
+
+    # --------------------------------------------------------------------------
+    # ENTERPRISE WORKSPACES & RBAC RESOLUTION (Reads from vw_user_workspaces, vw_user_hospitals)
+    # --------------------------------------------------------------------------
+
+    def get_user_workspace(
+        self,
+        user_ref_id: str,
+        hospital_ref_id: Optional[str] = None,
+        usertype_ref_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            clauses = ["user_ref_id = %s"]
+            params = [user_ref_id]
+
+            if hospital_ref_id:
+                clauses.append("hospital_ref_id = %s")
+                params.append(hospital_ref_id)
+            if usertype_ref_id:
+                clauses.append("usertype_ref_id = %s")
+                params.append(usertype_ref_id)
+
+            where_str = f"WHERE {' AND '.join(clauses)}"
+            sql = f"SELECT * FROM oh_id.vw_user_workspaces {where_str} ORDER BY is_primary DESC LIMIT 1;"
+            cur.execute(sql, tuple(params))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+
+            # Fallback if specific context not found
+            cur.execute(
+                "SELECT * FROM oh_id.vw_user_workspaces WHERE user_ref_id = %s ORDER BY is_primary DESC LIMIT 1;",
+                (user_ref_id,)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def list_user_workspaces(self, user_ref_id: str) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute(
+                "SELECT * FROM oh_id.vw_user_workspaces WHERE user_ref_id = %s ORDER BY is_primary DESC, role_name ASC;",
+                (user_ref_id,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def list_user_hospitals(self, user_ref_id: str) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute(
+                "SELECT * FROM oh_id.vw_user_hospitals WHERE user_ref_id = %s ORDER BY is_primary DESC, hospital_name ASC;",
+                (user_ref_id,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def list_roles(self) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.roles ORDER BY is_system_role DESC, name ASC;")
+            return [dict(r) for r in cur.fetchall()]
+
+    def list_permissions(self) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.permissions ORDER BY module ASC, code ASC;")
+            return [dict(r) for r in cur.fetchall()]
+
+    def list_users(self) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.vw_user_profiles ORDER BY full_name ASC;")
+            return [dict(r) for r in cur.fetchall()]
+
+    def assign_user_role(
+        self,
+        user_ref_id: str,
+        usertype_ref_id: str,
+        hospital_ref_id: str,
+        branch_ref_id: Optional[str] = None,
+        department_id: Optional[str] = None,
+        is_primary: bool = False
+    ) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            cur.execute(
+                "CALL oh_id.sp_assign_user_role(%s, %s, %s, %s, %s, %s, NULL);",
+                (user_ref_id, usertype_ref_id, hospital_ref_id, branch_ref_id, department_id, is_primary)
+            )
+            res = cur.fetchone()
+            return {"status": res.get("o_status") if res else "SUCCESS"}
+
+    def manage_role_permission(
+        self,
+        usertype_ref_id: str,
+        permission_code: str,
+        action: str
+    ) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            cur.execute(
+                "CALL oh_id.sp_manage_role_permission(%s, %s, %s, NULL);",
+                (usertype_ref_id, permission_code, action)
+            )
+            res = cur.fetchone()
+            return {"status": res.get("o_status") if res else "SUCCESS"}
 
 sp_repository = SPViewsRepository()
 

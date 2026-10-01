@@ -95,48 +95,48 @@ class TestAuthSecurity:
 class TestPatientIdentityEngine:
     """Verifies patient search, duplicate detection, registration, OH-ID generation, and DB state."""
 
-    def test_patient_search_existing(self, client):
+    def test_patient_search_existing(self, client, admin_token):
         """Search finds existing seed patient Meenakshi Sundaram."""
-        res = client.get("/api/v1/patients", params={"search": "Meenakshi"})
+        res = client.get("/api/v1/patients", params={"search": "Meenakshi"}, headers={"Authorization": f"Bearer {admin_token}"})
         assert res.status_code == 200
         patients = res.json()
         assert len(patients) >= 1
         assert "Meenakshi Sundaram" in patients[0]["name"]
         assert patients[0]["onehealth_id"].startswith("OHID-")
 
-    def test_patient_search_no_results(self, client):
+    def test_patient_search_no_results(self, client, admin_token):
         """Search with random non-existent query returns empty list without error (200 OK, [])."""
-        res = client.get("/api/v1/patients", params={"search": "NON_EXISTENT_NAME_XYZ_9999"})
+        res = client.get("/api/v1/patients", params={"search": "NON_EXISTENT_NAME_XYZ_9999"}, headers={"Authorization": f"Bearer {admin_token}"})
         assert res.status_code == 200
         assert res.json() == []
 
-    def test_duplicate_patient_pre_check_matching(self, client):
+    def test_duplicate_patient_pre_check_matching(self, client, receptionist_token):
         """Duplicate detection flags existing patient when phone or name matches."""
         # Query existing seed patient phone (9840199001)
         res = client.post("/api/v1/patients/check-duplicates", json={
             "phone": "9840199001",
             "name": "Meenakshi",
             "identity_number": "NAT-9901"
-        })
+        }, headers={"Authorization": f"Bearer {receptionist_token}"})
         assert res.status_code == 200
         data = res.json()
         assert data["duplicate_found"] is True
         assert len(data["matches"]) >= 1
         assert data["matches"][0]["phone"] == "9840199001"
 
-    def test_duplicate_patient_pre_check_clean(self, client):
+    def test_duplicate_patient_pre_check_clean(self, client, receptionist_token):
         """Clean phone and name returns duplicate_found = False."""
         res = client.post("/api/v1/patients/check-duplicates", json={
             "phone": "9999900001",
             "name": "Totally Unique Person",
             "identity_number": "NAT-CLEAN-999"
-        })
+        }, headers={"Authorization": f"Bearer {receptionist_token}"})
         assert res.status_code == 200
         data = res.json()
         assert data["duplicate_found"] is False
         assert len(data["matches"]) == 0
 
-    def test_register_patient_valid_transaction(self, client):
+    def test_register_patient_valid_transaction(self, client, receptionist_token):
         """Registers a new patient via stored procedure sp_register_patient_v2 and validates DB state."""
         test_phone = f"9840{uuid.uuid4().hex[:6].lower()}"
         payload = {
@@ -154,7 +154,7 @@ class TestPatientIdentityEngine:
             "hospital_id": "hosp-kedar",
             "branch_id": "branch-kedar-01"
         }
-        res = client.post("/api/v1/patients", json=payload)
+        res = client.post("/api/v1/patients", json=payload, headers={"Authorization": f"Bearer {receptionist_token}"})
         assert res.status_code == 201
         created = res.json()
         assert created["name"] == payload["name"]
@@ -179,13 +179,13 @@ class TestPatientIdentityEngine:
             assert audit is not None
             assert audit["resource_type"] == "PATIENT"
 
-    def test_register_patient_missing_required_fields(self, client):
+    def test_register_patient_missing_required_fields(self, client, receptionist_token):
         """Pydantic v2 rejects payload missing name and age with 422 Unprocessable Entity."""
         res = client.post("/api/v1/patients", json={
             "phone": "9840112233",
             "gender": "Male"
             # Missing name, age, etc.
-        })
+        }, headers={"Authorization": f"Bearer {receptionist_token}"})
         assert res.status_code == 422
 
 
@@ -196,20 +196,20 @@ class TestPatientIdentityEngine:
 class TestQRResolutionEngine:
     """Validates zero-knowledge QR verification and token lookups."""
 
-    def test_qr_verify_valid_token(self, client):
+    def test_qr_verify_valid_token(self, client, admin_token):
         """Valid QR token resolves cleanly to the patient profile."""
-        # 1. Fetch seed patient Meenakshi Sundaram
-        res = client.get("/api/v1/patients", params={"search": "Meenakshi"})
+        # 1. Fetch seed patient Meenakshi Sundaram (needs admin auth to list patients)
+        res = client.get("/api/v1/patients", params={"search": "Meenakshi"}, headers={"Authorization": f"Bearer {admin_token}"})
         patient = res.json()[0]
         qr_token = patient.get("qr_token")
 
         if not qr_token:
             # Refresh QR token via endpoint
-            ref_res = client.post(f"/api/v1/patients/{patient['id']}/refresh-qr")
+            ref_res = client.post(f"/api/v1/patients/{patient['id']}/refresh-qr", headers={"Authorization": f"Bearer {admin_token}"})
             assert ref_res.status_code == 200
             qr_token = ref_res.json()["qr_token"]
 
-        # 2. Resolve token
+        # 2. Resolve token — QR verify is intentionally public (kiosk scanning at reception)
         resolve_res = client.get(f"/api/v1/patients/verify-qr/{qr_token}")
         assert resolve_res.status_code == 200
         resolved_pat = resolve_res.json()
@@ -217,7 +217,7 @@ class TestQRResolutionEngine:
         assert resolved_pat["name"] == patient["name"]
 
     def test_qr_verify_nonexistent_token(self, client):
-        """Invalid or spoofed QR token returns 404 Not Found."""
+        """Invalid or spoofed QR token returns 404 Not Found. (Public endpoint, no auth needed)"""
         res = client.get("/api/v1/patients/verify-qr/QR-OHID-FORGED-99999999")
         assert res.status_code == 404
         assert "could not be verified" in res.json()["detail"]
@@ -230,15 +230,18 @@ class TestQRResolutionEngine:
 class TestAppointmentsAndCheckin:
     """Verifies appointment booking, slot formatting, check-in, token issuance, and state integrity."""
 
-    def test_create_appointment_and_check_in(self, client):
+    def test_create_appointment_and_check_in(self, client, admin_token, receptionist_token):
         """End-to-end appointment creation, reception check-in, and OPD queue token issuance."""
+        auth_hdr = {"Authorization": f"Bearer {admin_token}"}
+        rec_hdr = {"Authorization": f"Bearer {receptionist_token}"}
+
         # 1. Fetch active patient and doctor
-        p_res = client.get("/api/v1/patients")
+        p_res = client.get("/api/v1/patients", headers=auth_hdr)
         d_res = client.get("/api/v1/doctors")
         patient = p_res.json()[0]
         doctor = d_res.json()[0]
 
-        # 2. Create appointment
+        # 2. Create appointment (receptionist has appointment.create)
         appt_payload = {
             "patient_id": patient["id"],
             "doctor_id": doctor["id"],
@@ -248,7 +251,7 @@ class TestAppointmentsAndCheckin:
             "branch_id": "branch-kedar-01",
             "department_id": "dept-k-01"
         }
-        create_res = client.post("/api/v1/appointments", json=appt_payload)
+        create_res = client.post("/api/v1/appointments", json=appt_payload, headers=rec_hdr)
         assert create_res.status_code == 201
         appt = create_res.json()
         assert appt["patient_id"] == patient["id"]
@@ -256,7 +259,7 @@ class TestAppointmentsAndCheckin:
         assert appt["status"] == "scheduled"
 
         # 3. Check-in patient via sp_check_in_appointment
-        checkin_res = client.post(f"/api/v1/appointments/{appt['id']}/check-in")
+        checkin_res = client.post(f"/api/v1/appointments/{appt['id']}/check-in", headers=rec_hdr)
         assert checkin_res.status_code == 200
         checkin_data = checkin_res.json()
         assert checkin_data["success"] is True
@@ -277,9 +280,9 @@ class TestAppointmentsAndCheckin:
             assert q_row["token_number"] == token_num
             assert q_row["status"] == "WAITING"
 
-    def test_check_in_nonexistent_appointment(self, client):
+    def test_check_in_nonexistent_appointment(self, client, receptionist_token):
         """Rejects check-in for non-existent appointment with 404."""
-        res = client.post("/api/v1/appointments/appt-nonexistent-9999/check-in")
+        res = client.post("/api/v1/appointments/appt-nonexistent-9999/check-in", headers={"Authorization": f"Bearer {receptionist_token}"})
         assert res.status_code == 404
 
 
@@ -290,9 +293,9 @@ class TestAppointmentsAndCheckin:
 class TestOPDQueueEngine:
     """Verifies live queue board, FIFO ordering, and doctor/reception queue actions."""
 
-    def test_queue_board_listing(self, client):
-        """Fetches live queue entries from vw_queue_board."""
-        res = client.get("/api/v1/queue")
+    def test_queue_board_listing(self, client, nurse_token):
+        """Fetches live queue entries from vw_queue_board (requires queue.read)."""
+        res = client.get("/api/v1/queue", headers={"Authorization": f"Bearer {nurse_token}"})
         assert res.status_code == 200
         queue_items = res.json()
         assert isinstance(queue_items, list)
@@ -301,20 +304,28 @@ class TestOPDQueueEngine:
             assert "patient_name" in item
             assert item["status"] in ["WAITING", "CALLING", "IN_CONSULTATION", "COMPLETED", "HOLD", "SKIPPED"]
 
-    def test_queue_action_call_next(self, client):
-        """Advances a queue entry state via sp_manage_queue."""
-        # Find a waiting entry or create one
-        res = client.get("/api/v1/queue")
+    def test_queue_action_call_next(self, client, doctor_token):
+        """Advances a queue entry state via sp_manage_queue (requires queue.call — Doctor only)."""
+        # Find a waiting entry
+        res = client.get("/api/v1/queue", headers={"Authorization": f"Bearer {doctor_token}"})
         queue_items = res.json()
         if queue_items:
             target = queue_items[0]
-            action_res = client.post(f"/api/v1/queue/{target['id']}/action", json={"action": "CALL_NEXT"})
+            action_res = client.post(
+                f"/api/v1/queue/{target['id']}/action",
+                json={"action": "CALL_NEXT"},
+                headers={"Authorization": f"Bearer {doctor_token}"}
+            )
             assert action_res.status_code == 200
             assert action_res.json()["success"] is True
 
-    def test_queue_action_invalid_id(self, client):
+    def test_queue_action_invalid_id(self, client, doctor_token):
         """Rejects action on invalid queue ID with 404 Not Found."""
-        res = client.post("/api/v1/queue/queue-nonexistent-9999/action", json={"action": "CALL_NEXT"})
+        res = client.post(
+            "/api/v1/queue/queue-nonexistent-9999/action",
+            json={"action": "CALL_NEXT"},
+            headers={"Authorization": f"Bearer {doctor_token}"}
+        )
         assert res.status_code == 404
 
 
@@ -328,7 +339,7 @@ class TestDoctorConsultationWorkflow:
     def test_doctor_complete_consultation(self, client, doctor_token):
         """Records full consultation, saves vitals, closes appointment, and generates audit trail."""
         # 1. Fetch seed patient p-k-101
-        res = client.get("/api/v1/patients", params={"search": "Meenakshi"})
+        res = client.get("/api/v1/patients", params={"search": "Meenakshi"}, headers={"Authorization": f"Bearer {doctor_token}"})
         patient = res.json()[0]
 
         payload = {
@@ -414,9 +425,9 @@ class TestDoctorConsultationWorkflow:
 class TestKedarDashboardAndConfig:
     """Verifies that all dashboard figures derive from dynamic database views."""
 
-    def test_dashboard_metrics_dynamic_query(self, client):
+    def test_dashboard_metrics_dynamic_query(self, client, admin_token):
         """Validates that dashboard statistics are populated from vw_dashboard_metrics."""
-        res = client.get("/api/v1/dashboard/metrics")
+        res = client.get("/api/v1/dashboard/metrics", headers={"Authorization": f"Bearer {admin_token}"})
         assert res.status_code == 200
         metrics = res.json()
         assert isinstance(metrics["total_patients"], int)
@@ -426,9 +437,9 @@ class TestKedarDashboardAndConfig:
         assert metrics["available_doctors"] >= 2
         assert "total_revenue" in metrics
 
-    def test_hospital_config_kedar(self, client):
+    def test_hospital_config_kedar(self, client, admin_token):
         """Validates Kedar Hospital configuration endpoint returns DB-driven tenant hierarchy."""
-        res = client.get("/api/v1/hospital/config")
+        res = client.get("/api/v1/hospital/config", headers={"Authorization": f"Bearer {admin_token}"})
         assert res.status_code == 200
         data = res.json()
         assert data["hospital"]["id"] == "hosp-kedar"

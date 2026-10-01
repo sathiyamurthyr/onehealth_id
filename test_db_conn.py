@@ -1,8 +1,9 @@
-import psycopg2
-import sys
+import os
+from backend.app.core.config import settings
 
 try:
-    conn = psycopg2.connect("postgresql://postgres:AivioSathus!321@db.arkoolfygfqawyvwnldv.supabase.co:5432/postgres", connect_timeout=5)
+    db_url = settings.DATABASE_URL or os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(db_url, connect_timeout=5)
     cur = conn.cursor()
     cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
     rows = cur.fetchall()

@@ -62,26 +62,26 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]",
+          "w-full bg-white  border border-slate-200  rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]",
           maxWidthClasses[maxWidth],
           className
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+        <div className="p-5 sm:p-6 border-b border-slate-100  flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {icon && (
-              <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50  border border-blue-200  text-blue-600  flex items-center justify-center shrink-0">
                 {icon}
               </div>
             )}
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 ">
                 {title}
               </h2>
               {subtitle && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500  mt-0.5">
                   {subtitle}
                 </p>
               )}
@@ -90,7 +90,7 @@ export const Modal: React.FC<ModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+            className="p-2 text-slate-400 hover:text-slate-600  hover:bg-slate-100  rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
             title="Close dialog"
             aria-label="Close"
           >
@@ -105,7 +105,7 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Footer */}
         {footer && (
-          <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-end gap-3">
+          <div className="p-4 sm:p-5 border-t border-slate-100  bg-slate-50/50  flex items-center justify-end gap-3">
             {footer}
           </div>
         )}

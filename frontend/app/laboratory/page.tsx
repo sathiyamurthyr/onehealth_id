@@ -60,10 +60,10 @@ export default function LaboratoryPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Diagnostic Laboratory (LIS)
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -77,13 +77,13 @@ export default function LaboratoryPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-slate-400">
-              Active Orders: <strong className="text-slate-700 dark:text-slate-200">{orders.length} tests</strong>
+              Active Orders: <strong className="text-slate-700 ">{orders.length} tests</strong>
             </span>
           </div>
         </div>
 
         {/* Filter and Search */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -91,7 +91,7 @@ export default function LaboratoryPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by test name, patient, code (e.g. CBC, HBA1C)..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
 
@@ -104,7 +104,7 @@ export default function LaboratoryPage() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all min-h-[40px] ${
                     statusFilter === st
                       ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                      : "bg-slate-100  text-slate-600  hover:bg-slate-200"
                   }`}
                 >
                   {st}
@@ -131,9 +131,9 @@ export default function LaboratoryPage() {
         ) : (
           <div className="space-y-4">
             {/* Desktop Table View */}
-            <div className="hidden lg:block bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="hidden lg:block bg-white  rounded-3xl border border-slate-200  overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase tracking-wider font-semibold">
+                <thead className="bg-slate-50  border-b border-slate-200  text-slate-500 uppercase tracking-wider font-semibold">
                   <tr>
                     <th className="py-4 px-6">Test Code & Description</th>
                     <th className="py-4 px-6">Patient Name</th>
@@ -144,16 +144,16 @@ export default function LaboratoryPage() {
                     <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100 ">
                   {filteredOrders.map((o) => (
                     <tr
                       key={o.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      className="hover:bg-slate-50/60  transition-colors"
                     >
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-2">
                           <FlaskConical className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="font-bold text-slate-900 dark:text-white">
+                          <span className="font-bold text-slate-900 ">
                             {o.test_name}
                           </span>
                         </div>
@@ -165,14 +165,14 @@ export default function LaboratoryPage() {
                       <td className="py-4 px-6">
                         <Link
                           href={`/patients/${o.patient_id}`}
-                          className="font-semibold text-slate-800 dark:text-slate-200 hover:text-blue-600 block"
+                          className="font-semibold text-slate-800  hover:text-blue-600 block"
                         >
                           {o.patient_name}
                         </Link>
                       </td>
 
                       <td className="py-4 px-6">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100  text-slate-700  font-medium">
                           {o.specimen_type || "Venous Blood"}
                         </span>
                       </td>
@@ -182,7 +182,7 @@ export default function LaboratoryPage() {
                           <div className="flex items-center gap-1.5">
                             <span
                               className={`font-mono font-bold text-sm ${
-                                o.is_abnormal ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+                                o.is_abnormal ? "text-rose-600 " : "text-emerald-600 "
                               }`}
                             >
                               {o.result_value}
@@ -237,11 +237,11 @@ export default function LaboratoryPage() {
               {filteredOrders.map((o) => (
                 <div
                   key={o.id}
-                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-3"
+                  className="p-4 bg-white  border border-slate-200  rounded-2xl shadow-sm space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      <h3 className="font-bold text-sm text-slate-900 ">
                         {o.test_name}
                       </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -263,12 +263,12 @@ export default function LaboratoryPage() {
                   </div>
 
                   {/* Result & Range */}
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl flex items-center justify-between text-xs">
+                  <div className="p-3 bg-slate-50  rounded-xl flex items-center justify-between text-xs">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Result</span>
                       <span
                         className={`font-mono font-bold text-sm ${
-                          o.is_abnormal ? "text-rose-600 dark:text-rose-400" : "text-emerald-600"
+                          o.is_abnormal ? "text-rose-600 " : "text-emerald-600"
                         }`}
                       >
                         {o.result_value || "In Analysis"}
@@ -277,7 +277,7 @@ export default function LaboratoryPage() {
 
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Reference</span>
-                      <span className="font-mono text-slate-600 dark:text-slate-400 text-xs">
+                      <span className="font-mono text-slate-600  text-xs">
                         {o.normal_range || "Standard"}
                       </span>
                     </div>

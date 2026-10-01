@@ -6,6 +6,13 @@ from backend.app.main import app
 def client():
     return TestClient(app)
 
+@pytest.fixture
+def auth_headers(client):
+    res = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
+    assert res.status_code == 200
+    token = res.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
 def test_enterprise_auth_login(client):
     res = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
     assert res.status_code == 200
@@ -14,9 +21,9 @@ def test_enterprise_auth_login(client):
     assert data["user"]["username"] == "admin"
     assert data["user"]["role"].upper() in ["SUPER_ADMIN", "ADMIN"]
 
-def test_enterprise_patients_view_and_sp(client):
+def test_enterprise_patients_view_and_sp(client, auth_headers):
     # 1. Fetch patients from view
-    res = client.get("/api/v1/patients")
+    res = client.get("/api/v1/patients", headers=auth_headers)
     assert res.status_code == 200
     patients = res.json()
     assert isinstance(patients, list)
@@ -35,7 +42,7 @@ def test_enterprise_patients_view_and_sp(client):
         "diagnosis": "Gestational Diabetes Assessment",
         "hospital_id": "hosp-kedar"
     }
-    create_res = client.post("/api/v1/patients", json=payload)
+    create_res = client.post("/api/v1/patients", json=payload, headers=auth_headers)
     assert create_res.status_code == 201
     created = create_res.json()
     assert created["name"] == "Kavitha Raman"
@@ -45,7 +52,7 @@ def test_enterprise_patients_view_and_sp(client):
     assert created["qr_token"].startswith("QR-OHID-")
 
     # 3. Verify Patient QR token
-    qr_res = client.get(f"/api/v1/patients/verify-qr/{created['qr_token']}")
+    qr_res = client.get(f"/api/v1/patients/verify-qr/{created['qr_token']}", headers=auth_headers)
     assert qr_res.status_code == 200
     assert qr_res.json()["name"] == "Kavitha Raman"
 
@@ -56,9 +63,9 @@ def test_enterprise_doctors_view(client):
     assert len(doctors) >= 1
     assert any("House" in d["name"] for d in doctors)
 
-def test_enterprise_appointments_and_queue(client):
+def test_enterprise_appointments_and_queue(client, auth_headers):
     # Fetch patients and doctors
-    p_res = client.get("/api/v1/patients")
+    p_res = client.get("/api/v1/patients", headers=auth_headers)
     d_res = client.get("/api/v1/doctors")
     patient = p_res.json()[0]
     doctor = d_res.json()[0]
@@ -72,53 +79,53 @@ def test_enterprise_appointments_and_queue(client):
         "notes": "Cardiology screening consultation",
         "priority": "NORMAL"
     }
-    create_appt = client.post("/api/v1/appointments", json=appt_payload)
+    create_appt = client.post("/api/v1/appointments", json=appt_payload, headers=auth_headers)
     assert create_appt.status_code == 201
     appt = create_appt.json()
     assert appt["patient_id"] == patient["id"]
     assert appt["doctor_id"] == doctor["id"]
 
     # Check live queue board
-    q_res = client.get("/api/v1/queue")
+    q_res = client.get("/api/v1/queue", headers=auth_headers)
     assert q_res.status_code == 200
     queue_entries = q_res.json()
     assert isinstance(queue_entries, list)
     if queue_entries:
         # Perform queue action
         first_q = queue_entries[0]
-        action_res = client.post(f"/api/v1/queue/{first_q['id']}/action", json={"action": "CALL_NEXT"})
+        action_res = client.post(f"/api/v1/queue/{first_q['id']}/action", json={"action": "CALL_NEXT"}, headers=auth_headers)
         assert action_res.status_code == 200
         assert action_res.json()["success"] is True
 
-def test_enterprise_clinical_views(client):
+def test_enterprise_clinical_views(client, auth_headers):
     # OPD encounters
-    opd = client.get("/api/v1/clinical/opd/encounters")
+    opd = client.get("/api/v1/clinical/opd/encounters", headers=auth_headers)
     assert opd.status_code == 200
     assert isinstance(opd.json(), list)
 
     # IPD admissions
-    ipd = client.get("/api/v1/clinical/ipd/admissions")
+    ipd = client.get("/api/v1/clinical/ipd/admissions", headers=auth_headers)
     assert ipd.status_code == 200
     assert isinstance(ipd.json(), list)
 
     # Wards and beds
-    beds = client.get("/api/v1/clinical/ipd/wards-beds")
+    beds = client.get("/api/v1/clinical/ipd/wards-beds", headers=auth_headers)
     assert beds.status_code == 200
     assert isinstance(beds.json(), list)
 
     # Laboratory orders
-    labs = client.get("/api/v1/clinical/laboratory/orders")
+    labs = client.get("/api/v1/clinical/laboratory/orders", headers=auth_headers)
     assert labs.status_code == 200
     assert isinstance(labs.json(), list)
 
     # Pharmacy dispensary
-    pharma = client.get("/api/v1/clinical/pharmacy/dispensary")
+    pharma = client.get("/api/v1/clinical/pharmacy/dispensary", headers=auth_headers)
     assert pharma.status_code == 200
     assert isinstance(pharma.json(), list)
 
-def test_enterprise_billing_and_payment(client):
+def test_enterprise_billing_and_payment(client, auth_headers):
     # Invoices
-    inv_res = client.get("/api/v1/billing/invoices")
+    inv_res = client.get("/api/v1/billing/invoices", headers=auth_headers)
     assert inv_res.status_code == 200
     invoices = inv_res.json()
     assert isinstance(invoices, list)
@@ -131,12 +138,12 @@ def test_enterprise_billing_and_payment(client):
         "payment_mode": "UPI",
         "transaction_ref": "UPI-E2E-TEST-9988"
     }
-    pay_res = client.post(f"/api/v1/billing/invoices/{target_inv['id']}/pay", json=pay_payload)
+    pay_res = client.post(f"/api/v1/billing/invoices/{target_inv['id']}/pay", json=pay_payload, headers=auth_headers)
     assert pay_res.status_code == 200
     assert pay_res.json()["success"] is True
 
-def test_enterprise_dashboard_metrics(client):
-    res = client.get("/api/v1/dashboard/metrics")
+def test_enterprise_dashboard_metrics(client, auth_headers):
+    res = client.get("/api/v1/dashboard/metrics", headers=auth_headers)
     assert res.status_code == 200
     metrics = res.json()
     assert "total_patients" in metrics
@@ -145,11 +152,11 @@ def test_enterprise_dashboard_metrics(client):
     assert "total_revenue" in metrics
     assert metrics["total_patients"] >= 1
 
-def test_enterprise_admin_views(client):
-    dept_res = client.get("/api/v1/admin/departments")
+def test_enterprise_admin_views(client, auth_headers):
+    dept_res = client.get("/api/v1/admin/departments", headers=auth_headers)
     assert dept_res.status_code == 200
     assert isinstance(dept_res.json(), list)
 
-    audit_res = client.get("/api/v1/admin/audit-logs")
+    audit_res = client.get("/api/v1/admin/audit-logs", headers=auth_headers)
     assert audit_res.status_code == 200
     assert isinstance(audit_res.json(), list)

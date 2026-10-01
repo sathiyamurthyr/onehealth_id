@@ -46,10 +46,10 @@ export default function SettingsPage() {
     <AppLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Hospital Settings & Regional Config
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -73,7 +73,7 @@ export default function SettingsPage() {
         </div>
 
         {saved && (
-          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-center gap-3 text-emerald-800 dark:text-emerald-300 text-xs font-semibold animate-fadeIn">
+          <div className="p-4 bg-emerald-50  border border-emerald-200  rounded-2xl flex items-center gap-3 text-emerald-800  text-xs font-semibold animate-fadeIn">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <span>Configuration parameters successfully committed to database store!</span>
           </div>
@@ -82,7 +82,7 @@ export default function SettingsPage() {
         <form onSubmit={handleSave} className="space-y-6">
           {/* Facility Identification */}
           <Card>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 ">
               <CardTitle className="text-base flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-blue-600" />
                 <span>Facility Identification & Legal Profile</span>
@@ -91,50 +91,50 @@ export default function SettingsPage() {
             <CardContent className="pt-6 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     Hospital / Facility Name
                   </label>
                   <input
                     type="text"
                     value={hospitalSettings.hospital_name}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, hospital_name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     Facility Node Code
                   </label>
                   <input
                     type="text"
                     value={hospitalSettings.facility_code}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, facility_code: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     GSTIN Identification Number
                   </label>
                   <input
                     type="text"
                     value={hospitalSettings.gstin}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, gstin: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono uppercase focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-mono uppercase focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     State Jurisdiction
                   </label>
                   <input
                     type="text"
                     value={hospitalSettings.state_code}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, state_code: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   />
                 </div>
               </div>
@@ -143,7 +143,7 @@ export default function SettingsPage() {
 
           {/* India-First Regional Configuration */}
           <Card>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 ">
               <CardTitle className="text-base flex items-center gap-2">
                 <Globe className="w-5 h-5 text-indigo-600" />
                 <span>Regional & India-First Localization</span>
@@ -152,13 +152,13 @@ export default function SettingsPage() {
             <CardContent className="pt-6 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     Currency Symbol
                   </label>
                   <select
                     value={hospitalSettings.currency}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, currency: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs min-h-[44px]"
                   >
                     <option value="INR (₹)">INR (₹ Indian Rupee)</option>
                     <option value="USD ($)">USD ($ US Dollar)</option>
@@ -166,13 +166,13 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     Standard Timezone
                   </label>
                   <select
                     value={hospitalSettings.timezone}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, timezone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs min-h-[44px]"
                   >
                     <option value="Asia/Kolkata (IST +05:30)">Asia/Kolkata (IST +05:30)</option>
                     <option value="UTC">UTC (Coordinated Universal Time)</option>
@@ -180,13 +180,13 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700  mb-1.5">
                     Interface Language
                   </label>
                   <select
                     value={hospitalSettings.language}
                     onChange={(e) => setHospitalSettings({ ...hospitalSettings, language: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs min-h-[44px]"
                   >
                     <option value="English">English</option>
                     <option value="Tamil">தமிழ் (Tamil)</option>
@@ -199,7 +199,7 @@ export default function SettingsPage() {
 
           {/* ABDM Ayushman Bharat Digital Mission Readiness */}
           <Card>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 ">
               <CardTitle className="text-base flex items-center gap-2">
                 <FileCheck2 className="w-5 h-5 text-emerald-600" />
                 <span>Ayushman Bharat Digital Mission (ABDM) Readiness</span>
@@ -207,9 +207,9 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="pt-6 space-y-4 text-xs">
               <div className="space-y-3">
-                <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+                <label className="flex items-center justify-between p-3.5 bg-slate-50  rounded-xl border border-slate-200  cursor-pointer">
                   <div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                    <span className="font-bold text-slate-800  block text-xs">
                       ABDM Milestone 1: ABHA Number & Address Seeding
                     </span>
                     <span className="text-slate-500 text-[11px]">
@@ -224,9 +224,9 @@ export default function SettingsPage() {
                   />
                 </label>
 
-                <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+                <label className="flex items-center justify-between p-3.5 bg-slate-50  rounded-xl border border-slate-200  cursor-pointer">
                   <div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                    <span className="font-bold text-slate-800  block text-xs">
                       ABDM Milestone 2: Health Information Provider (HIP)
                     </span>
                     <span className="text-slate-500 text-[11px]">
@@ -241,9 +241,9 @@ export default function SettingsPage() {
                   />
                 </label>
 
-                <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+                <label className="flex items-center justify-between p-3.5 bg-slate-50  rounded-xl border border-slate-200  cursor-pointer">
                   <div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                    <span className="font-bold text-slate-800  block text-xs">
                       ABDM Milestone 3: Health Information User (HIU)
                     </span>
                     <span className="text-slate-500 text-[11px]">
@@ -263,16 +263,16 @@ export default function SettingsPage() {
 
           {/* Notification Gateways */}
           <Card>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 ">
               <CardTitle className="text-base flex items-center gap-2">
                 <Bell className="w-5 h-5 text-purple-600" />
                 <span>Patient Communication Channels</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-3 text-xs">
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <label className="flex items-center justify-between p-3.5 bg-slate-50  rounded-xl border border-slate-200  cursor-pointer">
                 <div>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                  <span className="font-bold text-slate-800  block text-xs">
                     SMS Gateway (DLT Registered Template)
                   </span>
                   <span className="text-slate-500 text-[11px]">
@@ -287,9 +287,9 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <label className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <label className="flex items-center justify-between p-3.5 bg-slate-50  rounded-xl border border-slate-200  cursor-pointer">
                 <div>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                  <span className="font-bold text-slate-800  block text-xs">
                     WhatsApp Business API Dispatcher
                   </span>
                   <span className="text-slate-500 text-[11px]">

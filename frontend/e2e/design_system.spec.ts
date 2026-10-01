@@ -6,7 +6,7 @@ test.describe("OneHealth ID - Unified Healthcare Design System E2E", () => {
     await page.locator('input[type="text"]').fill("admin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page).toHaveURL(/.*(admin|dashboard)/);
   });
 
   test("should render Design System gallery with role themes and tokens", async ({ page }) => {

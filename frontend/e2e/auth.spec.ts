@@ -4,7 +4,7 @@ test.describe("OneHealth ID - Authentication & Dashboard E2E", () => {
   test("should display login portal and brand details", async ({ page }) => {
     await page.goto("/login");
 
-    await expect(page.getByText("Sign In to Hospital Portal")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign In to OneHealth OS" })).toBeVisible();
     await expect(page.locator("text=ONEHEALTH").filter({ visible: true }).first()).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toBeVisible();
     await expect(page.locator('input[type="text"]')).toBeVisible();
@@ -18,12 +18,11 @@ test.describe("OneHealth ID - Authentication & Dashboard E2E", () => {
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
 
-    // Should redirect to dashboard
-    await expect(page).toHaveURL(/.*dashboard/);
+    // Should redirect to authorized workspace
+    await expect(page).toHaveURL(/.*(admin|dashboard)/);
 
-    // Verify live dashboard metrics loaded
-    await expect(page.getByText("Live hospital operations & clinical metrics")).toBeVisible();
-    await expect(page.getByText("New Patient Registration")).toBeVisible();
-    await expect(page.getByText("OPD Queue").first()).toBeVisible();
+    // Verify workspace loaded
+    await expect(page.getByText("Super Admin Console").first()).toBeVisible();
+    await expect(page.getByText("Platform-wide administration").first()).toBeVisible();
   });
 });

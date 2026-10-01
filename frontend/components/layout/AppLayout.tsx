@@ -9,7 +9,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-100/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased overflow-x-hidden">
       <Navbar onOpenMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} isMobileMenuOpen={mobileMenuOpen} />
       
       <div className="flex-1 flex overflow-hidden">

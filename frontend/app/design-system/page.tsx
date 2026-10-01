@@ -112,7 +112,7 @@ export default function DesignSystemPage() {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
                 <Layers className="w-5 h-5 text-blue-600" />
                 <span>1. Multi-Tenant Role Personas & Visual Accents</span>
               </h2>
@@ -132,8 +132,8 @@ export default function DesignSystemPage() {
                   onClick={() => setActiveRole(roleKey)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer ${
                     isSelected
-                      ? "ring-2 ring-blue-500 bg-white dark:bg-slate-900 shadow-md"
-                      : "bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                      ? "ring-2 ring-blue-500 bg-white  shadow-md"
+                      : "bg-white  border-slate-200  hover:border-slate-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -142,7 +142,7 @@ export default function DesignSystemPage() {
                       <span className="text-[10px] font-bold text-blue-600 uppercase">Active</span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-2">
+                  <p className="text-xs text-slate-500  mt-2 line-clamp-2">
                     {roleKey === "SUPER_ADMIN" && "Security audit trails, HIPAA & ABDM compliance, tenant isolation."}
                     {roleKey === "HOSPITAL_ADMIN" && "Hospital capacity, bed occupancy, revenue ops, and doctor rosters."}
                     {roleKey === "DOCTOR" && "Outpatient clinical notes, diagnostics, and e-prescriptions."}
@@ -159,7 +159,7 @@ export default function DesignSystemPage() {
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
                 <HeartPulse className="w-5 h-5 text-rose-500" />
                 <span>2. Universal Clinical Patient Banner</span>
               </h2>
@@ -196,7 +196,7 @@ export default function DesignSystemPage() {
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
                 <Activity className="w-5 h-5 text-emerald-500" />
                 <span>3. Clinical Vitals Telemetry Grid</span>
               </h2>
@@ -204,8 +204,8 @@ export default function DesignSystemPage() {
                 Evaluates patient vitals against medical reference thresholds and automatically renders pulsing alert states.
               </p>
             </div>
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-1.5 px-3 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <div className="flex items-center gap-3 bg-white  p-1.5 px-3 rounded-2xl border border-slate-200 ">
+              <span className="text-xs font-semibold text-slate-600 ">
                 Simulate Vitals State:
               </span>
               <button
@@ -227,7 +227,7 @@ export default function DesignSystemPage() {
         {/* Section 4: Live OPD Queue Token Cards */}
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-500" />
               <span>4. OPD Queue Token Orchestration Primitives</span>
             </h2>
@@ -283,7 +283,7 @@ export default function DesignSystemPage() {
         {/* Section 5: Standardized KPI Metrics Widgets */}
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
               <Building2 className="w-5 h-5 text-sky-500" />
               <span>5. Standardized KPI Metric Widgets</span>
             </h2>
@@ -331,7 +331,7 @@ export default function DesignSystemPage() {
         {/* Section 6: Unified Search & Filter Toolbar */}
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900  flex items-center gap-2">
               <Palette className="w-5 h-5 text-purple-500" />
               <span>6. Universal Search & Filter Toolbar</span>
             </h2>
@@ -396,21 +396,21 @@ export default function DesignSystemPage() {
             </>
           }
         >
-          <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300">
+          <div className="space-y-4 text-xs text-slate-600 ">
             <p>
               This dialog demonstrates the accessible <strong>Modal</strong> component. It traps focus,
-              listens to the <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border">Esc</kbd> key,
+              listens to the <kbd className="px-1.5 py-0.5 bg-slate-100  rounded border">Esc</kbd> key,
               and prevents background scrolling.
             </p>
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="p-4 bg-slate-50  rounded-2xl border border-slate-200 ">
               <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
                 Encrypted QR Payload
               </span>
-              <code className="text-blue-600 dark:text-blue-400 font-mono text-xs break-all block">
+              <code className="text-blue-600  font-mono text-xs break-all block">
                 QR-OHID-2026-08821-zkp99182a7f019c
               </code>
             </div>
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold">
+            <div className="flex items-center gap-2 text-emerald-600  font-semibold">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>Zero medical records leaked in payload; identity resolved securely via backend stored procedure.</span>
             </div>

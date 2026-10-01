@@ -24,13 +24,13 @@ VALUES
 ('dept-105', 'hosp-001', 'Diagnostic Radiology & Lab', 'DIAG', 'Basement 1')
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Default Enterprise Users
+-- 4. Default Enterprise Users (Hashed with salted bcrypt)
 INSERT INTO oh_id.users (id, tenant_id, hospital_id, username, email, full_name, role, password_hash)
 VALUES 
-('usr-admin', 'ten-001', 'hosp-001', 'admin', 'admin@hospital.org', 'Dr. Administrator', 'SUPER_ADMIN', 'admin123'),
-('usr-doctor', 'ten-001', 'hosp-001', 'doctor', 'house@hospital.org', 'Dr. Gregory House', 'DOCTOR', 'doctor123'),
-('usr-receptionist', 'ten-001', 'hosp-001', 'receptionist', 'reception@hospital.org', 'Sarah Jenkins', 'RECEPTIONIST', 'rec123'),
-('usr-patient', 'ten-001', 'hosp-001', 'patient', 'alice.smith@example.com', 'Alice Smith', 'PATIENT', 'patient123')
+('usr-admin', 'ten-001', 'hosp-001', 'admin', 'admin@hospital.org', 'Dr. Administrator', 'SUPER_ADMIN', '$2b$12$NWKP4piq0wShBlDXdhtzh.gcFQc/vrOcGc40nX/1xwr6EXe0ZB.6a'),
+('usr-doctor', 'ten-001', 'hosp-001', 'doctor', 'house@hospital.org', 'Dr. Gregory House', 'DOCTOR', '$2b$12$NWKP4piq0wShBlDXdhtzh.gcFQc/vrOcGc40nX/1xwr6EXe0ZB.6a'),
+('usr-receptionist', 'ten-001', 'hosp-001', 'receptionist', 'reception@hospital.org', 'Sarah Jenkins', 'RECEPTIONIST', '$2b$12$NWKP4piq0wShBlDXdhtzh.gcFQc/vrOcGc40nX/1xwr6EXe0ZB.6a'),
+('usr-patient', 'ten-001', 'hosp-001', 'patient', 'alice.smith@example.com', 'Alice Smith', 'PATIENT', '$2b$12$NWKP4piq0wShBlDXdhtzh.gcFQc/vrOcGc40nX/1xwr6EXe0ZB.6a')
 ON CONFLICT (username) DO NOTHING;
 
 -- 5. Doctors

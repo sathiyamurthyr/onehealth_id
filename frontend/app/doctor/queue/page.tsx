@@ -89,11 +89,11 @@ export default function DoctorQueuePage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header with Doctor Switcher */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Stethoscope className="w-5 h-5 text-purple-600" />
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Doctor Consultation Console
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -110,7 +110,7 @@ export default function DoctorQueuePage() {
             <select
               value={selectedDoctorId}
               onChange={(e) => setSelectedDoctorId(e.target.value)}
-              className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
+              className="px-3.5 py-2.5 rounded-xl border border-slate-300  bg-slate-50  text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
             >
               {doctors.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -162,7 +162,7 @@ export default function DoctorQueuePage() {
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-amber-500" />
-                  <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  <h2 className="text-sm font-bold text-slate-800  uppercase tracking-wider">
                     Waiting Patients ({waitingEntries.length})
                   </h2>
                 </div>
@@ -179,12 +179,12 @@ export default function DoctorQueuePage() {
                   {waitingEntries.map((entry) => (
                     <Card key={entry.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 font-black text-lg flex items-center justify-center shrink-0">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-50  border border-amber-200  text-amber-600  font-black text-lg flex items-center justify-center shrink-0">
                           #{entry.token_number}
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 ">
                               {entry.patient_name}
                             </h3>
                             <Badge variant={entry.status === "CALLING" ? "primary" : "warning"} className="text-[10px]">
@@ -231,7 +231,7 @@ export default function DoctorQueuePage() {
             <div className="lg:col-span-4 space-y-4">
               <div className="flex items-center gap-2 px-1">
                 <CalendarCheck className="w-4 h-4 text-indigo-500" />
-                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <h2 className="text-sm font-bold text-slate-800  uppercase tracking-wider">
                   Today's Schedule ({appointments.length})
                 </h2>
               </div>
@@ -241,7 +241,7 @@ export default function DoctorQueuePage() {
                   <Card key={a.id} className="p-3.5">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="font-bold text-xs text-slate-900 dark:text-white">
+                        <div className="font-bold text-xs text-slate-900 ">
                           {a.patient_name}
                         </div>
                         <div className="text-[11px] text-slate-500">

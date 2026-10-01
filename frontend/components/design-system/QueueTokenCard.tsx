@@ -47,16 +47,16 @@ export const QueueTokenCard: React.FC<QueueTokenCardProps> = ({
   return (
     <div
       className={cn(
-        "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-3",
-        status === "CALLING" && "ring-2 ring-indigo-500 border-indigo-300 dark:border-indigo-800 bg-indigo-50/20 dark:bg-indigo-950/20",
-        status === "IN_CONSULTATION" && "border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/15 dark:bg-emerald-950/10",
+        "bg-white  border border-slate-200  rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-3",
+        status === "CALLING" && "ring-2 ring-indigo-500 border-indigo-300  bg-indigo-50/20 ",
+        status === "IN_CONSULTATION" && "border-emerald-300  bg-emerald-50/15 ",
         className
       )}
     >
       {/* Header: Token # and Badges */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+          <span className="text-xl sm:text-2xl font-black text-slate-900  font-mono">
             #{tokenNumber}
           </span>
           <StatusBadge priority={priority} />
@@ -68,7 +68,7 @@ export const QueueTokenCard: React.FC<QueueTokenCardProps> = ({
       <div className="space-y-1">
         <Link
           href={`/patients/${patientId}`}
-          className="font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors block text-base truncate"
+          className="font-bold text-slate-900  hover:text-blue-600  transition-colors block text-base truncate"
         >
           {patientName}
         </Link>
@@ -78,7 +78,7 @@ export const QueueTokenCard: React.FC<QueueTokenCardProps> = ({
           </span>
         )}
         {doctorName && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 mt-1">
+          <div className="flex items-center gap-1.5 text-xs text-slate-600  mt-1">
             <Stethoscope className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <span className="truncate">Dr. {doctorName} {departmentName ? `(${departmentName})` : ""}</span>
           </div>
@@ -86,7 +86,7 @@ export const QueueTokenCard: React.FC<QueueTokenCardProps> = ({
       </div>
 
       {/* Wait Time Indicator & Actions Footer */}
-      <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+      <div className="pt-3 border-t border-slate-100  flex flex-wrap items-center justify-between gap-2">
         {estimatedWaitMinutes !== undefined && (
           <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -133,7 +133,7 @@ export const QueueTokenCard: React.FC<QueueTokenCardProps> = ({
             <button
               onClick={onHold}
               disabled={actionLoading}
-              className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-xl transition-all disabled:opacity-50 min-h-[40px] min-w-[40px] flex items-center justify-center"
+              className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50  rounded-xl transition-all disabled:opacity-50 min-h-[40px] min-w-[40px] flex items-center justify-center"
               title="Put on hold"
             >
               <Pause className="w-3.5 h-3.5" />

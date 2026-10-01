@@ -54,11 +54,11 @@ export default function DoctorPatientsPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Stethoscope className="w-5 h-5 text-purple-600" />
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Clinical Patient Roster
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -79,7 +79,7 @@ export default function DoctorPatientsPage() {
         </div>
 
         {/* Search */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -87,7 +87,7 @@ export default function DoctorPatientsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search assigned patients by name, OneHealth ID, or phone..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
             />
           </div>
         </div>
@@ -104,7 +104,7 @@ export default function DoctorPatientsPage() {
               <Card key={p.id} className="p-4 flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="font-bold text-sm text-slate-900 dark:text-white">{p.name}</div>
+                    <div className="font-bold text-sm text-slate-900 ">{p.name}</div>
                     <Badge variant="primary" className="text-[10px] font-mono">
                       {p.onehealth_id}
                     </Badge>
@@ -112,13 +112,13 @@ export default function DoctorPatientsPage() {
                   <div className="text-xs text-slate-500 mb-2">
                     {p.age} yrs • {p.gender} • Blood Group: <strong className="text-rose-500">{p.blood_group || "N/A"}</strong>
                   </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl mb-3">
+                  <div className="text-xs text-slate-600  bg-slate-50  p-2.5 rounded-xl mb-3">
                     <span className="text-[10px] text-slate-400 block uppercase">Primary Clinical Reason</span>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">{p.diagnosis}</span>
+                    <span className="font-medium text-slate-800 ">{p.diagnosis}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 ">
                   <Link href={`/patients/${p.id}`} className="flex-1">
                     <Button variant="outline" size="sm" className="w-full text-xs min-h-[44px]">
                       Profile & QR

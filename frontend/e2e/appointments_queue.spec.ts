@@ -6,7 +6,7 @@ test.describe("OneHealth ID - Appointments & Live OPD Queue E2E", () => {
     await page.locator('input[type="text"]').fill("admin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page).toHaveURL(/.*(admin|dashboard)/);
   });
 
   test("should view appointment roster and open booking modal", async ({ page }) => {

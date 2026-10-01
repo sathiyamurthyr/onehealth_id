@@ -65,10 +65,10 @@ export default function IPDPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Inpatient Department (IPD)
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -82,34 +82,34 @@ export default function IPDPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-slate-400">
-              Hospital Capacity: <strong className="text-slate-700 dark:text-slate-200">{occupiedBeds}/{totalBeds} Occupied</strong>
+              Hospital Capacity: <strong className="text-slate-700 ">{occupiedBeds}/{totalBeds} Occupied</strong>
             </span>
           </div>
         </div>
 
         {/* Occupancy Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-4 bg-white  rounded-2xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Beds</span>
-            <span className="text-2xl font-black text-slate-900 dark:text-white mt-1 block">{totalBeds}</span>
+            <span className="text-2xl font-black text-slate-900  mt-1 block">{totalBeds}</span>
             <span className="text-[10px] text-slate-500 mt-1 block">Sanctioned capacity</span>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-4 bg-white  rounded-2xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-rose-500 uppercase font-bold block">Occupied</span>
-            <span className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1 block">{occupiedBeds}</span>
+            <span className="text-2xl font-black text-rose-600  mt-1 block">{occupiedBeds}</span>
             <span className="text-[10px] text-slate-500 mt-1 block">Under active care</span>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-4 bg-white  rounded-2xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-emerald-500 uppercase font-bold block">Available Vacant</span>
-            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block">{vacantBeds}</span>
+            <span className="text-2xl font-black text-emerald-600  mt-1 block">{vacantBeds}</span>
             <span className="text-[10px] text-slate-500 mt-1 block">Ready for admission</span>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="p-4 bg-white  rounded-2xl border border-slate-200  shadow-sm">
             <span className="text-[10px] text-blue-500 uppercase font-bold block">Occupancy Rate</span>
-            <span className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1 block">{occupancyRate}%</span>
+            <span className="text-2xl font-black text-blue-600  mt-1 block">{occupancyRate}%</span>
             <span className="text-[10px] text-slate-500 mt-1 block">Standard threshold: 85%</span>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function IPDPage() {
             className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all min-h-[44px] ${
               selectedWard === "ALL"
                 ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
-                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50"
+                : "bg-white  text-slate-600  border border-slate-200  hover:bg-slate-50"
             }`}
           >
             All Wards ({beds.length})
@@ -133,7 +133,7 @@ export default function IPDPage() {
               className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all min-h-[44px] ${
                 selectedWard === w
                   ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
-                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50"
+                  : "bg-white  text-slate-600  border border-slate-200  hover:bg-slate-50"
               }`}
             >
               {w}
@@ -164,18 +164,18 @@ export default function IPDPage() {
                   key={bed.id}
                   className={`overflow-hidden transition-all ${
                     isOccupied
-                      ? "border-rose-200/80 dark:border-rose-900/40 bg-gradient-to-br from-white to-rose-50/20 dark:from-slate-900 dark:to-slate-900"
-                      : "border-emerald-200/80 dark:border-emerald-900/40 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-slate-900"
+                      ? "border-rose-200/80  bg-gradient-to-br from-white to-rose-50/20  "
+                      : "border-emerald-200/80  bg-gradient-to-br from-white to-emerald-50/20  "
                   }`}
                 >
-                  <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                  <CardHeader className="pb-3 border-b border-slate-100 ">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                             isOccupied
-                              ? "bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400"
-                              : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400"
+                              ? "bg-rose-100  text-rose-600 "
+                              : "bg-emerald-100  text-emerald-600 "
                           }`}
                         >
                           <Bed className="w-5 h-5" />
@@ -202,11 +202,11 @@ export default function IPDPage() {
                   <CardContent className="pt-4 space-y-3 text-xs">
                     {isOccupied ? (
                       <div className="space-y-2">
-                        <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-rose-100 dark:border-rose-950/60 space-y-1">
+                        <div className="p-3 bg-white  rounded-xl border border-rose-100  space-y-1">
                           <span className="text-[10px] uppercase font-bold text-slate-400 block">
                             Admitted Patient
                           </span>
-                          <span className="font-bold text-slate-900 dark:text-white text-sm block">
+                          <span className="font-bold text-slate-900  text-sm block">
                             {bed.patient_name || "Confidential Record"}
                           </span>
                           {bed.admission_date && (
@@ -224,7 +224,7 @@ export default function IPDPage() {
                       </div>
                     ) : (
                       <div className="py-4 text-center space-y-2">
-                        <div className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                        <div className="inline-flex items-center gap-1.5 text-emerald-600  text-xs font-semibold">
                           <CheckCircle2 className="w-4 h-4" />
                           <span>Sanitized & Ready for Admission</span>
                         </div>

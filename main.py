@@ -12,11 +12,13 @@ from uuid import uuid4
 
 app = FastAPI(title="Hospital Management System API", version="1.0.0")
 
+from backend.app.core.config import settings
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -211,10 +213,11 @@ def update_appointment_status(appointment_id: str, update: AppointmentStatusUpda
 
 
 # Mount full enterprise /api/v1 router endpoints
-from backend.app.routers import auth, patients as pt_router, doctors as doc_router, appointments as appt_router, queue, clinical, billing, dashboard, admin
+from backend.app.routers import auth, patients as pt_router, doctors as doc_router, appointments as appt_router, queue, clinical, billing, dashboard, admin, hospital, workspace
 
 api_v1 = FastAPI(title="OneHealth ID API v1")
 api_v1.include_router(auth.router)
+api_v1.include_router(workspace.router)
 api_v1.include_router(pt_router.router)
 api_v1.include_router(doc_router.router)
 api_v1.include_router(appt_router.router)
@@ -223,7 +226,12 @@ api_v1.include_router(clinical.router)
 api_v1.include_router(billing.router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(admin.router)
+api_v1.include_router(hospital.router)
 
 app.mount("/api/v1", api_v1)
+
+# Also mount workspace directly for /me/workspace and /workspace/* convenience
+app.include_router(workspace.router)
+app.include_router(hospital.router)
 
 

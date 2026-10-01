@@ -6,7 +6,7 @@ test.describe("OneHealth ID - Patient Registry & QR Generation E2E", () => {
     await page.locator('input[type="text"]').fill("admin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page).toHaveURL(/.*(admin|dashboard)/);
   });
 
   test("should list patients from database view vw_patient_registry", async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe("OneHealth ID - Patient Registry & QR Generation E2E", () => {
 
   test("should register a new patient, generate OneHealth ID & Zero-Knowledge QR Card", async ({ page }) => {
     await page.goto("/patients/register");
-    await expect(page.getByText("New Patient Registration")).toBeVisible();
+    await expect(page.getByText("Patient Registration").first()).toBeVisible();
 
     const timestamp = Date.now().toString().slice(-4);
     const testName = `Priya Ramanathan ${timestamp}`;
@@ -34,16 +34,17 @@ test.describe("OneHealth ID - Patient Registry & QR Generation E2E", () => {
     await page.locator('select[name="blood_group"]').selectOption("O+");
     await page.locator('input[name="diagnosis"]').fill("Preventive Health Screening");
     await page.locator('input[name="address"]').fill("Besant Nagar, Chennai, Tamil Nadu");
+    await page.locator('input[name="consent_given"]').check();
 
     // Submit form (triggers sp_register_patient)
-    await page.getByRole("button", { name: "Complete Registration" }).click();
+    await page.getByRole("button", { name: "Register Patient & Generate QR" }).click();
 
     // Verify success screen
     await expect(page.getByText("Patient Successfully Registered!")).toBeVisible();
-    await expect(page.getByText("OneHealth ID generated and enrolled")).toBeVisible();
+    await expect(page.getByText("Persistent OneHealth ID & Zero-Knowledge QR Token generated.")).toBeVisible();
 
     // Verify OneHealth ID badge is rendered
-    await expect(page.locator("text=OHID-IND-2026-").first()).toBeVisible();
+    await expect(page.locator("text=OHID-").first()).toBeVisible();
 
     // Verify Zero-Knowledge QR component is rendered
     await expect(page.getByText("OneHealth Network Identity")).toBeVisible();

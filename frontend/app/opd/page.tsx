@@ -59,10 +59,10 @@ export default function OPDPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
                 Outpatient Department (OPD)
               </h1>
               <Badge variant="primary" className="text-xs">
@@ -85,7 +85,7 @@ export default function OPDPage() {
         </div>
 
         {/* Search Bar */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -93,7 +93,7 @@ export default function OPDPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by patient name, attending doctor, or diagnosis..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             />
           </div>
         </div>
@@ -115,19 +115,19 @@ export default function OPDPage() {
         ) : (
           <div className="space-y-4">
             {filteredEncounters.map((enc) => (
-              <Card key={enc.id} className="overflow-hidden hover:border-slate-300 dark:hover:border-slate-700 transition-all">
+              <Card key={enc.id} className="overflow-hidden hover:border-slate-300  transition-all">
                 <CardContent className="p-5 sm:p-6 space-y-4">
                   {/* Top Bar: Patient, Doctor, Date, Token */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 ">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shrink-0">
+                      <div className="w-10 h-10 rounded-2xl bg-blue-100  text-blue-600  flex items-center justify-center font-bold text-sm shrink-0">
                         {enc.patient_name?.charAt(0) || "P"}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <Link
                             href={`/patients/${enc.patient_id}`}
-                            className="font-bold text-sm text-slate-900 dark:text-white hover:text-blue-600"
+                            className="font-bold text-sm text-slate-900  hover:text-blue-600"
                           >
                             {enc.patient_name}
                           </Link>
@@ -136,7 +136,7 @@ export default function OPDPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Attending: <strong className="text-slate-700 dark:text-slate-300">Dr. {enc.doctor_name}</strong> ({enc.department_name})
+                          Attending: <strong className="text-slate-700 ">Dr. {enc.doctor_name}</strong> ({enc.department_name})
                         </p>
                       </div>
                     </div>
@@ -160,41 +160,41 @@ export default function OPDPage() {
                       Clinical Triage Vitals
                     </span>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                      <div className="p-2.5 bg-slate-50  rounded-xl border border-slate-100  flex items-center gap-2">
                         <Heart className="w-4 h-4 text-rose-500 shrink-0" />
                         <div>
                           <span className="text-[10px] text-slate-400 block">Blood Pressure</span>
-                          <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <span className="font-mono text-xs font-bold text-slate-800 ">
                             {enc.vitals?.bp || "120/80 mmHg"}
                           </span>
                         </div>
                       </div>
 
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                      <div className="p-2.5 bg-slate-50  rounded-xl border border-slate-100  flex items-center gap-2">
                         <Activity className="w-4 h-4 text-blue-500 shrink-0" />
                         <div>
                           <span className="text-[10px] text-slate-400 block">Pulse / Heart Rate</span>
-                          <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <span className="font-mono text-xs font-bold text-slate-800 ">
                             {enc.vitals?.pulse || 72} bpm
                           </span>
                         </div>
                       </div>
 
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                      <div className="p-2.5 bg-slate-50  rounded-xl border border-slate-100  flex items-center gap-2">
                         <Thermometer className="w-4 h-4 text-amber-500 shrink-0" />
                         <div>
                           <span className="text-[10px] text-slate-400 block">Body Temp</span>
-                          <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <span className="font-mono text-xs font-bold text-slate-800 ">
                             {enc.vitals?.temp || "98.6 °F"}
                           </span>
                         </div>
                       </div>
 
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                      <div className="p-2.5 bg-slate-50  rounded-xl border border-slate-100  flex items-center gap-2">
                         <Activity className="w-4 h-4 text-emerald-500 shrink-0" />
                         <div>
                           <span className="text-[10px] text-slate-400 block">Oxygen (SpO2)</span>
-                          <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <span className="font-mono text-xs font-bold text-slate-800 ">
                             {enc.vitals?.spo2 || "99%"}
                           </span>
                         </div>
@@ -204,20 +204,20 @@ export default function OPDPage() {
 
                   {/* Diagnosis & Clinical Notes */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/40">
-                      <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 block mb-1">
+                    <div className="p-3 bg-blue-50/60  rounded-xl border border-blue-100 ">
+                      <span className="text-[10px] uppercase font-bold text-blue-600  block mb-1">
                         Chief Complaint & Assessment
                       </span>
-                      <p className="text-slate-800 dark:text-slate-200 font-medium">
+                      <p className="text-slate-800  font-medium">
                         {enc.chief_complaints || "Routine checkup and vitals assessment"}
                       </p>
                     </div>
 
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <div className="p-3 bg-slate-50  rounded-xl border border-slate-100 ">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
                         Doctor's Clinical Notes
                       </span>
-                      <p className="text-slate-700 dark:text-slate-300 italic">
+                      <p className="text-slate-700  italic">
                         "{enc.clinical_notes || "Patient advised hydration and lifestyle follow-up."}"
                       </p>
                     </div>

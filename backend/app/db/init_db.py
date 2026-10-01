@@ -2,10 +2,9 @@ import os
 import psycopg2
 from pathlib import Path
 
-DB_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:AivioSathus!321@db.arkoolfygfqawyvwnldv.supabase.co:5432/postgres"
-)
+from backend.app.core.config import settings
+
+DB_URL = settings.DATABASE_URL or os.getenv("DATABASE_URL", "")
 
 def run_init():
     current_dir = Path(__file__).resolve().parent

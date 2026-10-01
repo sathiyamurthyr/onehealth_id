@@ -43,9 +43,9 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
   return (
     <div
       className={cn(
-        "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm transition-all",
-        priority === "EMERGENCY" && "border-rose-300 dark:border-rose-900/60 bg-rose-50/20 dark:bg-rose-950/10",
-        priority === "URGENT" && "border-amber-300 dark:border-amber-900/60 bg-amber-50/20 dark:bg-amber-950/10",
+        "bg-white  border border-slate-200  rounded-2xl p-4 sm:p-5 shadow-sm transition-all",
+        priority === "EMERGENCY" && "border-rose-300  bg-rose-50/20 ",
+        priority === "URGENT" && "border-amber-300  bg-amber-50/20 ",
         className
       )}
     >
@@ -60,7 +60,7 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/patients/${id}`}
-                className="text-base sm:text-lg font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate"
+                className="text-base sm:text-lg font-bold text-slate-900  hover:text-blue-600  transition-colors truncate"
               >
                 {name}
               </Link>
@@ -70,8 +70,8 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
               <StatusBadge priority={priority} />
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900">
+            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-500 ">
+              <span className="font-mono font-bold text-blue-600  bg-blue-50  px-2 py-0.5 rounded border border-blue-200 ">
                 {onehealthId}
               </span>
 
@@ -82,7 +82,7 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
                 </span>
               )}
 
-              <span className="flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400">
+              <span className="flex items-center gap-1 font-semibold text-rose-600 ">
                 <Droplet className="w-3.5 h-3.5 fill-current" />
                 {bloodGroup}
               </span>
@@ -91,25 +91,25 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
         </div>
 
         {/* Center / Right: Clinical Flags & Operational Info */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 ">
           {/* Active Token or Room */}
           {activeToken && (
-            <div className="flex flex-col items-center bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col items-center bg-slate-50  px-3 py-1.5 rounded-xl border border-slate-200 ">
               <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Queue Token</span>
-              <span className="text-base font-black text-blue-600 dark:text-blue-400">#{activeToken}</span>
+              <span className="text-base font-black text-blue-600 ">#{activeToken}</span>
             </div>
           )}
 
           {roomNumber && (
-            <div className="flex flex-col items-center bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col items-center bg-slate-50  px-3 py-1.5 rounded-xl border border-slate-200 ">
               <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Bed / Room</span>
-              <span className="text-base font-black text-slate-800 dark:text-slate-200">{roomNumber}</span>
+              <span className="text-base font-black text-slate-800 ">{roomNumber}</span>
             </div>
           )}
 
           {/* Allergy / Clinical Warning Chip */}
           {allergies && allergies.length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-400 text-xs font-semibold">
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50  border border-rose-200  text-rose-700  text-xs font-semibold">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>Allergy: {allergies.join(", ")}</span>
             </div>
@@ -119,7 +119,7 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
           {onOpenQR && (
             <button
               onClick={onOpenQR}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors min-h-[44px]"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200   text-slate-700  border border-slate-200  transition-colors min-h-[44px]"
               title="View Zero-Knowledge QR Token"
             >
               <QrCode className="w-4 h-4 text-blue-600" />
@@ -131,10 +131,10 @@ export const PatientBanner: React.FC<PatientBannerProps> = ({
 
       {/* Primary Diagnosis Strip if present */}
       {primaryDiagnosis && (
-        <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+        <div className="mt-3 pt-2.5 border-t border-slate-100  flex items-center gap-2 text-xs text-slate-600 ">
           <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span className="text-slate-400">Chief Diagnosis:</span>
-          <span className="font-semibold text-slate-800 dark:text-slate-200">{primaryDiagnosis}</span>
+          <span className="font-semibold text-slate-800 ">{primaryDiagnosis}</span>
         </div>
       )}
     </div>

@@ -7,7 +7,9 @@ if _root_dir not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
-from backend.app.routers import auth, patients, doctors, appointments, queue, clinical, billing, dashboard, admin, hospital
+from backend.app.routers import auth, patients, doctors, appointments, queue, clinical, billing, dashboard, admin, hospital, workspace
+
+from backend.app.core.middleware import SecurityHeadersMiddleware
 
 app = FastAPI(
     title="OneHealth ID (OH-ID) Enterprise Hospital Operating System API",
@@ -15,17 +17,22 @@ app = FastAPI(
     description="Enterprise Hospital Operating System powered exclusively by Database Views and Stored Procedures."
 )
 
+# Enterprise Security Headers Middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Hardened CORS Middleware (Explicit origins, restricted methods & headers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Hospital-Ref-Id", "X-Usertype-Ref-Id", "Accept", "Origin"],
 )
 
 # API v1 Router Mount
 api_v1 = FastAPI()
 api_v1.include_router(auth.router)
+api_v1.include_router(workspace.router)
 api_v1.include_router(patients.router)
 api_v1.include_router(doctors.router)
 api_v1.include_router(appointments.router)
@@ -40,6 +47,7 @@ app.mount("/api/v1", api_v1)
 
 # Also mount routers directly on app for convenience
 app.include_router(auth.router)
+app.include_router(workspace.router)
 app.include_router(patients.router)
 app.include_router(doctors.router)
 app.include_router(appointments.router)

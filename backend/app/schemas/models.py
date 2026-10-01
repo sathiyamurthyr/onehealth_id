@@ -4,41 +4,90 @@ from datetime import datetime
 
 # --- Auth & RBAC Schemas ---
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=1, max_length=128)
 
 class UserProfile(BaseModel):
     id: Optional[str] = None
+    user_ref_id: Optional[str] = None
     username: str
     name: str
     role: str
+    usertype_ref_id: Optional[str] = None
     email: str
     hospital_id: Optional[str] = None
+    hospital_ref_id: Optional[str] = None
     hospital_name: Optional[str] = None
     tenant_name: Optional[str] = None
     roles: List[str] = []
     permissions: List[str] = []
 
+class NavigationItem(BaseModel):
+    title: str
+    href: str
+    icon: Optional[str] = "LayoutDashboard"
+    section: Optional[str] = "General"
+    badge: Optional[str] = None
+    permission: Optional[str] = None
+
+class WorkspaceDefinition(BaseModel):
+    id: str
+    workspace_type: str  # SUPER_ADMIN, HOSPITAL_ADMIN, DOCTOR, NURSE, EMPLOYEE, PATIENT, OTHER
+    role_code: str
+    role_name: str
+    default_route: str
+    hospital_ref_id: str
+    hospital_name: str
+    hospital_code: Optional[str] = None
+    branch_ref_id: Optional[str] = None
+    branch_name: Optional[str] = None
+    tenant_id: Optional[str] = None
+    tenant_name: Optional[str] = None
+    is_primary: Optional[bool] = True
+
+class DashboardConfig(BaseModel):
+    layout: List[str] = []
+    widgets: List[Dict[str, Any]] = []
+
+class WorkspaceResponse(BaseModel):
+    user: UserProfile
+    workspace: WorkspaceDefinition
+    navigation: List[NavigationItem]
+    permissions: List[str]
+    dashboard: DashboardConfig
+    available_workspaces: List[Dict[str, Any]] = []
+    available_hospitals: List[Dict[str, Any]] = []
+
+class SwitchContextRequest(BaseModel):
+    hospital_ref_id: Optional[str] = None
+    usertype_ref_id: Optional[str] = None
+
+class SwitchContextResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    workspace: WorkspaceResponse
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfile
+    workspace: Optional[WorkspaceResponse] = None
 
 # --- Patient Schemas ---
 class PatientBase(BaseModel):
-    name: str = Field(..., min_length=2)
-    age: int = Field(..., ge=0)
-    diagnosis: str = Field(..., min_length=2)
-    gender: Optional[str] = "Unspecified"
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    emergency_contact: Optional[str] = None
-    blood_group: Optional[str] = None
-    identity_type: Optional[str] = "NATIONAL_ID"
-    identity_number: Optional[str] = None
-    hospital_id: Optional[str] = None
-    branch_id: Optional[str] = None
+    name: str = Field(..., min_length=2, max_length=150)
+    age: int = Field(..., ge=0, le=150)
+    diagnosis: str = Field(..., min_length=2, max_length=500)
+    gender: Optional[str] = Field("Unspecified", max_length=50)
+    phone: Optional[str] = Field(None, max_length=30)
+    email: Optional[str] = Field(None, max_length=150)
+    address: Optional[str] = Field(None, max_length=500)
+    emergency_contact: Optional[str] = Field(None, max_length=150)
+    blood_group: Optional[str] = Field(None, max_length=20)
+    identity_type: Optional[str] = Field("NATIONAL_ID", max_length=50)
+    identity_number: Optional[str] = Field(None, max_length=50)
+    hospital_id: Optional[str] = Field(None, max_length=50)
+    branch_id: Optional[str] = Field(None, max_length=50)
 
 class PatientCreate(PatientBase):
     id: Optional[str] = None

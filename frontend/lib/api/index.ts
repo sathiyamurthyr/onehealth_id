@@ -7,6 +7,7 @@ export * from "./queue";
 export * from "./consultations";
 export * from "./dashboard";
 export * from "./hospital";
+export * from "./workspace";
 
 import { authApi } from "./auth";
 import { patientsApi } from "./patients";
@@ -16,10 +17,12 @@ import { queueApi } from "./queue";
 import { consultationsApi } from "./consultations";
 import { dashboardApi } from "./dashboard";
 import { hospitalApi } from "./hospital";
+import { workspaceApi } from "./workspace";
 import { fetchJSON } from "./client";
 
 export const api = {
   auth: authApi,
+  workspace: workspaceApi,
   patients: patientsApi,
   oneHealthId: oneHealthIdApi,
   appointments: appointmentsApi,

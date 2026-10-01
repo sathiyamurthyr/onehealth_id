@@ -6,7 +6,7 @@ test.describe("OneHealth ID - Clinical Operations & GST Billing E2E", () => {
     await page.locator('input[type="text"]').fill("admin");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page).toHaveURL(/.*(admin|dashboard)/);
   });
 
   test("should load billing registry with GST metrics and invoice ledger", async ({ page }) => {
@@ -43,7 +43,7 @@ test.describe("OneHealth ID - Clinical Operations & GST Billing E2E", () => {
 
     // 5. Admin & Tenant Control
     await page.goto("/admin");
-    await expect(page.getByText("Hospital Administration & Governance").first()).toBeVisible();
-    await expect(page.getByText("HIPAA & ABDM Audited").first()).toBeVisible();
+    await expect(page.getByText("Super Admin Console").first()).toBeVisible();
+    await expect(page.getByText("Platform-wide administration").first()).toBeVisible();
   });
 });

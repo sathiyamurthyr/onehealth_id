@@ -148,7 +148,7 @@ export default function DoctorConsultationPage() {
         <div className="flex items-center justify-between">
           <Link
             href="/doctor/queue"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 min-h-[44px]"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800  min-h-[44px]"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Doctor Queue</span>
@@ -172,12 +172,12 @@ export default function DoctorConsultationPage() {
         />
 
         {success ? (
-          <div className="p-8 rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-center space-y-3 animate-in fade-in">
+          <div className="p-8 rounded-3xl bg-emerald-50  border border-emerald-200  text-center space-y-3 animate-in fade-in">
             <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-            <h2 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+            <h2 className="text-xl font-bold text-emerald-900 ">
               Consultation Completed & Audited!
             </h2>
-            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+            <p className="text-xs text-emerald-700 ">
               Diagnostic notes, prescription structures, and encounter telemetry successfully committed to PostgreSQL.
             </p>
             <p className="text-[11px] text-slate-400">Redirecting back to live queue...</p>
@@ -188,7 +188,7 @@ export default function DoctorConsultationPage() {
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <Activity className="w-4 h-4 text-rose-500" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 ">
                   1. Clinical Vitals Triage
                 </h3>
               </div>
@@ -201,7 +201,7 @@ export default function DoctorConsultationPage() {
                     value={vitals.bp}
                     onChange={(e) => handleVitalsChange("bp", e.target.value)}
                     placeholder="120/80 mmHg"
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-h-[44px]"
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300  bg-slate-50  min-h-[44px]"
                   />
                 </div>
 
@@ -212,7 +212,7 @@ export default function DoctorConsultationPage() {
                     value={vitals.pulse}
                     onChange={(e) => handleVitalsChange("pulse", parseInt(e.target.value) || 0)}
                     placeholder="72"
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-h-[44px]"
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300  bg-slate-50  min-h-[44px]"
                   />
                 </div>
 
@@ -223,7 +223,7 @@ export default function DoctorConsultationPage() {
                     value={vitals.spo2}
                     onChange={(e) => handleVitalsChange("spo2", parseInt(e.target.value) || 0)}
                     placeholder="98"
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-h-[44px]"
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300  bg-slate-50  min-h-[44px]"
                   />
                 </div>
 
@@ -234,7 +234,7 @@ export default function DoctorConsultationPage() {
                     value={vitals.temperature}
                     onChange={(e) => handleVitalsChange("temperature", e.target.value)}
                     placeholder="98.6 °F"
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-h-[44px]"
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300  bg-slate-50  min-h-[44px]"
                   />
                 </div>
 
@@ -245,7 +245,7 @@ export default function DoctorConsultationPage() {
                     value={vitals.weight_kg}
                     onChange={(e) => handleVitalsChange("weight_kg", parseFloat(e.target.value) || 0)}
                     placeholder="65"
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-h-[44px]"
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300  bg-slate-50  min-h-[44px]"
                   />
                 </div>
               </div>
@@ -255,7 +255,7 @@ export default function DoctorConsultationPage() {
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
                 <FileText className="w-4 h-4 text-blue-500" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 ">
                   2. Chief Complaints & Clinical History
                 </h3>
               </div>
@@ -265,7 +265,7 @@ export default function DoctorConsultationPage() {
                 onChange={(e) => setSymptoms(e.target.value)}
                 rows={2}
                 placeholder="Patient reporting symptoms, duration, prior medication..."
-                className="w-full p-3.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3.5 text-xs rounded-xl border border-slate-300  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </Card>
 
@@ -273,14 +273,14 @@ export default function DoctorConsultationPage() {
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
                 <Stethoscope className="w-4 h-4 text-purple-600" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 ">
                   3. Clinical Diagnosis & Prescription Orders <span className="text-rose-500">*</span>
                 </h3>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                  <label className="text-xs font-bold text-slate-700  block mb-1.5">
                     Primary Diagnosis <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -289,12 +289,12 @@ export default function DoctorConsultationPage() {
                     onChange={(e) => setDiagnosis(e.target.value)}
                     required
                     placeholder="e.g. Type 2 Diabetes Mellitus with Mild Neuropathy"
-                    className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
+                    className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                  <label className="text-xs font-semibold text-slate-700  block mb-1.5">
                     Clinical Notes, Diet & Medication Instructions
                   </label>
                   <textarea
@@ -302,7 +302,7 @@ export default function DoctorConsultationPage() {
                     onChange={(e) => setClinicalNotes(e.target.value)}
                     rows={4}
                     placeholder="1. Tab Metformin 500mg (1-0-1) After Food for 30 days&#10;2. Fasting blood sugar & HbA1c review after 2 weeks&#10;3. Diabetic diet and 30 mins brisk walking"
-                    className="w-full p-3.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    className="w-full p-3.5 text-xs rounded-xl border border-slate-300  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
                   />
                 </div>
               </div>

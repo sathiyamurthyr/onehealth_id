@@ -2,19 +2,19 @@ import React from "react";
 import { cn } from "@/lib/utils";
 
 export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, children, ...props }) => (
-  <div className={cn("bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden", className)} {...props}>
+  <div className={cn("bg-white  border border-slate-200  rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden", className)} {...props}>
     {children}
   </div>
 );
 
 export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, children, ...props }) => (
-  <div className={cn("p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between", className)} {...props}>
+  <div className={cn("p-5 border-b border-slate-100  flex items-center justify-between", className)} {...props}>
     {children}
   </div>
 );
 
 export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({ className, children, ...props }) => (
-  <h3 className={cn("font-semibold text-slate-900 dark:text-white text-base sm:text-lg flex items-center gap-2", className)} {...props}>
+  <h3 className={cn("font-semibold text-slate-900  text-base sm:text-lg flex items-center gap-2", className)} {...props}>
     {children}
   </h3>
 );
@@ -31,12 +31,12 @@ export const Badge: React.FC<{
   children: React.ReactNode;
 }> = ({ variant = "primary", className, children }) => {
   const variants = {
-    primary: "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200 dark:border-blue-900",
-    success: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900",
-    warning: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-900",
-    danger: "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200 dark:border-rose-900",
-    neutral: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700",
-    outline: "bg-transparent text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700",
+    primary: "bg-blue-50 text-blue-700   border-blue-200 ",
+    success: "bg-emerald-50 text-emerald-700   border-emerald-200 ",
+    warning: "bg-amber-50 text-amber-700   border-amber-200 ",
+    danger: "bg-rose-50 text-rose-700   border-rose-200 ",
+    neutral: "bg-slate-100 text-slate-700   border-slate-200 ",
+    outline: "bg-transparent text-slate-700  border-slate-300 ",
   };
 
   return (
@@ -57,9 +57,9 @@ export const Button: React.FC<
   const variants = {
     primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm focus:ring-blue-500",
     secondary: "bg-slate-800 hover:bg-slate-900 text-white focus:ring-slate-700",
-    outline: "border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-slate-400",
+    outline: "border border-slate-300  hover:bg-slate-50  text-slate-700  focus:ring-slate-400",
     danger: "bg-rose-600 hover:bg-rose-700 text-white shadow-sm focus:ring-rose-500",
-    ghost: "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300",
+    ghost: "hover:bg-slate-100  text-slate-700 ",
   };
 
   const sizes = {

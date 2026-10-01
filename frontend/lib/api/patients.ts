@@ -17,6 +17,10 @@ export const patientsApi = {
     return fetchJSON<Patient[]>(`/patients${qs ? `?${qs}` : ""}`);
   },
 
+  search: (query: string) => {
+    return patientsApi.list({ search: query });
+  },
+
   get: (id: string) => fetchJSON<Patient>(`/patients/${id}`),
 
   register: (data: Partial<Patient>) =>
