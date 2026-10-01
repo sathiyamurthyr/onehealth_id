@@ -1,0 +1,143 @@
+{
+  "auditResults": [
+    {
+      "route": "Live Clinical Dashboard",
+      "path": "/dashboard",
+      "navDurationMs": 844,
+      "domContentLoadedMs": 38,
+      "loadCompleteMs": 40,
+      "fcpMs": 56,
+      "jsHeapUsedMB": "7.61",
+      "jsHeapTotalMB": "11.31",
+      "domNodes": 1073,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/queue",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/appointments",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/dashboard/metrics",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "route": "Patient Registry (vw_patient_registry)",
+      "path": "/patients",
+      "navDurationMs": 883,
+      "domContentLoadedMs": 25,
+      "loadCompleteMs": 27,
+      "fcpMs": 44,
+      "jsHeapUsedMB": "9.91",
+      "jsHeapTotalMB": "15.81",
+      "domNodes": 2723,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/patients",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "route": "Live OPD Queue (vw_live_queue)",
+      "path": "/queue",
+      "navDurationMs": 825,
+      "domContentLoadedMs": 28,
+      "loadCompleteMs": 31,
+      "fcpMs": 44,
+      "jsHeapUsedMB": "11.97",
+      "jsHeapTotalMB": "19.06",
+      "domNodes": 3217,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/doctors",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/queue",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "route": "Appointments & Schedulers",
+      "path": "/appointments",
+      "navDurationMs": 896,
+      "domContentLoadedMs": 33,
+      "loadCompleteMs": 33,
+      "fcpMs": 40,
+      "jsHeapUsedMB": "14.11",
+      "jsHeapTotalMB": "21.31",
+      "domNodes": 3994,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/patients",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/doctors",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/appointments",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "route": "Billing & GST Revenue Operations",
+      "path": "/billing",
+      "navDurationMs": 871,
+      "domContentLoadedMs": 28,
+      "loadCompleteMs": 30,
+      "fcpMs": 48,
+      "jsHeapUsedMB": "17.66",
+      "jsHeapTotalMB": "23.06",
+      "domNodes": 4545,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/billing/invoices",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "route": "Hospital Administration & Governance",
+      "path": "/admin",
+      "navDurationMs": 801,
+      "domContentLoadedMs": 23,
+      "loadCompleteMs": 25,
+      "fcpMs": 40,
+      "jsHeapUsedMB": "17.57",
+      "jsHeapTotalMB": "26.81",
+      "domNodes": 5737,
+      "apiCalls": [
+        {
+          "url": "http://localhost:8008/api/v1/admin/departments",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "url": "http://localhost:8008/api/v1/admin/audit-logs",
+          "status": 200,
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "consoleLogs": []
+}

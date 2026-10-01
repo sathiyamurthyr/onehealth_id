@@ -1,0 +1,24 @@
+import psycopg2
+
+conn = psycopg2.connect('postgresql://postgres:AivioSathus!321@db.arkoolfygfqawyvwnldv.supabase.co:5432/postgres')
+cur = conn.cursor()
+
+# Test calling Stored Procedure
+cur.execute("""
+CALL oh_id.sp_register_patient(
+    NULL, 'Test Patient 99', 29, 'Male', '+91 99999 88888', 'test99@example.com',
+    'Test Road, Chennai', 'Emergency Person', 'B+ Positive', 'Seasonal Fever',
+    'hosp-001', 'usr-admin', NULL, NULL, NULL
+);
+""")
+sp_res = cur.fetchone()
+print("Stored Procedure Call Success! Returned OUT parameters:", sp_res)
+conn.commit()
+
+# Test querying View
+cur.execute("SELECT id, onehealth_id, name, qr_token FROM oh_id.vw_patients WHERE name = %s;", ('Test Patient 99',))
+view_res = cur.fetchone()
+print("View Query Success! Retrieved from vw_patients:", view_res)
+
+cur.close()
+conn.close()
