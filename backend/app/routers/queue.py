@@ -30,6 +30,10 @@ def perform_queue_action(queue_id: str, payload: QueueActionRequest):
             detail=f"Invalid queue action. Supported: {', '.join(valid_actions)}"
         )
 
+    entry = sp_repository.get_queue_entry_by_id(queue_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"Queue entry '{queue_id}' not found")
+
     try:
         result = sp_repository.execute_queue_action(queue_id, action)
         return {

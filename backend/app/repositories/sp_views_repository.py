@@ -392,6 +392,12 @@ class SPViewsRepository:
             cur.execute(f"SELECT * FROM oh_id.vw_queue_board {where_str} ORDER BY token_number ASC;", tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
+    def get_queue_entry_by_id(self, queue_id: str) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.vw_queue_board WHERE id = %s;", (queue_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     def execute_queue_action(self, queue_id: str, action: str, actor_id: str = "staff") -> Dict[str, Any]:
         with get_db_cursor() as cur:
             cur.execute(

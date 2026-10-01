@@ -33,6 +33,7 @@ def list_patients(
         raise HTTPException(status_code=500, detail=f"Failed to fetch patients: {str(e)}")
 
 @router.post("/check-duplicate", response_model=DuplicateCheckResponse)
+@router.post("/check-duplicates", response_model=DuplicateCheckResponse, include_in_schema=False)
 def check_duplicate(payload: DuplicateCheckRequest):
     """
     Search for potential matching patient records before registering a new patient.

@@ -202,4 +202,74 @@ test.describe("Kedar Hospital Pilot MVP - Complete Vertical Slice E2E", () => {
       expect(box?.height).toBeGreaterThanOrEqual(44);
     }
   });
+
+  // Test 8: Negative Authentication & Session Termination (Bad Password & Logout)
+  test("8. Negative Auth & Session Termination", async ({ page }) => {
+    await page.goto("/login");
+    // Invalid credentials
+    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="password"]').fill("wrong_password_999");
+    await page.locator('button[type="submit"]').click();
+
+    // Verify error is displayed and stays on login
+    await expect(page.getByText("Invalid username or password")).toBeVisible();
+    await expect(page).toHaveURL(/.*login/);
+
+    // Valid login
+    await page.locator('input[type="text"]').fill("receptionist");
+    await page.locator('input[type="password"]').fill("rec123");
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL(/.*dashboard/);
+
+    // Logout
+    const logoutBtn = page.locator('button[aria-label="Logout"]');
+    await logoutBtn.click();
+    await expect(page).toHaveURL(/.*login/);
+    await expect(page.getByText("Sign In to Kedar Hospital OS")).toBeVisible();
+  });
+
+  // Test 9: Empty Search State Validation ("No patients found")
+  test("9. Patient Search Empty State Validation", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="password"]').fill("admin123");
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL(/.*dashboard/);
+
+    await page.goto("/patients");
+    await expect(page.getByText("Patient Management")).toBeVisible();
+
+    // Search with random non-matching string
+    const searchInput = page.getByPlaceholder("Search by name, OneHealth ID, diagnosis, or phone number...");
+    await searchInput.fill("NON_EXISTENT_QUERY_99999");
+    await page.getByRole("button", { name: "Search Registry" }).click();
+
+    // Assert empty state title is displayed, not a blank screen
+    await expect(page.getByText("No patients found")).toBeVisible();
+    await expect(page.getByText("No matching patients found in the registry")).toBeVisible();
+  });
+
+  // Test 10: Zero-Knowledge QR Lookup Modal Negative Validation
+  test("10. Zero-Knowledge QR Lookup & Tampered Token Handling", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="password"]').fill("admin123");
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL(/.*dashboard/);
+
+    // Open QR Scan Modal from header
+    const scanBtn = page.locator('button[aria-label="Scan OneHealth ID"]');
+    await scanBtn.click();
+    await expect(page.getByRole("heading", { name: "Scan / Enter OneHealth ID" })).toBeVisible();
+
+    // Enter invalid / spoofed token
+    const tokenInput = page.locator('input[placeholder*="Paste QR token"]');
+    await tokenInput.fill("QR-OHID-FORGED-INVALID-00000");
+    await page.getByRole("button", { name: "Resolve Identity" }).click();
+    await expect(page.getByText("could not be verified", { exact: false })).toBeVisible();
+
+    // Close modal
+    await page.getByRole("button", { name: "Cancel" }).click();
+  });
 });
+
