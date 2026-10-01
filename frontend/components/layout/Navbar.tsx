@@ -95,10 +95,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
           <div className="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 dark:border-slate-800 text-xs text-slate-500">
             <Building2 className="w-4 h-4 text-blue-600" />
             <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Apollo Central Hospital
+              {user?.hospital_name || "Kedar Hospital"}
             </span>
             <Badge variant="primary" className="text-[10px] py-0 px-2">
-              Chennai
+              Mugalivakkam, Chennai
             </Badge>
           </div>
         </div>

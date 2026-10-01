@@ -78,15 +78,28 @@ export default function AppointmentsPage() {
     loadData();
   }, []);
 
+  const [actionMessage, setActionMessage] = useState("");
+
+  const handleCheckIn = async (id: string) => {
+    try {
+      const res = await api.appointments.checkIn(id);
+      setActionMessage(res.message || "Patient checked in successfully! Assigned live OPD Queue Token.");
+      await loadData();
+    } catch (err: any) {
+      setActionMessage("Check-in failed: " + (err.message || "Unknown error"));
+    }
+  };
+
   const handleStatusUpdate = async (id: string, status: string) => {
     try {
       await api.appointments.updateStatus(id, status);
+      setActionMessage(`Appointment status updated to ${status}`);
       // Refresh local list
       setAppointments((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status } : a))
       );
     } catch (err: any) {
-      alert("Status update failed: " + (err.message || "Unknown error"));
+      setActionMessage("Status update failed: " + (err.message || "Unknown error"));
     }
   };
 
@@ -102,13 +115,16 @@ export default function AppointmentsPage() {
 
     setBooking(true);
     try {
-      const created = await api.appointments.book(newAppt);
+      const created = await api.appointments.book({
+        ...newAppt,
+        slot: `${newAppt.appointment_date} ${newAppt.appointment_time}`,
+      });
       setBookSuccess(`Appointment booked successfully! Token #${created.token_number || "—"}`);
       setTimeout(() => {
         setShowBookModal(false);
         setBookSuccess("");
         loadData();
-      }, 1500);
+      }, 500);
     } catch (err: any) {
       setBookError(err.message || "Booking failed. Please try again.");
     } finally {
@@ -155,6 +171,21 @@ export default function AppointmentsPage() {
             <span>Book New Appointment</span>
           </Button>
         </div>
+
+        {actionMessage && (
+          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{actionMessage}</span>
+            </div>
+            <button
+              onClick={() => setActionMessage("")}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Filter & Search Bar */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
@@ -300,13 +331,13 @@ export default function AppointmentsPage() {
 
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {appt.status !== "CHECKED_IN" && appt.status !== "COMPLETED" && (
+                          {appt.status !== "checked_in" && appt.status !== "CHECKED_IN" && appt.status !== "completed" && appt.status !== "COMPLETED" && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleStatusUpdate(appt.id, "CHECKED_IN")}
+                              onClick={() => handleCheckIn(appt.id)}
                               className="text-[11px] h-8 px-2.5 text-blue-600 border-blue-200 hover:bg-blue-50"
-                              title="Mark Patient Checked In"
+                              title="Mark Patient Checked In & Assign Token"
                             >
                               Check-In
                             </Button>
@@ -392,12 +423,12 @@ export default function AppointmentsPage() {
 
                   {/* Mobile Actions (Min 44px touch targets) */}
                   <div className="pt-2 flex items-center gap-2">
-                    {appt.status !== "CHECKED_IN" && appt.status !== "COMPLETED" && (
+                    {appt.status !== "checked_in" && appt.status !== "CHECKED_IN" && appt.status !== "completed" && appt.status !== "COMPLETED" && (
                       <Button
                         variant="primary"
                         size="md"
-                        onClick={() => handleStatusUpdate(appt.id, "CHECKED_IN")}
-                        className="flex-1 text-xs justify-center"
+                        onClick={() => handleCheckIn(appt.id)}
+                        className="flex-1 text-xs justify-center min-h-[44px]"
                       >
                         Check-In
                       </Button>

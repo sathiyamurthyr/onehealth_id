@@ -1,32 +1,48 @@
 export interface UserProfile {
-  id: string;
+  id?: string;
   username: string;
   name?: string;
+  full_name?: string;
   email: string;
   role: string;
-  tenant_id: string;
   hospital_id?: string;
-  full_name?: string;
+  hospital_name?: string;
+  tenant_name?: string;
+  roles?: string[];
+  permissions?: string[];
 }
 
 export interface Patient {
   id: string;
   tenant_id?: string;
   hospital_id?: string;
+  branch_id?: string;
+  branch_name?: string;
   onehealth_id: string;
   qr_token: string;
   name: string;
   age: number;
   gender: string;
   phone: string;
+  email?: string;
   blood_group?: string;
   diagnosis?: string;
   address?: string;
   emergency_contact?: string;
   hospital_name?: string;
+  identity_type?: string;
+  identity_number?: string;
+  is_demo_data?: boolean;
   status?: string;
   created_at: string;
   updated_at?: string;
+  total_appointments?: number;
+  pending_bills_count?: number;
+}
+
+export interface DuplicateCheckResult {
+  duplicate_found: boolean;
+  matches: Patient[];
 }
 
 export interface Doctor {
@@ -38,13 +54,16 @@ export interface Doctor {
   specialty: string;
   department_name?: string;
   room_number?: string;
+  phone?: string;
   contact_number?: string;
   email?: string;
   consultation_fee: number;
   available_days?: string[];
+  opd_timings?: string;
   start_time?: string;
   end_time?: string;
   is_available: boolean;
+  rating?: number;
   hospital_name?: string;
   created_at?: string;
 }
@@ -56,10 +75,17 @@ export interface Appointment {
   patient_name?: string;
   onehealth_id?: string;
   patient_phone?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  patient_diagnosis?: string;
   doctor_name?: string;
-  specialty?: string;
+  doctor_specialty?: string;
   room_number?: string;
+  hospital_id?: string;
   hospital_name?: string;
+  branch_id?: string;
+  branch_name?: string;
+  department_id?: string;
   department_name?: string;
   slot?: string;
   appointment_date?: string;
@@ -68,6 +94,7 @@ export interface Appointment {
   token_number?: number;
   priority?: string;
   notes?: string;
+  is_demo_data?: boolean;
   created_at?: string;
 }
 
@@ -80,15 +107,37 @@ export interface QueueEntry {
   patient_name?: string;
   onehealth_id?: string;
   patient_phone?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  patient_is_demo_data?: boolean;
   doctor_id?: string;
   doctor_name?: string;
   doctor_specialty?: string;
   room_number?: string;
   department_name?: string;
   hospital_name?: string;
+  branch_name?: string;
+  appointment_id?: string;
   appointment_slot?: string;
   priority?: string;
   called_at?: string;
+  created_at?: string;
+}
+
+export interface ConsultationPayload {
+  appointment_id?: string;
+  patient_id: string;
+  doctor_id: string;
+  symptoms?: string;
+  diagnosis: string;
+  clinical_notes?: string;
+  vitals?: {
+    bp?: string;
+    pulse?: number;
+    spo2?: number;
+    temperature?: string;
+    weight_kg?: number;
+  };
 }
 
 export interface OPDEncounter {
@@ -98,6 +147,8 @@ export interface OPDEncounter {
   patient_name?: string;
   onehealth_id?: string;
   patient_age?: number;
+  patient_gender?: string;
+  doctor_id?: string;
   doctor_name?: string;
   doctor_specialty?: string;
   department_name?: string;
@@ -109,6 +160,62 @@ export interface OPDEncounter {
   vitals?: Record<string, any>;
   medicines_count?: number;
   created_at?: string;
+}
+
+export interface DashboardSummary {
+  hospital_id: string;
+  hospital_name: string;
+  branch_name: string;
+  branch_area: string;
+  total_patients: number;
+  total_appointments: number;
+  checked_in_count: number;
+  waiting_count: number;
+  in_consultation_count: number;
+  completed_count: number;
+  available_doctors: number;
+}
+
+export interface DashboardMetrics {
+  total_patients: number;
+  active_appointments: number;
+  active_queue_count: number;
+  available_doctors: number;
+  admitted_ipd_patients: number;
+  available_beds: number;
+  pending_labs: number;
+  total_revenue: number;
+  outstanding_balance: number;
+}
+
+export interface HospitalConfig {
+  hospital: {
+    id: string;
+    name: string;
+    code: string;
+    address: string;
+    city: string;
+    state: string;
+    phone: string;
+    email: string;
+  };
+  branches: Array<{
+    id: string;
+    name: string;
+    code: string;
+    address: string;
+    area: string;
+    city: string;
+    is_main_branch: boolean;
+  }>;
+  departments: Array<{
+    id: string;
+    name: string;
+    code: string;
+    floor_number: string;
+    doctors_count: number;
+  }>;
+  doctors: Doctor[];
 }
 
 export interface IPDAdmission {
@@ -157,7 +264,7 @@ export interface LabOrder {
   test_price?: number;
   normal_range?: string;
   doctor_name?: string;
-  status: string; // ORDERED, SAMPLE_COLLECTED, PROCESSING, COMPLETED, VERIFIED
+  status: string;
   priority?: string;
   result_value?: string;
   result_unit?: string;
@@ -201,20 +308,8 @@ export interface Invoice {
   balance_due?: number;
   balance_amount?: number;
   status?: string;
-  payment_status?: string; // PENDING, PARTIALLY_PAID, PAID
+  payment_status?: string;
   created_at?: string;
   items_count?: number;
   last_payment_mode?: string;
-}
-
-export interface DashboardMetrics {
-  total_patients: number;
-  active_appointments: number;
-  active_queue_count: number;
-  available_doctors: number;
-  admitted_ipd_patients: number;
-  available_beds: number;
-  pending_labs: number;
-  total_revenue: number;
-  outstanding_balance: number;
 }

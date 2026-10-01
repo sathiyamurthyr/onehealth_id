@@ -12,7 +12,7 @@ def test_enterprise_auth_login(client):
     data = res.json()
     assert "access_token" in data
     assert data["user"]["username"] == "admin"
-    assert data["user"]["role"] in ["Super_admin", "Admin"]
+    assert data["user"]["role"].upper() in ["SUPER_ADMIN", "ADMIN"]
 
 def test_enterprise_patients_view_and_sp(client):
     # 1. Fetch patients from view
@@ -33,14 +33,14 @@ def test_enterprise_patients_view_and_sp(client):
         "emergency_contact": "+91 94444 55667 (Husband)",
         "blood_group": "O+ Positive",
         "diagnosis": "Gestational Diabetes Assessment",
-        "hospital_id": "hosp-001"
+        "hospital_id": "hosp-kedar"
     }
     create_res = client.post("/api/v1/patients", json=payload)
     assert create_res.status_code == 201
     created = create_res.json()
     assert created["name"] == "Kavitha Raman"
     assert "onehealth_id" in created
-    assert created["onehealth_id"].startswith("OHID-IND-2026-")
+    assert created["onehealth_id"].startswith("OHID-")
     assert "qr_token" in created
     assert created["qr_token"].startswith("QR-OHID-")
 

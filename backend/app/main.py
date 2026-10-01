@@ -7,7 +7,7 @@ if _root_dir not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
-from backend.app.routers import auth, patients, doctors, appointments, queue, clinical, billing, dashboard, admin
+from backend.app.routers import auth, patients, doctors, appointments, queue, clinical, billing, dashboard, admin, hospital
 
 app = FastAPI(
     title="OneHealth ID (OH-ID) Enterprise Hospital Operating System API",
@@ -34,6 +34,7 @@ api_v1.include_router(clinical.router)
 api_v1.include_router(billing.router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(admin.router)
+api_v1.include_router(hospital.router)
 
 app.mount("/api/v1", api_v1)
 
@@ -47,6 +48,7 @@ app.include_router(clinical.router)
 app.include_router(billing.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)
+app.include_router(hospital.router)
 
 @app.get("/")
 def read_root():

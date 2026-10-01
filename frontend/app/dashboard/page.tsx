@@ -7,24 +7,25 @@ import {
   CalendarCheck,
   ListOrdered,
   UserCheck,
-  BedDouble,
-  TestTube,
-  DollarSign,
+  Building2,
+  Clock,
   ArrowUpRight,
   PlusCircle,
   Activity,
-  Clock,
+  CheckCircle2,
+  Stethoscope,
   ChevronRight,
   TrendingUp,
   AlertCircle
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { DashboardMetrics, Appointment, QueueEntry, UserProfile } from "@/lib/types";
+import { DashboardSummary, DashboardMetrics, Appointment, QueueEntry, UserProfile } from "@/lib/types";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/components/ui/Card";
 import { LoadingState, ErrorState } from "@/components/ui/FeedbackStates";
 
 export default function DashboardPage() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [queue, setQueue] = useState<QueueEntry[]>([]);
@@ -36,11 +37,13 @@ export default function DashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [m, a, q] = await Promise.all([
-        api.dashboard.metrics(),
+      const [sum, m, a, q] = await Promise.all([
+        api.dashboard.getSummary("hosp-kedar"),
+        api.dashboard.getMetrics(),
         api.appointments.list(),
         api.queue.getLive(),
       ]);
+      setSummary(sum);
       setMetrics(m);
       setAppointments(a.slice(0, 5));
       setQueue(q.slice(0, 5));
@@ -59,154 +62,157 @@ export default function DashboardPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Top Welcome Bar */}
+        {/* Top Hospital Facility Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                Welcome, {user?.name || "Dr. Administrator"}
-              </h1>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-blue-600" />
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+                  {summary?.hospital_name || user?.hospital_name || "Kedar Hospital"}
+                </h1>
+              </div>
               <Badge variant="primary" className="text-xs">
-                {user?.role || "Admin"}
+                {summary?.branch_area || "Mugalivakkam"}, Chennai
               </Badge>
+              {user && (
+                <Badge variant="outline" className="text-xs font-semibold">
+                  Role: {user.role}
+                </Badge>
+              )}
             </div>
             <p className="text-xs sm:text-sm text-slate-500">
-              Live hospital operations & clinical metrics • Apollo Central Hospital (TN-01)
+              {summary?.branch_name || "Kedar Hospital - Mugalivakkam Main"} • OneHealth ID Pilot Operating System
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <Link href="/patients/register">
-              <Button variant="primary" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto">
+              <Button variant="primary" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto min-h-[44px]">
                 <PlusCircle className="w-4 h-4" />
-                <span>New Patient Registration</span>
+                <span>Register Patient</span>
+              </Button>
+            </Link>
+            <Link href="/queue">
+              <Button variant="outline" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto min-h-[44px]">
+                <ListOrdered className="w-4 h-4 text-amber-500" />
+                <span>Live Queue</span>
               </Button>
             </Link>
           </div>
         </div>
 
         {loading ? (
-          <LoadingState message="Connecting to hospital views & real-time telemetry..." />
+          <LoadingState message="Loading Kedar Hospital operations from PostgreSQL views..." />
         ) : error ? (
           <ErrorState message={error} onRetry={loadDashboardData} />
         ) : (
           <>
-            {/* KPI Metric Cards Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {/* Card 1: Total Patients */}
-              <Card className="p-4 sm:p-5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Patients</span>
-                  <div className="p-2 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-                    <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                    {metrics?.total_patients ?? 0}
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
-                    <TrendingUp className="w-3 h-3" />
-                    <span>Active OneHealth Network</span>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Card 2: Live Queue Waiting */}
-              <Card className="p-4 sm:p-5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">OPD Queue</span>
-                  <div className="p-2 rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
-                    <ListOrdered className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                    {metrics?.active_queue_count ?? 0}
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-medium mt-1">
-                    Tokens waiting currently
-                  </div>
-                </div>
-              </Card>
-
-              {/* Card 3: Active Appointments */}
-              <Card className="p-4 sm:p-5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Appointments</span>
-                  <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
-                    <CalendarCheck className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                    {metrics?.active_appointments ?? 0}
-                  </div>
-                  <div className="text-[11px] text-indigo-500 font-medium mt-1">
-                    Scheduled for today
-                  </div>
-                </div>
-              </Card>
-
-              {/* Card 4: Revenue & Billing */}
-              <Card className="p-4 sm:p-5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Revenue Collected</span>
-                  <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-                    <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                    ₹{Number(metrics?.total_revenue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-medium mt-1 truncate">
-                    ₹{Number(metrics?.outstanding_balance || 0).toLocaleString("en-IN")} pending
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            {/* Inpatient & Diagnostics Quick Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600">
-                  <UserCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">{metrics?.available_doctors ?? 5}</div>
-                  <div className="text-[10px] text-slate-400">Doctors On Duty</div>
-                </div>
+            {/* Today's Overview Grid (Section 10 Requirement) */}
+            <div>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Today's Overview
+                </h2>
+                <span className="text-xs text-slate-400 font-medium">Live Telemetry</span>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600">
-                  <BedDouble className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">{metrics?.available_beds ?? 4}</div>
-                  <div className="text-[10px] text-slate-400">Available Beds</div>
-                </div>
-              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                {/* 1. Total Patients */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Patients</span>
+                    <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                      <Users className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">
+                      {summary?.total_patients ?? metrics?.total_patients ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">Total Registry</div>
+                  </div>
+                </Card>
 
-              <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600">
-                  <Activity className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">{metrics?.admitted_ipd_patients ?? 1}</div>
-                  <div className="text-[10px] text-slate-400">IPD Admitted</div>
-                </div>
-              </div>
+                {/* 2. Appointments */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Appointments</span>
+                    <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                      <CalendarCheck className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">
+                      {summary?.total_appointments ?? metrics?.active_appointments ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">Scheduled Today</div>
+                  </div>
+                </Card>
 
-              <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600">
-                  <TestTube className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">{metrics?.pending_labs ?? 1}</div>
-                  <div className="text-[10px] text-slate-400">Pending Lab Tests</div>
-                </div>
+                {/* 3. Checked-in */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Checked-in</span>
+                    <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      {summary?.checked_in_count ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">Arrival Verified</div>
+                  </div>
+                </Card>
+
+                {/* 4. Waiting */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Waiting</span>
+                    <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                      {summary?.waiting_count ?? metrics?.active_queue_count ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">In OPD Queue</div>
+                  </div>
+                </Card>
+
+                {/* 5. In Consultation */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">In Consultation</span>
+                    <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400">
+                      <Stethoscope className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
+                      {summary?.in_consultation_count ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">With Doctor</div>
+                  </div>
+                </Card>
+
+                {/* 6. Completed */}
+                <Card className="p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Completed</span>
+                    <div className="p-1.5 rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-teal-600 dark:text-teal-400">
+                      {summary?.completed_count ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-0.5">Discharged OPD</div>
+                  </div>
+                </Card>
               </div>
             </div>
 
@@ -248,14 +254,14 @@ export default function DashboardPage() {
 
                         <div className="text-right">
                           <Badge
-                            variant={q.status === "WAITING" ? "warning" : q.status === "CALLING" ? "primary" : "neutral"}
-                            className="text-[10px]"
+                            variant={q.status === "CALLING" ? "primary" : q.status === "WAITING" ? "warning" : "success"}
+                            className="text-[10px] font-bold"
                           >
                             {q.status}
                           </Badge>
-                          <span className="block text-[10px] text-slate-400 mt-0.5">
-                            ~{q.estimated_wait_minutes} mins wait
-                          </span>
+                          <div className="text-[10px] text-slate-400 mt-1">
+                            ~{q.estimated_wait_minutes ?? 10} min wait
+                          </div>
                         </div>
                       </div>
                     ))
@@ -263,12 +269,12 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              {/* Upcoming Appointments Preview */}
+              {/* Today's Appointments Preview */}
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    <CalendarCheck className="w-4 h-4 text-blue-500" />
-                    <span>Today's Consultation Schedule</span>
+                    <CalendarCheck className="w-4 h-4 text-indigo-500" />
+                    <span>Today's Outpatient Schedule</span>
                   </CardTitle>
                   <Link href="/appointments" className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                     All Appointments <ArrowUpRight className="w-3.5 h-3.5" />
@@ -283,27 +289,25 @@ export default function DashboardPage() {
                         key={a.id}
                         className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 flex items-center justify-center">
-                            <Clock className="w-4 h-4" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                            {a.patient_name}
                           </div>
-                          <div>
-                            <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                              {a.patient_name || a.patient_id}
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              Dr. {a.doctor_name || a.doctor_id} • {a.slot}
-                            </div>
+                          <div className="text-[11px] text-slate-500">
+                            {a.doctor_name} • {a.slot}
                           </div>
                         </div>
 
-                        <div>
+                        <div className="flex items-center gap-2">
                           <Badge
-                            variant={a.status === "completed" ? "success" : a.status === "scheduled" ? "primary" : "neutral"}
-                            className="text-[10px]"
+                            variant={a.status === "checked_in" ? "success" : a.status === "completed" ? "outline" : "primary"}
+                            className="text-[10px] capitalize font-bold"
                           >
-                            {a.status}
+                            {a.status.replace("_", " ")}
                           </Badge>
+                          <Link href={`/appointments`}>
+                            <ChevronRight className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                          </Link>
                         </div>
                       </div>
                     ))

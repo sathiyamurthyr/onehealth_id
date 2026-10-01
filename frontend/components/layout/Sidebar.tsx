@@ -85,11 +85,11 @@ export const Sidebar: React.FC<{ className?: string }> = ({ className }) => {
         <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-semibold mb-1">
             <Building className="w-3.5 h-3.5 text-blue-600" />
-            <span>Multi-Tenant Network</span>
+            <span>Kedar Hospital Network</span>
           </div>
           <p className="text-[11px] text-slate-500">
-            Tenant: Apollo Global Net<br />
-            Status: Active Production
+            Branch: Mugalivakkam Main<br />
+            Status: Pilot Active (v1.0)
           </p>
         </div>
       </div>

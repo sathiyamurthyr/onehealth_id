@@ -83,11 +83,11 @@ export default function LoginPage() {
           <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-blue-400" />
-              <span>Apollo Hospital Cluster 01</span>
+              <span>Kedar Hospital — Mugalivakkam</span>
             </div>
             <div className="flex items-center gap-1.5 text-emerald-400">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Enterprise Ready</span>
+              <span>Pilot MVP Ready</span>
             </div>
           </div>
         </div>
@@ -102,11 +102,11 @@ export default function LoginPage() {
               </div>
               <div>
                 <span className="text-lg font-bold text-white">ONEHEALTH ID</span>
-                <span className="block text-[11px] text-slate-400">Hospital Operating System</span>
+                <span className="block text-[11px] text-slate-400">Kedar Hospital Pilot • Mugalivakkam</span>
               </div>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">Sign In to Hospital Portal</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">Sign In to Kedar Hospital OS</h2>
             <p className="text-xs sm:text-sm text-slate-400 mb-6">
               Enter your staff credentials to access patient records and clinical workflows.
             </p>
@@ -128,7 +128,7 @@ export default function LoginPage() {
                     onChange={(e) => setUsername(e.target.value)}
                     required
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-                    placeholder="e.g. admin or doctor"
+                    placeholder="e.g. admin or dr.senthil"
                   />
                 </div>
               </div>
@@ -165,7 +165,7 @@ export default function LoginPage() {
             {/* Quick Demo Credentials */}
             <div className="mt-8 pt-6 border-t border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2.5">
-                Quick Test Credentials:
+                Quick Test Credentials (Kedar Pilot):
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
@@ -178,10 +178,10 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickFill("doctor", "doctor123")}
+                  onClick={() => handleQuickFill("dr.senthil", "doctor123")}
                   className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-left border border-slate-700 transition-colors"
                 >
-                  <span className="text-xs font-bold text-emerald-400 block">Doctor</span>
+                  <span className="text-xs font-bold text-emerald-400 block">Dr. Senthil</span>
                   <span className="text-[10px] text-slate-400 font-mono">doctor123</span>
                 </button>
                 <button
@@ -194,11 +194,11 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickFill("patient", "patient123")}
+                  onClick={() => handleQuickFill("nurse", "nurse123")}
                   className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-left border border-slate-700 transition-colors"
                 >
-                  <span className="text-xs font-bold text-purple-400 block">Patient</span>
-                  <span className="text-[10px] text-slate-400 font-mono">patient123</span>
+                  <span className="text-xs font-bold text-purple-400 block">Nurse</span>
+                  <span className="text-[10px] text-slate-400 font-mono">nurse123</span>
                 </button>
               </div>
             </div>
