@@ -40,12 +40,12 @@ def test_authorized_hospitals_list(dr_kumar_auth):
     hosp_resp = client.get("/api/v1/me/hospitals", headers=headers)
     assert hosp_resp.status_code == 200
     hospitals = hosp_resp.json()
-    assert len(hospitals) == 3, f"Expected 3 authorized memberships, got {len(hospitals)}"
+    assert len(hospitals) == 2, f"Expected 2 authorized Kedar memberships, got {len(hospitals)}"
     
     hosp_ids = {h["hospital_ref_id"] for h in hospitals}
     assert "hosp-kedar" in hosp_ids, "Mugalivakkam missing"
     assert "hosp-kedar-iyp" in hosp_ids, "Iyyappanthangal missing"
-    assert ("hosp-apollo" in hosp_ids or "hosp-001" in hosp_ids), "Third authorized hospital missing"
+
 
 
 def test_hospital_context_switching_valid(dr_kumar_auth):

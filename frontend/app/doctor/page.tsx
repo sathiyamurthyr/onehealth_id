@@ -36,7 +36,7 @@ import { AuthorizedHospitalMembership } from "@/lib/api/me";
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
-  const { workspace, user } = useWorkspace();
+  const { workspace, user, switchContext } = useWorkspace();
 
   // Multi-Hospital State
   const [authorizedHospitals, setAuthorizedHospitals] = useState<AuthorizedHospitalMembership[]>([]);
@@ -44,6 +44,19 @@ export default function DoctorDashboardPage() {
   const [isAllHospitalsView, setIsAllHospitalsView] = useState<boolean>(false);
   const [showHospDropdown, setShowHospDropdown] = useState<boolean>(false);
   const [switchingContext, setSwitchingContext] = useState<boolean>(false);
+
+  // Dropdown ref for outside click
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowHospDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Doctor Data State
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
@@ -79,9 +92,9 @@ export default function DoctorDashboardPage() {
         // Load Doctor Profile Details
         const doc = await api.doctors.getMe().catch(() => null);
         setDoctorProfile(doc || {
-          name: meProfile?.name || "Dr. Rajesh Kumar",
-          specialty: "Orthopedics & Trauma",
-          registration_number: "TN-MCI-2026-REG"
+          name: meProfile?.doctor?.name || meProfile?.name || user?.name || "Dr. Senthil Nathan",
+          specialty: meProfile?.doctor?.specialty || "General Medicine & Diabetology",
+          registration_number: meProfile?.doctor?.registration_number || "TN-MCI-2026-REG"
         });
 
         // Load Appointments & Queue
@@ -93,7 +106,7 @@ export default function DoctorDashboardPage() {
       }
     }
     loadDoctorData();
-  }, []);
+  }, [user]);
 
   // Fetch appointments, queue, and prescriptions for active context
   const fetchScopedData = async (hospId: string, allHospitals: boolean) => {
@@ -127,8 +140,11 @@ export default function DoctorDashboardPage() {
       setIsAllHospitalsView(false);
 
       // Call backend context switch endpoint
-      const result = await api.me.switchHospitalContext(targetHospitalId);
+      await api.me.switchHospitalContext(targetHospitalId);
       setActiveHospitalId(targetHospitalId);
+
+      // Synchronize with WorkspaceContext so sidebar and all components update
+      await switchContext({ hospital_ref_id: targetHospitalId });
 
       // Refresh appointments and queue for new context
       await fetchScopedData(targetHospitalId, false);
@@ -139,6 +155,7 @@ export default function DoctorDashboardPage() {
       setSwitchingContext(false);
     }
   };
+
 
   // Toggle "All My Hospitals" aggregated view
   const handleToggleAllHospitals = async () => {
@@ -198,10 +215,10 @@ export default function DoctorDashboardPage() {
   const inConsultationCount = appointments.filter(a => a.status === "IN_CONSULTATION").length;
   const completedCount = appointments.filter(a => a.status === "COMPLETED").length;
 
-  const currentHospitalObj = authorizedHospitals.find(h => h.hospital_ref_id === activeHospitalId) || {
+  const currentHospitalObj = authorizedHospitals.find(h => (h.hospital_ref_id || h.hospital_id) === activeHospitalId) || {
     hospital_name: workspace?.hospital_name || "Kedar Hospital",
     branch_name: workspace?.branch_name || "Mugalivakkam Main",
-    department_name: "Orthopedics & Trauma"
+    department_name: doctorProfile?.specialty || "General Medicine & OPD"
   };
 
   return (
@@ -330,7 +347,7 @@ export default function DoctorDashboardPage() {
                 </h3>
                 <p className="text-xs text-slate-500">
                   {isAllHospitalsView
-                    ? "Displaying aggregate data across your 3 authorized hospital memberships"
+                    ? `Displaying aggregate data across your ${authorizedHospitals.length} authorized hospital memberships`
                     : `Scoped exclusively to ${currentHospitalObj.branch_name || "Mugalivakkam Branch"}`}
                 </p>
               </div>
@@ -463,7 +480,7 @@ export default function DoctorDashboardPage() {
                   Today&apos;s Consultation Schedule & Queue
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Outpatients scheduled for consultation with Dr. Kumar
+                  Outpatients scheduled for consultation with {doctorProfile?.name || user?.name || "your outpatient clinic"}
                 </p>
               </div>
 

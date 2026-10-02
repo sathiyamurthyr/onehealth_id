@@ -72,57 +72,68 @@ export function DynamicNav() {
             </div>
           </div>
 
-          {/* Hospital Context Switcher */}
-          <div className="relative mt-2">
-            <button
-              onClick={() => setShowHospDropdown(!showHospDropdown)}
-              className="w-full text-left px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition flex items-center justify-between group"
-            >
-              <div className="flex items-center gap-2.5 truncate">
-                <Hospital className="w-4 h-4 text-blue-500 shrink-0" />
-                <div className="truncate">
-                  <p className="text-xs font-semibold text-slate-900 truncate">{workspace.hospital_name}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{workspace.branch_name || "Mugalivakkam Branch"}</p>
+          {/* Hospital Context Badge for Doctor / Context Switcher for Admin */}
+          {workspace.workspace_type === "DOCTOR" ? (
+            <div className="mt-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5">
+              <Hospital className="w-4 h-4 text-blue-600 shrink-0" />
+              <div className="truncate">
+                <p className="text-xs font-bold text-slate-900 truncate">{workspace.hospital_name}</p>
+                <p className="text-[10px] text-slate-500 truncate">{workspace.branch_name || "Mugalivakkam Main"}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="relative mt-2">
+              <button
+                onClick={() => setShowHospDropdown(!showHospDropdown)}
+                className="w-full text-left px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <Hospital className="w-4 h-4 text-blue-500 shrink-0" />
+                  <div className="truncate">
+                    <p className="text-xs font-semibold text-slate-900 truncate">{workspace.hospital_name}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{workspace.branch_name || "Mugalivakkam Branch"}</p>
+                  </div>
                 </div>
-              </div>
-              {availableHospitals.length > 1 && (
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition shrink-0" />
-              )}
-            </button>
+                {availableHospitals.length > 1 && (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition shrink-0" />
+                )}
+              </button>
 
-            {/* Dropdown for Multi-Hospital users */}
-            {showHospDropdown && availableHospitals.length > 1 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50">
-                <p className="text-[10px] font-semibold text-slate-400 px-3 py-1 uppercase tracking-wider">
-                  Switch Facility Scope
-                </p>
-                {availableHospitals.map((hosp) => {
-                  const isCurrent = hosp.hospital_ref_id === workspace.hospital_ref_id;
-                  return (
-                    <button
-                      key={hosp.hospital_ref_id}
-                      onClick={() => {
-                        setShowHospDropdown(false);
-                        if (!isCurrent) {
-                          switchContext({ hospital_ref_id: hosp.hospital_ref_id });
-                        }
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition ${
-                        isCurrent ? "text-blue-600 font-semibold bg-blue-50" : "text-slate-700"
-                      }`}
-                    >
-                      <div className="truncate">
-                        <p className="truncate font-medium">{hosp.hospital_name}</p>
-                        <p className="text-[10px] text-slate-400">{hosp.hospital_city || "Chennai"}</p>
-                      </div>
-                      {isCurrent && <Check className="w-4 h-4 text-blue-500" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+              {/* Dropdown for Multi-Hospital users */}
+              {showHospDropdown && availableHospitals.length > 1 && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50">
+                  <p className="text-[10px] font-semibold text-slate-400 px-3 py-1 uppercase tracking-wider">
+                    Switch Facility Scope
+                  </p>
+                  {availableHospitals.map((hosp) => {
+                    const isCurrent = hosp.hospital_ref_id === workspace.hospital_ref_id;
+                    return (
+                      <button
+                        key={hosp.hospital_ref_id}
+                        onClick={() => {
+                          setShowHospDropdown(false);
+                          if (!isCurrent) {
+                            switchContext({ hospital_ref_id: hosp.hospital_ref_id });
+                          }
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition ${
+                          isCurrent ? "text-blue-600 font-semibold bg-blue-50" : "text-slate-700"
+                        }`}
+                      >
+                        <div className="truncate">
+                          <p className="truncate font-medium">{hosp.hospital_name}</p>
+                          <p className="text-[10px] text-slate-400">{hosp.hospital_city || "Chennai"}</p>
+                        </div>
+                        {isCurrent && <Check className="w-4 h-4 text-blue-500" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
 
         {/* Dynamic Navigation Items from Backend */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">

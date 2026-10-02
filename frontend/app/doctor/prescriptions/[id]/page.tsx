@@ -27,7 +27,7 @@ import { PrescriptionRecord } from "@/lib/api/prescriptions";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import { Button } from "@/components/ui/Card";
 
-export default function PrescriptionDetailsPage() {
+function PrescriptionDetailsContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -446,5 +446,13 @@ export default function PrescriptionDetailsPage() {
         }
       `}</style>
     </WorkspaceLayout>
+  );
+}
+
+export default function PrescriptionDetailsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-slate-500">Loading prescription details...</div>}>
+      <PrescriptionDetailsContent />
+    </React.Suspense>
   );
 }

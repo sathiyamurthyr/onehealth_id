@@ -51,7 +51,7 @@ import { ReferralSection } from "@/components/clinical/ReferralSection";
 import { PreviousPrescriptions } from "@/components/clinical/PreviousPrescriptions";
 import { PrescriptionSignModal } from "@/components/clinical/PrescriptionSignModal";
 
-export default function DoctorConsultationPage() {
+function DoctorConsultationContent() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -770,5 +770,13 @@ export default function DoctorConsultationPage() {
         />
       </div>
     </AppLayout>
+  );
+}
+
+export default function DoctorConsultationPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-slate-500">Loading consultation workflow...</div>}>
+      <DoctorConsultationContent />
+    </React.Suspense>
   );
 }

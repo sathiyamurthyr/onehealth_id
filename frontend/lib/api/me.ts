@@ -36,7 +36,14 @@ export const meApi = {
   },
 
   getHospitals: async () => {
-    return fetchJSON<AuthorizedHospitalMembership[]>("/me/hospitals");
+    const list = await fetchJSON<any[]>("/me/hospitals");
+    return (list || []).map((h) => ({
+      ...h,
+      hospital_ref_id: h.hospital_ref_id || h.hospital_id,
+      hospital_id: h.hospital_id || h.hospital_ref_id,
+      branch_ref_id: h.branch_ref_id || h.branch_id,
+      branch_id: h.branch_id || h.branch_ref_id,
+    })) as AuthorizedHospitalMembership[];
   },
 
   switchHospitalContext: async (hospitalId: string, branchId?: string, departmentId?: string) => {

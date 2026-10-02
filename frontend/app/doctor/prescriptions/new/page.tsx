@@ -55,7 +55,7 @@ const COMMON_DRUGS = [
   { name: "Atorvastatin", strength: "20 mg", form: "Tablet", freq: "Once daily (0-0-1)", route: "Oral", food: "Bedtime" },
 ];
 
-export default function NewPrescriptionPage() {
+function NewPrescriptionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspace, user } = useWorkspace();
@@ -994,5 +994,13 @@ export default function NewPrescriptionPage() {
         )}
       </div>
     </WorkspaceLayout>
+  );
+}
+
+export default function NewPrescriptionPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-slate-500">Loading prescription workflow...</div>}>
+      <NewPrescriptionContent />
+    </React.Suspense>
   );
 }

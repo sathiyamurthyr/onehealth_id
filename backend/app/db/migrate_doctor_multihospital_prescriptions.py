@@ -86,27 +86,25 @@ def run_migration():
         # Memberships for Dr. Kumar:
         # 1. Kedar Hospital - Mugalivakkam (Primary)
         # 2. Kedar Hospital - Iyyappanthangal
-        # 3. Apollo City Hospital - Chennai Central
         cur.execute("""
             INSERT INTO oh_id.user_roles (
                 id, user_id, role_id, user_ref_id, usertype_ref_id, hospital_id, hospital_ref_id, branch_ref_id, department_id, is_primary, is_active
             ) VALUES 
             ('ur-kumar-mgl', 'usr-kedar-doc-kumar', 'role-doctor', 'usr-kedar-doc-kumar', 'role-doctor', 'hosp-kedar', 'hosp-kedar', 'branch-kedar-01', 'dept-k-01', TRUE, TRUE),
-            ('ur-kumar-iyp', 'usr-kedar-doc-kumar', 'role-doctor', 'usr-kedar-doc-kumar', 'role-doctor', 'hosp-kedar-iyp', 'hosp-kedar-iyp', 'branch-kedar-02', 'dept-k-01', FALSE, TRUE),
-            ('ur-kumar-apo', 'usr-kedar-doc-kumar', 'role-doctor', 'usr-kedar-doc-kumar', 'role-doctor', 'hosp-001', 'hosp-001', NULL, 'dept-104', FALSE, TRUE);
+            ('ur-kumar-iyp', 'usr-kedar-doc-kumar', 'role-doctor', 'usr-kedar-doc-kumar', 'role-doctor', 'hosp-kedar-iyp', 'hosp-kedar-iyp', 'branch-kedar-02', 'dept-k-01', FALSE, TRUE)
+            ON CONFLICT (id) DO UPDATE SET is_active = TRUE;
         """)
 
         # Memberships for Dr. Senthil:
         # 1. Kedar Hospital - Mugalivakkam (Primary)
         # 2. Kedar Hospital - Iyyappanthangal
-        # 3. Apollo City Hospital
         cur.execute("""
             INSERT INTO oh_id.user_roles (
                 id, user_id, role_id, user_ref_id, usertype_ref_id, hospital_id, hospital_ref_id, branch_ref_id, department_id, is_primary, is_active
             ) VALUES 
             ('ur-senthil-mgl', 'usr-kedar-doc1', 'role-doctor', 'usr-kedar-doc1', 'role-doctor', 'hosp-kedar', 'hosp-kedar', 'branch-kedar-01', 'dept-k-01', TRUE, TRUE),
-            ('ur-senthil-iyp', 'usr-kedar-doc1', 'role-doctor', 'usr-kedar-doc1', 'role-doctor', 'hosp-kedar-iyp', 'hosp-kedar-iyp', 'branch-kedar-02', 'dept-k-01', FALSE, TRUE),
-            ('ur-senthil-apo', 'usr-kedar-doc1', 'role-doctor', 'usr-kedar-doc1', 'role-doctor', 'hosp-001', 'hosp-001', NULL, 'dept-001', FALSE, TRUE);
+            ('ur-senthil-iyp', 'usr-kedar-doc1', 'role-doctor', 'usr-kedar-doc1', 'role-doctor', 'hosp-kedar-iyp', 'hosp-kedar-iyp', 'branch-kedar-02', 'dept-k-01', FALSE, TRUE)
+            ON CONFLICT (id) DO UPDATE SET is_active = TRUE;
         """)
 
         print("[4/5] Updating database views (vw_user_hospitals, vw_doctors, vw_prescriptions_full)...")
