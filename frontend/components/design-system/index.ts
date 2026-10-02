@@ -4,6 +4,7 @@
  * Doctor, Staff, and Patient screens.
  */
 
+export * from "@/design-system";
 export * from "./tokens";
 export * from "./StatusBadge";
 export * from "./PatientBanner";
@@ -13,3 +14,4 @@ export * from "./QueueTokenCard";
 export * from "./RoleBadge";
 export * from "./SearchFilterBar";
 export * from "./Modal";
+

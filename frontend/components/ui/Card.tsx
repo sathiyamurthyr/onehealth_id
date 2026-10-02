@@ -48,7 +48,7 @@ export const Badge: React.FC<{
 
 export const Button: React.FC<
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: "primary" | "secondary" | "outline" | "danger" | "ghost";
+    variant?: "primary" | "secondary" | "outline" | "danger" | "ghost" | "success";
     size?: "sm" | "md" | "lg";
   }
 > = ({ variant = "primary", size = "md", className, children, ...props }) => {
@@ -59,6 +59,7 @@ export const Button: React.FC<
     secondary: "bg-slate-800 hover:bg-slate-900 text-white focus:ring-slate-700",
     outline: "border border-slate-300  hover:bg-slate-50  text-slate-700  focus:ring-slate-400",
     danger: "bg-rose-600 hover:bg-rose-700 text-white shadow-sm focus:ring-rose-500",
+    success: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm focus:ring-emerald-500",
     ghost: "hover:bg-slate-100  text-slate-700 ",
   };
 
