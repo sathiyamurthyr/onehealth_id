@@ -77,7 +77,7 @@ class LoginResponse(BaseModel):
 class PatientBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     age: int = Field(..., ge=0, le=150)
-    diagnosis: str = Field(..., min_length=2, max_length=500)
+    diagnosis: Optional[str] = Field("General Outpatient Consultation", max_length=500)
     gender: Optional[str] = Field("Unspecified", max_length=50)
     phone: Optional[str] = Field(None, max_length=30)
     email: Optional[str] = Field(None, max_length=150)
