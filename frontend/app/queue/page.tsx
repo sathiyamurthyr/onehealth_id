@@ -16,15 +16,18 @@ import {
   Building2,
   AlertTriangle,
   RefreshCw,
-  Volume2
+  Volume2,
+  ArrowRight
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { QueueEntry, Doctor } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/components/ui/Card";
 import { LoadingState, EmptyState, ErrorState } from "@/components/ui/FeedbackStates";
 
 export default function QueuePage() {
+  const { workspace } = useWorkspace();
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("ALL");
@@ -92,6 +95,26 @@ export default function QueuePage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Clinician Quick Jump to Personal Queue */}
+        {workspace?.workspace_type === "DOCTOR" && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-900 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Stethoscope className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <p className="text-xs font-bold">You are viewing the Hospital-Wide Live Queue Board.</p>
+                <p className="text-[11px] text-blue-700">To consult, call, and manage your private patient tokens, open your doctor consultation queue.</p>
+              </div>
+            </div>
+            <Link
+              href="/doctor/queue"
+              className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 shrink-0"
+            >
+              <span>Go to My Doctor Queue</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
           <div>

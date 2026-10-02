@@ -3,10 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
   CalendarCheck,
+  Calendar,
   ListOrdered,
   MoreHorizontal,
   X,
@@ -18,43 +21,64 @@ import {
   ShieldCheck,
   Settings,
   PlusCircle,
-  Building2,
-  Sparkles
+  Building,
+  Sparkles,
+  Search,
+  UserCheck,
+  QrCode,
+  FileText,
+  FilePlus,
+  HeartPulse,
+  Hospital,
+  Clock
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-const PRIMARY_MOBILE_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/patients", label: "Patients", icon: Users },
-  { href: "/appointments", label: "Appts", icon: CalendarCheck },
-  { href: "/queue", label: "Queue", icon: ListOrdered },
-];
-
-const MORE_MOBILE_ITEMS = [
-  { href: "/opd", label: "OPD Consultations", icon: Stethoscope },
-  { href: "/ipd", label: "IPD & Beds", icon: BedDouble },
-  { href: "/laboratory", label: "Laboratory", icon: TestTube },
-  { href: "/pharmacy", label: "Pharmacy", icon: Pill },
-  { href: "/billing", label: "Billing & Invoices", icon: Receipt },
-  { href: "/admin", label: "Admin & Audit", icon: ShieldCheck },
-  { href: "/design-system", label: "Design System", icon: Sparkles },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+const ICON_MAP: Record<string, React.ElementType> = {
+  LayoutDashboard,
+  Users,
+  Calendar,
+  CalendarCheck,
+  ListOrdered,
+  Stethoscope,
+  BedDouble,
+  TestTube,
+  Pill,
+  Receipt,
+  ShieldCheck,
+  Settings,
+  PlusCircle,
+  Building,
+  Sparkles,
+  Search,
+  UserCheck,
+  QrCode,
+  FileText,
+  FilePlus,
+  HeartPulse,
+  Hospital,
+  Clock,
+};
 
 export const MobileBottomNav: React.FC = () => {
   const pathname = usePathname();
+  const { workspace, user, navigation } = useWorkspace();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const items = navigation || [];
+  const primaryItems = items.slice(0, 4);
+  const moreItems = items.slice(4);
+  const roleName = workspace?.role_name || user?.role || "Hospital";
 
   return (
     <>
       {/* Sticky Bottom Navigation Bar for Mobile (<1024px) */}
       <nav 
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95  backdrop-blur border-t border-slate-200  px-2 py-1 flex items-center justify-around shadow-lg"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 px-2 py-1 flex items-center justify-around shadow-lg"
         aria-label="Mobile Navigation"
       >
-        {PRIMARY_MOBILE_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+        {primaryItems.map((item) => {
+          const Icon = (item.icon && ICON_MAP[item.icon]) ? ICON_MAP[item.icon] : LayoutDashboard;
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/doctor" && pathname.startsWith(item.href));
 
           return (
             <Link
@@ -63,69 +87,61 @@ export const MobileBottomNav: React.FC = () => {
               className={cn(
                 "flex flex-col items-center justify-center flex-1 py-1.5 px-1 min-h-[48px] rounded-xl transition-all",
                 isActive
-                  ? "text-blue-600  font-bold"
-                  : "text-slate-500 hover:text-slate-800   font-medium"
+                  ? "text-blue-600 font-bold"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
               )}
             >
               <Icon className={cn("w-5 h-5", isActive ? "stroke-[2.5px]" : "stroke-2")} />
-              <span className="text-[11px] mt-0.5 tracking-tight">{item.label}</span>
+              <span className="text-[10px] mt-0.5 tracking-tight truncate max-w-[64px]">{item.title}</span>
             </Link>
           );
         })}
 
-        {/* More Actions Trigger */}
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className={cn(
-            "flex flex-col items-center justify-center flex-1 py-1.5 px-1 min-h-[48px] rounded-xl transition-all",
-            drawerOpen
-              ? "text-blue-600  font-bold"
-              : "text-slate-500 hover:text-slate-800   font-medium"
-          )}
-          aria-label="More hospital sections"
-        >
-          <MoreHorizontal className="w-5 h-5 stroke-2" />
-          <span className="text-[11px] mt-0.5 tracking-tight">More</span>
-        </button>
+        {/* More Actions Trigger if more than 4 items */}
+        {moreItems.length > 0 && (
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className={cn(
+              "flex flex-col items-center justify-center flex-1 py-1.5 px-1 min-h-[48px] rounded-xl transition-all",
+              drawerOpen
+                ? "text-blue-600 font-bold"
+                : "text-slate-500 hover:text-slate-800 font-medium"
+            )}
+            aria-label="More workflows"
+          >
+            <MoreHorizontal className="w-5 h-5 stroke-2" />
+            <span className="text-[10px] mt-0.5 tracking-tight">More</span>
+          </button>
+        )}
       </nav>
 
       {/* Slide-over Mobile Drawer for "More" Workflows */}
       {drawerOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div 
-            className="w-full bg-white  rounded-t-3xl p-6 border-t border-slate-200  shadow-2xl max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200"
+            className="w-full bg-white rounded-t-3xl p-6 border-t border-slate-200 shadow-2xl max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200"
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100  mb-4">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-bold text-slate-900 ">
-                  Hospital Workflows
+                <Building className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  {roleName} Workflows
                 </h3>
               </div>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100  min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Register Patient Mobile Action */}
-            <Link
-              href="/patients/register"
-              onClick={() => setDrawerOpen(false)}
-              className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold text-sm shadow-md mb-4 min-h-[48px]"
-            >
-              <PlusCircle className="w-5 h-5" />
-              <span>Register New Patient</span>
-            </Link>
-
-            {/* Grid of Sections */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {MORE_MOBILE_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname.startsWith(item.href);
+            {/* Additional Permitted Links */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {moreItems.map((item) => {
+                const Icon = (item.icon && ICON_MAP[item.icon]) ? ICON_MAP[item.icon] : LayoutDashboard;
+                const isActive = pathname === item.href;
 
                 return (
                   <Link
@@ -133,17 +149,21 @@ export const MobileBottomNav: React.FC = () => {
                     href={item.href}
                     onClick={() => setDrawerOpen(false)}
                     className={cn(
-                      "flex items-center gap-3 p-3.5 rounded-2xl border transition-all min-h-[52px]",
+                      "flex items-center gap-3 p-3 rounded-2xl border text-xs font-semibold transition-all min-h-[52px]",
                       isActive
-                        ? "bg-blue-50 border-blue-200   text-blue-700  font-semibold"
-                        : "bg-slate-50 border-slate-200/80   text-slate-700  hover:bg-slate-100"
+                        ? "border-blue-600 bg-blue-50 text-blue-700"
+                        : "border-slate-100 bg-slate-50 text-slate-700 hover:bg-slate-100"
                     )}
                   >
-                    <Icon className="w-4 h-4 shrink-0 text-blue-600 " />
-                    <span className="text-xs font-medium leading-tight">{item.label}</span>
+                    <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-blue-600" : "text-slate-500")} />
+                    <span className="truncate">{item.title}</span>
                   </Link>
                 );
               })}
+            </div>
+
+            <div className="pt-2 text-center text-xs text-slate-400">
+              {workspace?.hospital_name} • {workspace?.branch_name || "Main Branch"}
             </div>
           </div>
         </div>
