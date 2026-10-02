@@ -8,6 +8,8 @@ export * from "./consultations";
 export * from "./dashboard";
 export * from "./hospital";
 export * from "./workspace";
+export * from "./prescriptions";
+export * from "./me";
 
 import { authApi } from "./auth";
 import { patientsApi } from "./patients";
@@ -18,10 +20,13 @@ import { consultationsApi } from "./consultations";
 import { dashboardApi } from "./dashboard";
 import { hospitalApi } from "./hospital";
 import { workspaceApi } from "./workspace";
+import { prescriptionsApi } from "./prescriptions";
+import { meApi } from "./me";
 import { fetchJSON } from "./client";
 
 export const api = {
   auth: authApi,
+  me: meApi,
   workspace: workspaceApi,
   patients: patientsApi,
   oneHealthId: oneHealthIdApi,
@@ -30,6 +35,7 @@ export const api = {
   consultations: consultationsApi,
   dashboard: dashboardApi,
   hospital: hospitalApi,
+  prescriptions: prescriptionsApi,
   doctors: {
     list: (hospitalId?: string, departmentId?: string) => {
       const q = new URLSearchParams();
@@ -40,9 +46,37 @@ export const api = {
     },
     get: (id: string) => fetchJSON<any>(`/doctors/${id}`),
     create: (data: any) => fetchJSON<any>("/doctors", { method: "POST", body: JSON.stringify(data) }),
+    getMe: () => fetchJSON<any>("/doctors/me"),
+    getMyAppointments: (allHospitals = false) =>
+      fetchJSON<any[]>(`/doctors/me/appointments${allHospitals ? "?all_hospitals=true" : ""}`),
+    getMyPatients: () => fetchJSON<any[]>("/doctors/me/patients"),
+    getMyQueue: () => fetchJSON<any[]>("/doctors/me/queue"),
+    search: (params?: { name?: string; specialty?: string; department_id?: string; hospital_id?: string; is_available?: boolean }) => {
+      const q = new URLSearchParams();
+      if (params?.name) q.set("name", params.name);
+      if (params?.specialty) q.set("specialty", params.specialty);
+      if (params?.department_id) q.set("department_id", params.department_id);
+      if (params?.hospital_id) q.set("hospital_id", params.hospital_id);
+      if (params?.is_available !== undefined) q.set("is_available", String(params.is_available));
+      const qs = q.toString();
+      return fetchJSON<any[]>(`/doctors/search${qs ? `?${qs}` : ""}`);
+    },
   },
   clinical: {
     consultations: consultationsApi,
+    prescriptions: prescriptionsApi.list,
+    getPrescription: prescriptionsApi.get,
+    createPrescription: prescriptionsApi.create,
+    signPrescription: prescriptionsApi.finalize,
+    dispensePrescription: consultationsApi.dispensePrescription,
+    timeline: consultationsApi.getTimeline,
+    reportsSummary: consultationsApi.getReportsSummary,
+    referrals: consultationsApi.listReferrals,
+    createReferral: consultationsApi.createReferral,
+    followUps: consultationsApi.listFollowUps,
+    createFollowUp: consultationsApi.createFollowUp,
+    doctorSchedule: consultationsApi.getDoctorSchedule,
+    updateDoctorSchedule: consultationsApi.updateDoctorSchedule,
     opdEncounters: (patientId?: string, doctorId?: string) => {
       const q = new URLSearchParams();
       if (patientId) q.set("patient_id", patientId);

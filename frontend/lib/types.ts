@@ -88,6 +88,15 @@ export interface Patient {
   identity_number?: string;
   is_demo_data?: boolean;
   status?: string;
+  dob?: string;
+  critical_alerts?: string[];
+  allergies?: any[];
+  chronic_conditions?: string[];
+  department?: string;
+  primary_doctor?: string;
+  last_visit?: string;
+  next_visit?: string;
+  current_encounter?: string;
   created_at: string;
   updated_at?: string;
   total_appointments?: number;
@@ -169,6 +178,7 @@ export interface QueueEntry {
   doctor_specialty?: string;
   room_number?: string;
   department_name?: string;
+  department?: string;
   hospital_name?: string;
   branch_name?: string;
   appointment_id?: string;
@@ -178,6 +188,186 @@ export interface QueueEntry {
   created_at?: string;
 }
 
+export type QueueItem = QueueEntry;
+
+export interface PrescriptionItem {
+  id?: string;
+  medicine_name: string;
+  generic_name?: string;
+  brand_name?: string;
+  strength?: string;
+  dosage?: string;
+  dosage_form?: string;
+  route?: string;
+  dose?: string;
+  frequency?: string;
+  timing_morning?: boolean;
+  timing_afternoon?: boolean;
+  timing_evening?: boolean;
+  timing_night?: boolean;
+  food_instruction?: string; // BEFORE_FOOD, AFTER_FOOD, WITH_FOOD, NO_INSTRUCTION
+  duration_value?: number;
+  duration_days?: number;
+  duration_unit?: string;
+  start_date?: string;
+  end_date?: string;
+  quantity?: number;
+  expected_supply_duration?: any;
+  refills?: number;
+  is_prn?: boolean;
+  prn_indication?: string;
+  specific_instructions?: string;
+  valid_from?: string;
+  valid_until?: string;
+  is_dispensed?: boolean;
+  dispensed_quantity?: number;
+  batch_number?: string;
+  expiry_date?: string;
+  status?: string;
+}
+
+export interface Prescription {
+  id: string;
+  consultation_id?: string;
+  patient_id: string;
+  patient_name?: string;
+  onehealth_id?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  doctor_id: string;
+  doctor_name?: string;
+  doctor_specialty?: string;
+  hospital_name?: string;
+  diagnosis?: string;
+  instructions?: string;
+  status: string; // DRAFT, SIGNED, ACTIVE, DISPENSED, PARTIALLY_DISPENSED, COMPLETED, CANCELLED, EXPIRED
+  valid_from?: string;
+  valid_until?: string;
+  signed_by?: string;
+  signed_at?: string;
+  digital_signature_hash?: string;
+  created_at?: string;
+  updated_at?: string;
+  version?: number;
+  items: PrescriptionItem[];
+}
+
+export interface ChiefComplaint {
+  reason?: string;
+  reason_for_visit?: string;
+  symptoms: string[];
+  duration: string;
+  severity: any;
+  onset: any;
+  relevant_history?: string;
+}
+
+export interface ClinicalExamination {
+  general?: any;
+  general_exam?: string;
+  systems?: any;
+  system_exam?: any;
+  findings?: any;
+  doctor_notes?: string;
+}
+
+export interface MedicalHistory {
+  illnesses?: any;
+  previous_illnesses?: any;
+  surgeries?: any;
+  chronic_conditions?: any;
+  family_history?: any;
+  social_history?: any;
+  allergies?: any;
+  current_medications?: any;
+}
+
+export interface DiagnosisItem {
+  type: any;
+  code?: string;
+  name?: string;
+  description?: string;
+  status: any;
+  clinical_notes?: string;
+  notes?: string;
+}
+
+export interface ReferralPayload {
+  patient_id: string;
+  from_doctor_id?: string;
+  referring_doctor_id?: string;
+  receiving_doctor_id?: string;
+  to_doctor_name?: string;
+  referral_type: "INTERNAL" | "EXTERNAL";
+  specialty: string;
+  receiving_doctor_name?: string;
+  reason: string;
+  clinical_summary?: string;
+  priority: "ROUTINE" | "URGENT" | "EMERGENCY";
+  requested_evaluation?: string;
+  attached_reports?: any[];
+  attached_report_ids?: string[];
+}
+
+export interface FollowUpPayload {
+  patient_id: string;
+  doctor_id: string;
+  department?: string;
+  department_id?: string;
+  scheduled_date?: string;
+  follow_up_date?: string;
+  scheduled_time?: string;
+  follow_up_time?: string;
+  duration_minutes?: number;
+  reason?: string;
+  required_tests?: string[];
+  required_investigations?: string[];
+  instructions?: string;
+}
+
+export interface DoctorScheduleItem {
+  day_of_week: string;
+  start_time?: string;
+  end_time?: string;
+  slot_type?: string;
+  is_break?: boolean;
+  max_patients?: number;
+  working_start_time?: string;
+  working_end_time?: string;
+  break_start_time?: string;
+  break_end_time?: string;
+  appointment_duration_minutes?: number;
+  buffer_time_minutes?: number;
+  emergency_slots_count?: number;
+  followup_slots_count?: number;
+  new_patient_slots_count?: number;
+  overbooking_allowed?: boolean;
+  overbooking_max?: number;
+}
+
+export interface TimelineEvent {
+  id: string;
+  type: "CONSULTATION" | "PRESCRIPTION" | "LAB_REPORT" | "ADMISSION" | "REFERRAL" | "FOLLOW_UP";
+  date: string;
+  title: string;
+  subtitle: string;
+  doctor_name?: string;
+  details?: any;
+  status?: string;
+}
+
+export interface ReportsSummary {
+  reports?: any[];
+  orders?: LabOrder[];
+  trends?: Record<string, Array<{
+    date: string;
+    value: string;
+    unit?: string;
+    is_abnormal?: boolean;
+    reference_range?: string;
+  }>>;
+}
+
 export interface ConsultationPayload {
   appointment_id?: string;
   patient_id: string;
@@ -185,13 +375,14 @@ export interface ConsultationPayload {
   symptoms?: string;
   diagnosis: string;
   clinical_notes?: string;
-  vitals?: {
-    bp?: string;
-    pulse?: number;
-    spo2?: number;
-    temperature?: string;
-    weight_kg?: number;
-  };
+  vitals?: any;
+  chief_complaint?: any;
+  examination?: any;
+  medical_history?: any;
+  diagnoses?: any[];
+  prescription?: any;
+  referral?: any;
+  follow_up?: any;
 }
 
 export interface OPDEncounter {
@@ -212,6 +403,13 @@ export interface OPDEncounter {
   chief_complaints?: string;
   clinical_notes?: string;
   vitals?: Record<string, any>;
+  chief_complaint?: ChiefComplaint;
+  examination?: ClinicalExamination;
+  medical_history?: MedicalHistory;
+  diagnoses?: DiagnosisItem[];
+  consultation_status?: string;
+  prescription_id?: string;
+  prescription_status?: string;
   medicines_count?: number;
   created_at?: string;
 }

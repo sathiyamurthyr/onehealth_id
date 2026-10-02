@@ -226,7 +226,127 @@ class QueueEntryResponse(BaseModel):
     appointment_slot: Optional[str] = None
     priority: Optional[str] = "NORMAL"
 
-# --- Clinical Consultation Schemas ---
+# --- Clinical Consultation & FHIR MedicationRequest Schemas ---
+class PrescriptionItemCreate(BaseModel):
+    id: Optional[str] = None
+    medicine_name: str
+    generic_name: Optional[str] = None
+    brand_name: Optional[str] = None
+    strength: Optional[str] = "500 mg"
+    dosage_form: Optional[str] = "Tablet"
+    route: Optional[str] = "Oral"
+    dose: Optional[str] = "1 tablet"
+    frequency: Optional[str] = "Once daily (1-0-0)"
+    timing_morning: Optional[bool] = True
+    timing_afternoon: Optional[bool] = False
+    timing_evening: Optional[bool] = False
+    timing_night: Optional[bool] = False
+    food_instruction: Optional[str] = "AFTER_FOOD" # BEFORE_FOOD, AFTER_FOOD, WITH_FOOD, NO_INSTRUCTION
+    duration_value: Optional[int] = 5
+    duration_unit: Optional[str] = "Days"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    quantity: Optional[int] = 5
+    expected_supply_duration: Optional[int] = 5
+    refills: Optional[int] = 0
+    is_prn: Optional[bool] = False
+    prn_indication: Optional[str] = None
+    specific_instructions: Optional[str] = None
+    is_dispensed: Optional[bool] = False
+    dispensed_quantity: Optional[int] = 0
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
+    status: Optional[str] = "ACTIVE"
+
+class PrescriptionItemResponse(PrescriptionItemCreate):
+    id: str
+
+class PrescriptionCreate(BaseModel):
+    id: Optional[str] = None
+    consultation_id: Optional[str] = None
+    patient_id: str
+    doctor_id: str
+    diagnosis: Optional[str] = None
+    instructions: Optional[str] = None
+    status: Optional[str] = "ACTIVE" # DRAFT, SIGNED, ACTIVE, DISPENSED, PARTIALLY_DISPENSED, COMPLETED, CANCELLED, EXPIRED
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    signed_by: Optional[str] = None
+    signed_at: Optional[Any] = None
+    digital_signature_hash: Optional[str] = None
+    items: List[PrescriptionItemCreate] = []
+
+class PrescriptionResponse(BaseModel):
+    id: str
+    consultation_id: Optional[str] = None
+    patient_id: str
+    patient_name: Optional[str] = None
+    onehealth_id: Optional[str] = None
+    patient_age: Optional[int] = None
+    patient_gender: Optional[str] = None
+    doctor_id: str
+    doctor_name: Optional[str] = None
+    doctor_specialty: Optional[str] = None
+    hospital_name: Optional[str] = None
+    diagnosis: Optional[str] = None
+    instructions: Optional[str] = None
+    status: str
+    valid_from: Optional[Any] = None
+    valid_until: Optional[Any] = None
+    signed_by: Optional[str] = None
+    signed_at: Optional[Any] = None
+    digital_signature_hash: Optional[str] = None
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+    version: Optional[int] = 1
+    items: List[Dict[str, Any]] = []
+
+class PrescriptionSignRequest(BaseModel):
+    signed_by: str
+    digital_signature_hash: Optional[str] = None
+
+class PrescriptionDispenseRequest(BaseModel):
+    dispensed_by: str
+    items: List[Dict[str, Any]] # [{item_id, dispensed_quantity, batch_number, expiry_date}]
+
+class ReferralCreate(BaseModel):
+    patient_id: str
+    referring_doctor_id: str
+    receiving_doctor_id: Optional[str] = None
+    referral_type: str = "INTERNAL" # INTERNAL, EXTERNAL
+    specialty: str
+    receiving_doctor_name: Optional[str] = None
+    reason: str
+    clinical_summary: Optional[str] = None
+    priority: str = "ROUTINE" # ROUTINE, URGENT, EMERGENCY
+    requested_evaluation: Optional[str] = None
+    attached_reports: Optional[List[Any]] = []
+
+class FollowUpCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    department_id: Optional[str] = None
+    scheduled_date: str
+    scheduled_time: Optional[str] = "10:30 AM"
+    duration_minutes: Optional[int] = 15
+    reason: Optional[str] = None
+    required_investigations: Optional[List[str]] = []
+    instructions: Optional[str] = None
+
+class DoctorScheduleItem(BaseModel):
+    day_of_week: str
+    working_start_time: str = "09:00"
+    working_end_time: str = "17:00"
+    break_start_time: str = "13:00"
+    break_end_time: str = "14:00"
+    appointment_duration_minutes: int = 15
+    buffer_time_minutes: int = 5
+    emergency_slots_count: int = 2
+    followup_slots_count: int = 4
+    new_patient_slots_count: int = 8
+    overbooking_allowed: bool = True
+    overbooking_max: int = 2
+
 class ConsultationCreate(BaseModel):
     appointment_id: Optional[str] = None
     patient_id: str
@@ -235,6 +355,13 @@ class ConsultationCreate(BaseModel):
     diagnosis: str
     clinical_notes: Optional[str] = None
     vitals: Optional[Dict[str, Any]] = None
+    chief_complaint: Optional[Dict[str, Any]] = None
+    examination: Optional[Dict[str, Any]] = None
+    medical_history: Optional[Dict[str, Any]] = None
+    diagnoses: Optional[List[Dict[str, Any]]] = None
+    prescription: Optional[PrescriptionCreate] = None
+    referral: Optional[ReferralCreate] = None
+    follow_up: Optional[FollowUpCreate] = None
 
 class ConsultationResponse(BaseModel):
     id: str
@@ -251,6 +378,14 @@ class ConsultationResponse(BaseModel):
     diagnosis: str
     clinical_notes: Optional[str] = None
     vitals: Optional[Dict[str, Any]] = None
+    chief_complaint: Optional[Dict[str, Any]] = None
+    examination: Optional[Dict[str, Any]] = None
+    medical_history: Optional[Dict[str, Any]] = None
+    diagnoses: Optional[List[Dict[str, Any]]] = None
+    consultation_status: Optional[str] = "COMPLETED"
+    prescription_id: Optional[str] = None
+    prescription_status: Optional[str] = None
+    medicines_count: Optional[int] = 0
     created_at: Optional[Any] = None
 
 # --- Billing & Payment Schemas ---

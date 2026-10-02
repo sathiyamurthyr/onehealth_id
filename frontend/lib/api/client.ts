@@ -3,7 +3,7 @@
  * Centralizes authentication headers, token refresh, base URL, error parsing, and request logging.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8050/api/v1";
 
 export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("oh_access_token") : null;

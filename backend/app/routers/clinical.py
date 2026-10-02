@@ -1,6 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Dict, Any, Optional
-from backend.app.schemas.models import ConsultationCreate, ConsultationResponse
+from backend.app.schemas.models import (
+    ConsultationCreate,
+    ConsultationResponse,
+    PrescriptionCreate,
+    PrescriptionResponse,
+    PrescriptionSignRequest,
+    PrescriptionDispenseRequest,
+    ReferralCreate,
+    FollowUpCreate,
+    DoctorScheduleItem
+)
 from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.rbac import (
     require_any_permission,
@@ -18,8 +28,9 @@ def record_consultation(
     user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "clinical.write", "system.manage"))
 ):
     """
-    Doctor Consultation Workflow:
-    Records clinical notes, diagnosis, vitals, symptoms and marks appointment/queue token completed.
+    Doctor Consultation Workflow (FHIR Aligned):
+    Records clinical notes, diagnosis, vitals, symptoms, chief complaint, PICLE exam,
+    medical history, multi-tier diagnoses, FHIR prescription, referrals, and follow-up.
     Strictly enforced server-side: only authorized clinicians can record consultations.
     """
     user_perms = user.get("permissions") or []
@@ -43,14 +54,25 @@ def record_consultation(
     actor_id = user.get("user_ref_id") or user.get("id") or user.get("username")
 
     try:
+        prescription_dict = payload.prescription.model_dump() if payload.prescription else None
+        referral_dict = payload.referral.model_dump() if payload.referral else None
+        follow_up_dict = payload.follow_up.model_dump() if payload.follow_up else None
+
         encounter = sp_repository.record_consultation(
             appointment_id=payload.appointment_id,
             patient_id=payload.patient_id,
             doctor_id=payload.doctor_id,
-            symptoms=payload.symptoms,
             diagnosis=payload.diagnosis,
+            symptoms=payload.symptoms,
             clinical_notes=payload.clinical_notes,
             vitals=payload.vitals or {},
+            chief_complaint=payload.chief_complaint,
+            examination=payload.examination,
+            medical_history=payload.medical_history,
+            diagnoses=payload.diagnoses,
+            prescription=prescription_dict,
+            referral=referral_dict,
+            follow_up=follow_up_dict,
             actor_id=actor_id
         )
         log_security_event(
@@ -149,3 +171,170 @@ def list_pharmacy_dispensary(
     except Exception as e:
         logger.error("Failed to fetch pharmacy dispensary: %s", e, exc_info=True)
         return []
+
+# ------------------------------------------------------------------------------
+# FHIR MedicationRequest Endpoints
+# ------------------------------------------------------------------------------
+
+@router.get("/prescriptions", response_model=List[Dict[str, Any]])
+def list_prescriptions(
+    patient_id: Optional[str] = Query(None),
+    doctor_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_any_permission("prescription.read", "prescription.view", "clinical.read", "consultation.read", "system.manage", "patient.self.read"))
+):
+    user_perms = user.get("permissions") or []
+    effective_patient_id = patient_id
+    if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "consultation.read" not in user_perms and "system.manage" not in user_perms:
+        effective_patient_id = user.get("user_ref_id") or user.get("id")
+
+    try:
+        return sp_repository.list_prescriptions(patient_id=effective_patient_id, doctor_id=doctor_id, status=status)
+    except Exception as e:
+        logger.error("Failed to list prescriptions: %s", e, exc_info=True)
+        return []
+
+@router.get("/prescriptions/{prescription_id}", response_model=Dict[str, Any])
+def get_prescription(
+    prescription_id: str,
+    user: Dict[str, Any] = Depends(require_any_permission("prescription.read", "prescription.view", "clinical.read", "consultation.read", "system.manage", "patient.self.read"))
+):
+    rx = sp_repository.get_prescription_by_id(prescription_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    return rx
+
+@router.post("/prescriptions/{prescription_id}/sign", response_model=Dict[str, Any])
+def sign_prescription_endpoint(
+    prescription_id: str,
+    payload: PrescriptionSignRequest,
+    user: Dict[str, Any] = Depends(require_any_permission("prescription.create", "clinical.write", "system.manage"))
+):
+    """Explicit Doctor confirmation & digital signature before activating prescription."""
+    try:
+        updated_rx = sp_repository.sign_prescription(
+            prescription_id=prescription_id,
+            signed_by=payload.signed_by,
+            digital_signature_hash=payload.digital_signature_hash
+        )
+        log_security_event(
+            "PRESCRIPTION_SIGNED",
+            actor_id=user.get("username"),
+            resource=f"prescription:{prescription_id}",
+            status="SUCCESS",
+            details={"signed_by": payload.signed_by}
+        )
+        return updated_rx
+    except Exception as e:
+        logger.error("Failed to sign prescription %s: %s", prescription_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to sign prescription")
+
+@router.post("/prescriptions/{prescription_id}/dispense", response_model=Dict[str, Any])
+def dispense_prescription_endpoint(
+    prescription_id: str,
+    payload: PrescriptionDispenseRequest,
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.write", "system.manage", "pharmacy.read"))
+):
+    """Pharmacist dispense workflow with batch, expiry, and quantity deduction."""
+    try:
+        updated_rx = sp_repository.dispense_prescription(
+            prescription_id=prescription_id,
+            items=payload.items,
+            dispensed_by=payload.dispensed_by
+        )
+        log_security_event(
+            "PRESCRIPTION_DISPENSED",
+            actor_id=user.get("username"),
+            resource=f"prescription:{prescription_id}",
+            status="SUCCESS",
+            details={"dispensed_by": payload.dispensed_by, "items_count": len(payload.items)}
+        )
+        return updated_rx
+    except Exception as e:
+        logger.error("Failed to dispense prescription %s: %s", prescription_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to dispense prescription")
+
+# ------------------------------------------------------------------------------
+# Patient Clinical Timeline & Reports Summary
+# ------------------------------------------------------------------------------
+
+@router.get("/patients/{patient_id}/timeline", response_model=List[Dict[str, Any]])
+def get_patient_timeline(
+    patient_id: str,
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "patient.read", "patient.self.read", "system.manage"))
+):
+    """Unified Patient Clinical Timeline across encounters, labs, prescriptions, and admissions."""
+    try:
+        return sp_repository.get_patient_clinical_timeline(patient_id)
+    except Exception as e:
+        logger.error("Failed to get patient clinical timeline: %s", e, exc_info=True)
+        return []
+
+@router.get("/patients/{patient_id}/reports-summary", response_model=Dict[str, Any])
+def get_reports_summary(
+    patient_id: str,
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "lab.read", "lab.result.read", "patient.read", "patient.self.read", "system.manage"))
+):
+    """Unified reports with abnormal indicators and multi-period trend comparison."""
+    try:
+        return sp_repository.get_patient_reports_summary(patient_id)
+    except Exception as e:
+        logger.error("Failed to get reports summary: %s", e, exc_info=True)
+        return {"orders": [], "trends": {}}
+
+# ------------------------------------------------------------------------------
+# Doctor Referrals & Follow-Up Plans
+# ------------------------------------------------------------------------------
+
+@router.get("/referrals", response_model=List[Dict[str, Any]])
+def list_referrals(
+    patient_id: Optional[str] = Query(None),
+    doctor_id: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "patient.read", "referral.view", "system.manage"))
+):
+    try:
+        return sp_repository.list_referrals(patient_id=patient_id, doctor_id=doctor_id)
+    except Exception as e:
+        logger.error("Failed to list referrals: %s", e, exc_info=True)
+        return []
+
+@router.get("/follow-ups", response_model=List[Dict[str, Any]])
+def list_follow_ups(
+    patient_id: Optional[str] = Query(None),
+    doctor_id: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "appointment.read", "patient.read", "system.manage"))
+):
+    try:
+        return sp_repository.list_follow_up_plans(patient_id=patient_id, doctor_id=doctor_id)
+    except Exception as e:
+        logger.error("Failed to list follow ups: %s", e, exc_info=True)
+        return []
+
+# ------------------------------------------------------------------------------
+# Doctor Time Allocation & Scheduling Rules
+# ------------------------------------------------------------------------------
+
+@router.get("/doctor/schedule", response_model=List[Dict[str, Any]])
+def get_doctor_schedule_endpoint(
+    doctor_id: Optional[str] = Query("doc-k-01"),
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "doctor.read", "appointment.read", "system.manage"))
+):
+    try:
+        return sp_repository.get_doctor_schedule(doctor_id)
+    except Exception as e:
+        logger.error("Failed to get doctor schedule: %s", e, exc_info=True)
+        return []
+
+@router.post("/doctor/schedule", response_model=List[Dict[str, Any]])
+def update_doctor_schedule_endpoint(
+    items: List[DoctorScheduleItem],
+    doctor_id: Optional[str] = Query("doc-k-01"),
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.write", "consultation.create", "doctor.manage", "system.manage"))
+):
+    try:
+        items_dict = [it.model_dump() for it in items]
+        return sp_repository.update_doctor_schedule(doctor_id, items_dict)
+    except Exception as e:
+        logger.error("Failed to update doctor schedule: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update doctor schedule")
+

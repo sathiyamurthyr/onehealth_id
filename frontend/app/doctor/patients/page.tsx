@@ -9,133 +9,163 @@ import {
   ChevronRight,
   Phone,
   Calendar,
-  Building2,
-  FileText
+  Building,
+  FileText,
+  Plus,
+  ArrowLeft,
+  Hospital
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Patient, UserProfile } from "@/lib/types";
-import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/components/ui/Card";
-import { LoadingState, EmptyState, ErrorState } from "@/components/ui/FeedbackStates";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function DoctorPatientsPage() {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const { workspace } = useWorkspace();
+  const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    setUser(api.auth.getCurrentUser());
-    const loadPatients = async () => {
-      setLoading(true);
-      setError("");
+    async function loadPatients() {
       try {
-        const data = await api.patients.list({ hospital_id: "hosp-kedar" });
-        setPatients(data);
+        setLoading(true);
+        setError("");
+        const data = await api.doctors.getMyPatients().catch(() => []);
+        setPatients(data || []);
       } catch (err: any) {
+        console.error("Failed to load doctor patients:", err);
         setError(err.message || "Failed to load patient roster");
       } finally {
         setLoading(false);
       }
-    };
-
+    }
     loadPatients();
-  }, []);
+  }, [workspace?.hospital_ref_id]);
 
   const filtered = patients.filter((p) =>
     !search ||
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.onehealth_id.toLowerCase().includes(search.toLowerCase()) ||
+    (p.name && p.name.toLowerCase().includes(search.toLowerCase())) ||
+    (p.onehealth_id && p.onehealth_id.toLowerCase().includes(search.toLowerCase())) ||
     (p.phone && p.phone.includes(search))
   );
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+    <WorkspaceLayout allowedWorkspaceTypes={["DOCTOR"]}>
+      <div className="bg-white min-h-screen text-slate-900 pb-16">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white  p-5 sm:p-6 rounded-3xl border border-slate-200  shadow-sm">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Stethoscope className="w-5 h-5 text-purple-600" />
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
-                Clinical Patient Roster
-              </h1>
-              <Badge variant="primary" className="text-xs">
-                Kedar Hospital Mugalivakkam
-              </Badge>
+        <div className="border-b border-slate-200 bg-white sticky top-0 z-20 px-6 py-4 shadow-xs">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/doctor"
+                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Link>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Assigned Patient Roster</h1>
+                <p className="text-xs text-slate-500">
+                  Current Hospital: <span className="font-semibold text-slate-800">{workspace?.hospital_name || "Kedar Hospital"}</span> ({workspace?.branch_name || "Mugalivakkam"})
+                </p>
+              </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Assigned outpatient clinical profiles, OneHealth IDs, and medical encounter histories
-            </p>
-          </div>
 
-          <Link href="/doctor/queue">
-            <Button variant="primary" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto min-h-[44px]">
-              <span>View Live Consultation Queue</span>
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </Link>
-        </div>
-
-        {/* Search */}
-        <div className="bg-white  p-4 rounded-2xl border border-slate-200  shadow-sm">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search assigned patients by name, OneHealth ID, or phone..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
-            />
+            <Link
+              href="/doctor/prescriptions/new"
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Prescription</span>
+            </Link>
           </div>
         </div>
 
-        {loading ? (
-          <LoadingState message="Loading clinician patient roster..." />
-        ) : error ? (
-          <ErrorState message={error} onRetry={() => window.location.reload()} />
-        ) : filtered.length === 0 ? (
-          <EmptyState title="No patients found" description="No patient records match the search filter." />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((p) => (
-              <Card key={p.id} className="p-4 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="font-bold text-sm text-slate-900 ">{p.name}</div>
-                    <Badge variant="primary" className="text-[10px] font-mono">
-                      {p.onehealth_id}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-slate-500 mb-2">
-                    {p.age} yrs • {p.gender} • Blood Group: <strong className="text-rose-500">{p.blood_group || "N/A"}</strong>
-                  </div>
-                  <div className="text-xs text-slate-600  bg-slate-50  p-2.5 rounded-xl mb-3">
-                    <span className="text-[10px] text-slate-400 block uppercase">Primary Clinical Reason</span>
-                    <span className="font-medium text-slate-800 ">{p.diagnosis}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 ">
-                  <Link href={`/patients/${p.id}`} className="flex-1">
-                    <Button variant="outline" size="sm" className="w-full text-xs min-h-[44px]">
-                      Profile & QR
-                    </Button>
-                  </Link>
-                  <Link href={`/doctor/consultation/${p.id}`} className="flex-1">
-                    <Button variant="primary" size="sm" className="w-full text-xs min-h-[44px] gap-1">
-                      <Stethoscope className="w-3.5 h-3.5" />
-                      <span>Consult</span>
-                    </Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
+        {/* Content */}
+        <div className="max-w-6xl mx-auto px-6 pt-6 space-y-4">
+          {/* Search Box */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search assigned patients by name, OneHealth ID, or phone..."
+                className="w-full text-xs bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
-        )}
+
+          {/* Patient Roster Table */}
+          <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4">Patient Name</th>
+                  <th className="py-3 px-4">OneHealth ID</th>
+                  <th className="py-3 px-4">Age / Gender</th>
+                  <th className="py-3 px-4">Phone / Contact</th>
+                  <th className="py-3 px-4">Hospital Scope</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      Loading patient roster...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      No patients found matching your search.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3.5 px-4">
+                        <p className="font-bold text-slate-900">{p.name}</p>
+                        <p className="text-[11px] text-slate-400">ID: {p.id}</p>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-semibold text-blue-700">
+                        {p.onehealth_id || "OHID-PENDING"}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-700">
+                        {p.age ? `${p.age} yrs` : "—"} / {p.gender || "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">
+                        {p.phone || "+91 98400 12345"}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">
+                        <span className="font-semibold text-slate-800">{p.hospital_name || workspace?.hospital_name || "Kedar Hospital"}</span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/doctor/consultation/${p.id}`}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] transition"
+                          >
+                            Consult
+                          </Link>
+                          <Link
+                            href={`/doctor/prescriptions/new?patient_id=${p.id}`}
+                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px] transition"
+                          >
+                            + Rx
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </AppLayout>
+    </WorkspaceLayout>
   );
 }
