@@ -32,31 +32,10 @@ import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import { Button } from "@/components/ui/Card";
-import { AuthorizedHospitalMembership } from "@/lib/api/me";
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
-  const { workspace, user, switchContext } = useWorkspace();
-
-  // Multi-Hospital State
-  const [authorizedHospitals, setAuthorizedHospitals] = useState<AuthorizedHospitalMembership[]>([]);
-  const [activeHospitalId, setActiveHospitalId] = useState<string>("");
-  const [isAllHospitalsView, setIsAllHospitalsView] = useState<boolean>(false);
-  const [showHospDropdown, setShowHospDropdown] = useState<boolean>(false);
-  const [switchingContext, setSwitchingContext] = useState<boolean>(false);
-
-  // Dropdown ref for outside click
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowHospDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const { workspace, user } = useWorkspace();
 
   // Doctor Data State
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
@@ -76,18 +55,13 @@ export default function DoctorDashboardPage() {
   const [referralReason, setReferralReason] = useState<string>("");
   const [referralSuccess, setReferralSuccess] = useState<string>("");
 
-  // 1. Load initial doctor profile and authorized hospitals
+  // 1. Load initial doctor profile and hospital-scoped clinical data
   useEffect(() => {
     async function loadDoctorData() {
       try {
         setLoading(true);
-        // Load Profile & Authorized Hospitals
         const meProfile = await api.me.getProfile().catch(() => null);
-        const hospList = await api.me.getHospitals().catch(() => []);
-        setAuthorizedHospitals(hospList || []);
-
-        const currentHospId = meProfile?.hospital_ref_id || hospList[0]?.hospital_ref_id || workspace?.hospital_ref_id || "hosp-kedar";
-        setActiveHospitalId(currentHospId);
+        const currentHospId = meProfile?.hospital_ref_id || workspace?.hospital_ref_id || "hosp-kedar";
 
         // Load Doctor Profile Details
         const doc = await api.doctors.getMe().catch(() => null);
@@ -97,8 +71,8 @@ export default function DoctorDashboardPage() {
           registration_number: meProfile?.doctor?.registration_number || "TN-MCI-2026-REG"
         });
 
-        // Load Appointments & Queue
-        await fetchScopedData(currentHospId, false);
+        // Load Appointments & Queue strictly scoped to this hospital
+        await fetchScopedData(currentHospId);
       } catch (err) {
         console.error("Failed to load doctor dashboard data:", err);
       } finally {
@@ -106,69 +80,24 @@ export default function DoctorDashboardPage() {
       }
     }
     loadDoctorData();
-  }, [user]);
+  }, [user, workspace?.hospital_ref_id]);
 
-  // Fetch appointments, queue, and prescriptions for active context
-  const fetchScopedData = async (hospId: string, allHospitals: boolean) => {
+  // Fetch appointments, queue, and prescriptions for current hospital context
+  const fetchScopedData = async (hospId: string) => {
     try {
       const [appts, queue, rxList] = await Promise.all([
-        api.doctors.getMyAppointments(allHospitals).catch(() => []),
+        api.doctors.getMyAppointments(false).catch(() => []),
         api.doctors.getMyQueue().catch(() => []),
-        api.prescriptions.list({ hospital_id: allHospitals ? undefined : hospId }).catch(() => [])
+        api.prescriptions.list({ hospital_id: hospId }).catch(() => [])
       ]);
 
-      // If specific hospital view, filter queue if needed
-      const filteredQueue = allHospitals ? queue : queue.filter((q: any) => !q.hospital_id || q.hospital_id === hospId);
+      const filteredQueue = queue ? queue.filter((q: any) => !q.hospital_id || q.hospital_id === hospId) : [];
 
       setAppointments(appts || []);
       setQueueItems(filteredQueue || []);
       setRecentPrescriptions(rxList?.slice(0, 5) || []);
     } catch (err) {
       console.error("Failed to fetch scoped data:", err);
-    }
-  };
-
-  // Hospital context switch handler (validated on backend)
-  const handleSwitchHospital = async (targetHospitalId: string) => {
-    if (targetHospitalId === activeHospitalId && !isAllHospitalsView) {
-      setShowHospDropdown(false);
-      return;
-    }
-    try {
-      setSwitchingContext(true);
-      setShowHospDropdown(false);
-      setIsAllHospitalsView(false);
-
-      // Call backend context switch endpoint
-      await api.me.switchHospitalContext(targetHospitalId);
-      setActiveHospitalId(targetHospitalId);
-
-      // Synchronize with WorkspaceContext so sidebar and all components update
-      await switchContext({ hospital_ref_id: targetHospitalId });
-
-      // Refresh appointments and queue for new context
-      await fetchScopedData(targetHospitalId, false);
-    } catch (err: any) {
-      console.error("Context switch denied:", err);
-      alert(err.message || "Failed to switch hospital context. Authorization error.");
-    } finally {
-      setSwitchingContext(false);
-    }
-  };
-
-
-  // Toggle "All My Hospitals" aggregated view
-  const handleToggleAllHospitals = async () => {
-    try {
-      setSwitchingContext(true);
-      setShowHospDropdown(false);
-      const nextAll = !isAllHospitalsView;
-      setIsAllHospitalsView(nextAll);
-      await fetchScopedData(activeHospitalId, nextAll);
-    } catch (err) {
-      console.error("Failed to toggle all hospitals:", err);
-    } finally {
-      setSwitchingContext(false);
     }
   };
 
@@ -215,17 +144,14 @@ export default function DoctorDashboardPage() {
   const inConsultationCount = appointments.filter(a => a.status === "IN_CONSULTATION").length;
   const completedCount = appointments.filter(a => a.status === "COMPLETED").length;
 
-  const currentHospitalObj = authorizedHospitals.find(h => (h.hospital_ref_id || h.hospital_id) === activeHospitalId) || {
-    hospital_name: workspace?.hospital_name || "Kedar Hospital",
-    branch_name: workspace?.branch_name || "Mugalivakkam Main",
-    department_name: doctorProfile?.specialty || "General Medicine & OPD"
-  };
+  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
+  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
 
   return (
     <WorkspaceLayout allowedWorkspaceTypes={["DOCTOR"]}>
       <div className="bg-white min-h-screen text-slate-900 pb-16">
         {/* ========================================================
-            DOCTOR HEADER & HOSPITAL CONTEXT SELECTOR
+            DOCTOR HEADER & LOCKED HOSPITAL BADGE
            ======================================================== */}
         <div className="border-b border-slate-200 bg-white sticky top-0 z-20 px-6 py-4 shadow-xs">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -249,84 +175,20 @@ export default function DoctorDashboardPage() {
               </div>
             </div>
 
-            {/* Hospital Selector (Desktop & Mobile) */}
-            <div className="relative">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Active Practice:</span>
-                <button
-                  type="button"
-                  onClick={() => setShowHospDropdown(!showHospDropdown)}
-                  className="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-300 transition flex items-center gap-3 text-left shadow-xs"
-                >
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">
-                      {isAllHospitalsView ? "All My Authorized Hospitals" : currentHospitalObj.hospital_name}
-                    </p>
-                    <p className="text-[11px] text-slate-500 truncate max-w-[200px]">
-                      {isAllHospitalsView ? "Aggregated Overview" : (currentHospitalObj.branch_name || "Main Branch")}
-                    </p>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400 ml-1" />
-                </button>
-              </div>
-
-              {/* Hospital Switcher Dropdown */}
-              {showHospDropdown && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-50">
-                  <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Authorized Hospital Memberships
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Single Doctor Identity ({user?.username || "dr.kumar"})
-                    </p>
-                  </div>
-
-                  <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
-                    {authorizedHospitals.map((hosp) => {
-                      const isCurrent = hosp.hospital_ref_id === activeHospitalId && !isAllHospitalsView;
-                      return (
-                        <button
-                          key={hosp.hospital_ref_id}
-                          onClick={() => handleSwitchHospital(hosp.hospital_ref_id)}
-                          className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition flex items-center justify-between ${
-                            isCurrent ? "bg-blue-50/70" : ""
-                          }`}
-                        >
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{hosp.hospital_name}</p>
-                            <p className="text-[11px] text-slate-500">{hosp.branch_name || "Main Branch"}</p>
-                            {hosp.department_name && (
-                              <p className="text-[10px] text-blue-600 font-medium">{hosp.department_name}</p>
-                            )}
-                          </div>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                              Active
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="p-2 border-t border-slate-100">
-                    <button
-                      onClick={handleToggleAllHospitals}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
-                        isAllHospitalsView ? "bg-blue-600 text-white" : "hover:bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>All My Hospitals View</span>
-                      </div>
-                      {isAllHospitalsView && <CheckCircle2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
+            {/* Locked Active Hospital Facility Badge */}
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Hospital Facility:</span>
+              <div className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-left shadow-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <div>
+                  <p className="text-xs font-bold text-slate-900">
+                    {currentHospitalName}
+                  </p>
+                  <p className="text-[11px] text-slate-500 truncate max-w-[200px]">
+                    {currentBranchName}
+                  </p>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -343,12 +205,10 @@ export default function DoctorDashboardPage() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  {isAllHospitalsView ? "Comprehensive Multi-Facility Console" : `OP Practice at ${currentHospitalObj.hospital_name}`}
+                  OP Practice at {currentHospitalName}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {isAllHospitalsView
-                    ? `Displaying aggregate data across your ${authorizedHospitals.length} authorized hospital memberships`
-                    : `Scoped exclusively to ${currentHospitalObj.branch_name || "Mugalivakkam Branch"}`}
+                  Scoped exclusively to {currentBranchName}
                 </p>
               </div>
             </div>
@@ -382,9 +242,6 @@ export default function DoctorDashboardPage() {
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Today&apos;s Clinical Overview • {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
               </h3>
-              {switchingContext && (
-                <span className="text-xs text-blue-600 animate-pulse font-medium">Updating facility scope...</span>
-              )}
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -443,33 +300,6 @@ export default function DoctorDashboardPage() {
           </div>
 
           {/* ========================================================
-              ALL-HOSPITALS AGGREGATE BREAKDOWN (IF TOGGLED)
-             ======================================================== */}
-          {isAllHospitalsView && (
-            <div className="bg-slate-50 border border-blue-200 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
-                <Layers className="w-4 h-4 text-blue-600" />
-                <span>Hospital-Wise Patient Allocation</span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {authorizedHospitals.map(h => {
-                  const hCount = appointments.filter(a => a.hospital_id === h.hospital_ref_id).length;
-                  return (
-                    <div key={h.hospital_ref_id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs">
-                      <p className="text-xs font-bold text-slate-900 truncate">{h.hospital_name}</p>
-                      <p className="text-[11px] text-slate-500 truncate">{h.branch_name || "Main Facility"}</p>
-                      <div className="mt-2 flex items-center justify-between text-xs">
-                        <span className="text-slate-500">Appointments:</span>
-                        <span className="font-bold text-blue-700">{hCount} Patients</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
               TODAY'S SCHEDULE & OPD QUEUE
              ======================================================== */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
@@ -497,7 +327,6 @@ export default function DoctorDashboardPage() {
                     <th className="py-3 px-4">Token #</th>
                     <th className="py-3 px-4">Patient Name & OH-ID</th>
                     <th className="py-3 px-4">Status</th>
-                    {isAllHospitalsView && <th className="py-3 px-4">Hospital Facility</th>}
                     <th className="py-3 px-4">Notes</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -505,8 +334,8 @@ export default function DoctorDashboardPage() {
                 <tbody className="divide-y divide-slate-100">
                   {appointments.length === 0 ? (
                     <tr>
-                      <td colSpan={isAllHospitalsView ? 7 : 6} className="py-8 text-center text-slate-400">
-                        No appointments scheduled for this hospital context today.
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        No appointments scheduled for today.
                       </td>
                     </tr>
                   ) : (
@@ -544,11 +373,6 @@ export default function DoctorDashboardPage() {
                               {appt.status}
                             </span>
                           </td>
-                          {isAllHospitalsView && (
-                            <td className="py-3 px-4 font-medium text-slate-700">
-                              {appt.hospital_name || "Kedar Hospital"}
-                            </td>
-                          )}
                           <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
                             {appt.notes || "Orthopedic assessment"}
                           </td>

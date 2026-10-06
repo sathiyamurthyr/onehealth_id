@@ -215,18 +215,23 @@ def update_appointment_status(appointment_id: str, update: AppointmentStatusUpda
 # Mount full enterprise /api/v1 router endpoints
 from backend.app.routers import (
     auth, patients as pt_router, doctors as doc_router, appointments as appt_router,
-    queue, clinical, billing, dashboard, admin, hospital, workspace, me, prescriptions
+    queue, clinical, billing, dashboard, admin, hospital, workspace, me, prescriptions,
+    family, discovery, public_verify, doctor_workspace
 )
 
 api_v1 = FastAPI(title="OneHealth ID API v1")
 api_v1.include_router(auth.router)
 api_v1.include_router(me.router)
+api_v1.include_router(family.router)
+api_v1.include_router(discovery.router)
 api_v1.include_router(workspace.router)
+api_v1.include_router(public_verify.router)
 api_v1.include_router(pt_router.router)
 api_v1.include_router(doc_router.router)
 api_v1.include_router(appt_router.router)
 api_v1.include_router(queue.router)
 api_v1.include_router(clinical.router)
+api_v1.include_router(doctor_workspace.router)
 api_v1.include_router(prescriptions.router)
 api_v1.include_router(billing.router)
 api_v1.include_router(dashboard.router)
@@ -235,9 +240,13 @@ api_v1.include_router(hospital.router)
 
 app.mount("/api/v1", api_v1)
 
-# Also mount workspace and me directly for root convenience
+# Also mount workspace, me, family, discovery, hospital, doctor_workspace and public_verify directly for root convenience
 app.include_router(workspace.router)
 app.include_router(hospital.router)
 app.include_router(me.router)
+app.include_router(family.router)
+app.include_router(discovery.router)
+app.include_router(doctor_workspace.router)
+app.include_router(public_verify.router)
 
 

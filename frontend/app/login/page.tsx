@@ -63,6 +63,18 @@ const DEMO_USERS = [
     dot: "bg-amber-500",
   },
   {
+    label: "Alice Smith",
+    role: "Citizen / Patient",
+    username: "patient",
+    password: "patient123",
+    icon: UserCircle,
+    color: "text-cyan-700",
+    bg: "bg-cyan-50/80",
+    border: "border-cyan-200",
+    ring: "ring-cyan-500",
+    dot: "bg-cyan-500",
+  },
+  {
     label: "Facility Admin",
     role: "Hospital Admin",
     username: "hospadmin",

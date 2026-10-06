@@ -4,11 +4,14 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { FamilySwitcher } from "./FamilySwitcher";
 import { 
   LayoutDashboard, Users, Calendar, ListOrdered, Stethoscope, 
   HeartPulse, Activity, Building2, Hospital, Receipt, QrCode, 
   FileText, Settings, ShieldCheck, UserCheck, Search, UserPlus, 
-  LogOut, ChevronDown, Building, Check
+  LogOut, ChevronDown, Building, Check, Clock, Pill, TestTube,
+  History, CreditCard, Bell, Lock, User, MoreHorizontal, X,
+  ChevronRight
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -30,14 +33,25 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Search,
   UserPlus,
   Building,
+  Clock,
+  Pill,
+  TestTube,
+  History,
+  CreditCard,
+  Bell,
+  Lock,
+  User,
 };
 
 export function DynamicNav() {
   const pathname = usePathname();
   const { workspace, user, navigation, availableHospitals, switchContext, logout } = useWorkspace();
   const [showHospDropdown, setShowHospDropdown] = useState(false);
+  const [showMobileMore, setShowMobileMore] = useState(false);
 
   if (!workspace || !user) return null;
+
+  const isPatient = workspace.workspace_type === "PATIENT";
 
   const roleColors: Record<string, { bg: string; text: string; border: string }> = {
     SUPER_ADMIN: { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-300" },
@@ -51,14 +65,23 @@ export function DynamicNav() {
 
   const badgeStyle = roleColors[workspace.workspace_type] || roleColors.OTHER;
 
+  // Patient mobile bottom 4 primary tabs + More
+  const patientMobileTabs = [
+    { title: "Home", href: "/patient", icon: "LayoutDashboard" },
+    { title: "Visits", href: "/patient/visits", icon: "Clock" },
+    { title: "Appts", href: "/patient/appointments", icon: "Calendar" },
+    { title: "Health", href: "/patient/timeline", icon: "History" },
+    { title: "Profile", href: "/patient/profile", icon: "User" },
+  ];
+
   return (
     <>
       {/* Desktop Sidebar (lg and up) */}
       <aside className="hidden lg:flex w-72 flex-col bg-white border-r border-slate-200 text-slate-700 min-h-screen sticky top-0 z-40 select-none">
         {/* Brand & Organization */}
         <div className="p-5 border-b border-slate-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold shadow-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold shadow-sm shrink-0">
               OH
             </div>
             <div>
@@ -68,12 +91,19 @@ export function DynamicNav() {
                   v1.0
                 </span>
               </div>
-              <p className="text-xs text-slate-500 truncate max-w-[170px]">{workspace.tenant_name || "Kedar Healthcare"}</p>
+              <p className="text-xs text-slate-500 truncate max-w-[170px]">
+                {isPatient ? "Personal Health Workspace" : workspace.tenant_name || "Kedar Healthcare"}
+              </p>
             </div>
           </div>
 
-          {/* Hospital Context Badge for Doctor / Context Switcher for Admin */}
-          {workspace.workspace_type === "DOCTOR" ? (
+          {/* Patient Header: Dynamic Family Healthcare Person Switcher */}
+          {isPatient ? (
+            <div className="mt-3">
+              <FamilySwitcher />
+            </div>
+          ) : workspace.workspace_type === "DOCTOR" ? (
+            /* Hospital Context Badge for Doctor */
             <div className="mt-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5">
               <Hospital className="w-4 h-4 text-blue-600 shrink-0" />
               <div className="truncate">
@@ -82,6 +112,7 @@ export function DynamicNav() {
               </div>
             </div>
           ) : (
+            /* Context Switcher for Admin / Staff */
             <div className="relative mt-2">
               <button
                 onClick={() => setShowHospDropdown(!showHospDropdown)}
@@ -99,7 +130,7 @@ export function DynamicNav() {
                 )}
               </button>
 
-              {/* Dropdown for Multi-Hospital users */}
+              {/* Dropdown for Multi-Hospital Admin users */}
               {showHospDropdown && availableHospitals.length > 1 && (
                 <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50">
                   <p className="text-[10px] font-semibold text-slate-400 px-3 py-1 uppercase tracking-wider">
@@ -134,11 +165,10 @@ export function DynamicNav() {
           )}
         </div>
 
-
         {/* Dynamic Navigation Items from Backend */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           <p className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            {workspace.role_name} Workspace
+            {isPatient ? "My Health Journey" : `${workspace.role_name} Workspace`}
           </p>
           {navigation.map((item) => {
             const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
@@ -156,7 +186,9 @@ export function DynamicNav() {
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="truncate">{item.title}</span>
                 {item.badge && (
-                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full border ${
+                    isActive ? "bg-white/20 text-white border-white/30" : "bg-slate-100 text-slate-600 border-slate-200"
+                  }`}>
                     {item.badge}
                   </span>
                 )}
@@ -179,6 +211,8 @@ export function DynamicNav() {
             <button
               onClick={logout}
               title="Sign Out"
+              aria-label="Sign Out"
+              id="btn-logout"
               className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition"
             >
               <LogOut className="w-4 h-4" />
@@ -188,24 +222,120 @@ export function DynamicNav() {
       </aside>
 
       {/* Mobile Sticky Bottom Navigation (< lg) */}
-      <nav aria-label="Mobile Navigation" className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 py-1.5 px-3 z-50 flex items-center justify-around shadow-lg safe-area-pb">
-        {navigation.slice(0, 5).map((item) => {
-          const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
+      <nav aria-label="Mobile Navigation" className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 py-1 px-2 z-50 flex items-center justify-around shadow-xl safe-area-pb">
+        {isPatient ? (
+          <>
+            {patientMobileTabs.slice(0, 4).map((tab) => {
+              const Icon = ICON_MAP[tab.icon] || LayoutDashboard;
+              const isActive = pathname === tab.href;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1 rounded-xl transition ${
+                    isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Icon className="w-5 h-5 mb-0.5" />
+                  <span className="text-[10px] truncate max-w-[64px]">{tab.title}</span>
+                </Link>
+              );
+            })}
+            <button
+              onClick={() => setShowMobileMore(!showMobileMore)}
               className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1 rounded-xl transition ${
-                isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+                showMobileMore ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
               }`}
             >
-              <Icon className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px] truncate max-w-[64px]">{item.title}</span>
-            </Link>
-          );
-        })}
+              <MoreHorizontal className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">More</span>
+            </button>
+          </>
+        ) : (
+          navigation.slice(0, 5).map((item) => {
+            const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1 rounded-xl transition ${
+                  isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Icon className="w-5 h-5 mb-0.5" />
+                <span className="text-[10px] truncate max-w-[64px]">{item.title}</span>
+              </Link>
+            );
+          })
+        )}
       </nav>
+
+      {/* Patient Mobile "More" Drawer / Bottom Sheet */}
+      {isPatient && showMobileMore && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex flex-col justify-end">
+          <div className="bg-white rounded-t-3xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200">
+            {/* Sheet Header */}
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+                  OH
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Personal Health Menu</h3>
+                  <p className="text-[10px] text-slate-500">{user.name || "Patient Portal"}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMobileMore(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* All 16 Navigation Options */}
+            <div className="overflow-y-auto p-3 grid grid-cols-2 gap-2">
+              {navigation.map((item) => {
+                const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setShowMobileMore(false)}
+                    className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-semibold transition ${
+                      isActive
+                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="truncate">{item.title}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="text-[10px] text-slate-500 font-mono">
+                OH-ID: <strong className="text-slate-800">{user.username}</strong>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMobileMore(false);
+                  logout();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100 transition"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

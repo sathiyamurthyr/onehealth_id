@@ -23,6 +23,16 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("oh_access_token");
+      localStorage.removeItem("oh_workspace");
+      localStorage.removeItem("oh_user");
+      if (!endpoint.includes("/auth/login") && !window.location.pathname.startsWith("/login")) {
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.href = "/login";
+      }
+    }
+
     let errorDetail = "API Error";
     try {
       const err = await response.json();
@@ -35,3 +45,4 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
 
   return response.json();
 }
+

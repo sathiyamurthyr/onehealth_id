@@ -31,17 +31,14 @@ import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import { Button } from "@/components/ui/Card";
 import { LoadingState, EmptyState } from "@/components/ui/FeedbackStates";
-import { AuthorizedHospitalMembership } from "@/lib/api/me";
 
 export default function DoctorQueuePage() {
   const router = useRouter();
-  const { workspace, user, switchContext } = useWorkspace();
+  const { workspace, user } = useWorkspace();
 
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
-  const [authorizedHospitals, setAuthorizedHospitals] = useState<AuthorizedHospitalMembership[]>([]);
-  const [showHospDropdown, setShowHospDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -52,11 +49,10 @@ export default function DoctorQueuePage() {
     if (!isSilent) setRefreshing(true);
     setError("");
     try {
-      const [docMe, q, appts, hospList] = await Promise.all([
+      const [docMe, q, appts] = await Promise.all([
         api.doctors.getMe().catch(() => null),
         api.doctors.getMyQueue().catch(() => []),
-        api.doctors.getMyAppointments(false).catch(() => []),
-        api.me.getHospitals().catch(() => [])
+        api.doctors.getMyAppointments(false).catch(() => [])
       ]);
 
       if (docMe) {
@@ -64,7 +60,6 @@ export default function DoctorQueuePage() {
       }
       setQueue(q || []);
       setAppointments(appts || []);
-      setAuthorizedHospitals(hospList || []);
     } catch (err: any) {
       console.error("Failed to load doctor queue:", err);
       if (!isSilent) setError(err.message || "Failed to load live consultation queue");
@@ -121,18 +116,6 @@ export default function DoctorQueuePage() {
     }
   };
 
-  // Hospital context switch
-  const handleSwitchHospital = async (targetHospitalId: string) => {
-    setShowHospDropdown(false);
-    try {
-      await api.me.switchHospitalContext(targetHospitalId);
-      await switchContext({ hospital_ref_id: targetHospitalId });
-      await loadDoctorQueue(false);
-    } catch (err: any) {
-      alert(err.message || "Failed to switch hospital context");
-    }
-  };
-
   // Filter queues by status
   const waitingEntries = queue.filter(
     (q) => q.status === "WAITING" || q.status === "CALLING" || q.status === "ON_HOLD"
@@ -146,12 +129,8 @@ export default function DoctorQueuePage() {
   const doctorSpecialty = doctorProfile?.specialty || "General Medicine & Diabetology";
   const doctorReg = doctorProfile?.registration_number || "TN-MCI-2026-REG";
 
-  const activeHospital = authorizedHospitals.find(
-    (h) => (h.hospital_ref_id || h.hospital_id) === workspace?.hospital_ref_id
-  ) || {
-    hospital_name: workspace?.hospital_name || "Kedar Hospital",
-    branch_name: workspace?.branch_name || "Mugalivakkam Main",
-  };
+  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
+  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
 
   return (
     <WorkspaceLayout allowedWorkspaceTypes={["DOCTOR"]}>
@@ -183,49 +162,14 @@ export default function DoctorQueuePage() {
               </div>
             </div>
 
-            {/* Active Facility Context & Actions */}
+            {/* Locked Active Hospital Facility Badge */}
             <div className="flex items-center gap-3 self-end md:self-auto">
-              <div className="relative">
-                <button
-                  onClick={() => setShowHospDropdown(!showHospDropdown)}
-                  className="px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center gap-2.5 transition text-xs shadow-xs"
-                >
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <div>
-                    <p className="font-bold text-slate-900">{activeHospital.hospital_name}</p>
-                    <p className="text-[10px] text-slate-500">{activeHospital.branch_name || "Main Facility"}</p>
-                  </div>
-                  {authorizedHospitals.length > 1 && (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
-                  )}
-                </button>
-
-                {/* Facility Context Switcher (Only if multi-facility) */}
-                {showHospDropdown && authorizedHospitals.length > 1 && (
-                  <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 z-50">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3.5 py-1.5">
-                      Switch Hospital Practice
-                    </p>
-                    {authorizedHospitals.map((hosp) => {
-                      const isCur = (hosp.hospital_ref_id || hosp.hospital_id) === workspace?.hospital_ref_id;
-                      return (
-                        <button
-                          key={hosp.hospital_ref_id || hosp.hospital_id}
-                          onClick={() => handleSwitchHospital(hosp.hospital_ref_id || hosp.hospital_id)}
-                          className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between hover:bg-slate-50 transition ${
-                            isCur ? "bg-blue-50/70 text-blue-700 font-semibold" : "text-slate-700"
-                          }`}
-                        >
-                          <div>
-                            <p className="font-medium text-slate-900">{hosp.hospital_name}</p>
-                            <p className="text-[10px] text-slate-500">{hosp.branch_name || "Main Branch"}</p>
-                          </div>
-                          {isCur && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+              <div className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-left flex items-center gap-2.5 text-xs shadow-xs">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <div>
+                  <p className="font-bold text-slate-900">{currentHospitalName}</p>
+                  <p className="text-[10px] text-slate-500">{currentBranchName}</p>
+                </div>
               </div>
 
               <Button
@@ -258,7 +202,7 @@ export default function DoctorQueuePage() {
                 </h2>
                 <p className="text-xs text-slate-500">
                   Live patient queue scoped strictly to your outpatient roster at{" "}
-                  <strong>{activeHospital.hospital_name}</strong> ({activeHospital.branch_name || "Mugalivakkam Main"})
+                  <strong>{currentHospitalName}</strong> ({currentBranchName})
                 </p>
               </div>
             </div>

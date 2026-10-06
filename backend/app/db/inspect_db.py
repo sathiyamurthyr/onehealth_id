@@ -1,8 +1,8 @@
 from backend.app.database.session import get_readonly_cursor
 import json
 
-tables = ["users", "roles", "permissions", "role_permissions", "user_roles"]
-views = ["vw_user_auth", "vw_user_profiles"]
+tables = ["family_relationships"]
+views = ["vw_family_members"]
 
 with get_readonly_cursor() as cur:
     for t in tables:

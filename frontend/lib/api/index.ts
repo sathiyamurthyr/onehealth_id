@@ -9,7 +9,13 @@ export * from "./dashboard";
 export * from "./hospital";
 export * from "./workspace";
 export * from "./prescriptions";
+export * from "./lab-reports";
+export * from "./documents";
 export * from "./me";
+export * from "./patient";
+export * from "./discovery";
+export * from "./doctor-workspace";
+export * from "./compliance";
 
 import { authApi } from "./auth";
 import { patientsApi } from "./patients";
@@ -21,13 +27,23 @@ import { dashboardApi } from "./dashboard";
 import { hospitalApi } from "./hospital";
 import { workspaceApi } from "./workspace";
 import { prescriptionsApi } from "./prescriptions";
+import { labReportsAPI } from "./lab-reports";
+import { medicalDocumentsAPI } from "./documents";
 import { meApi } from "./me";
+import { patientApi } from "./patient";
+import { discoveryApi } from "./discovery";
+import { doctorWorkspaceApi } from "./doctor-workspace";
+import { complianceApi } from "./compliance";
 import { fetchJSON } from "./client";
 
 export const api = {
   auth: authApi,
   me: meApi,
+  patient: patientApi,
+  discovery: discoveryApi,
   workspace: workspaceApi,
+  doctorWorkspace: doctorWorkspaceApi,
+  compliance: complianceApi,
   patients: patientsApi,
   oneHealthId: oneHealthIdApi,
   appointments: appointmentsApi,
@@ -36,6 +52,8 @@ export const api = {
   dashboard: dashboardApi,
   hospital: hospitalApi,
   prescriptions: prescriptionsApi,
+  labReports: labReportsAPI,
+  medicalDocuments: medicalDocumentsAPI,
   doctors: {
     list: (hospitalId?: string, departmentId?: string) => {
       const q = new URLSearchParams();

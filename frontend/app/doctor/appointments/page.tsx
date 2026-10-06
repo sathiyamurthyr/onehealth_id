@@ -17,24 +17,20 @@ import {
 import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
-import { AuthorizedHospitalMembership } from "@/lib/api/me";
-
 export default function DoctorAppointmentsPage() {
   const { workspace } = useWorkspace();
   const [appointments, setAppointments] = useState<any[]>([]);
-  const [hospitals, setHospitals] = useState<AuthorizedHospitalMembership[]>([]);
-  const [selectedHospitalFilter, setSelectedHospitalFilter] = useState<string>("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
+
+  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
+  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
 
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
-        const hospList = await api.me.getHospitals().catch(() => []);
-        setHospitals(hospList || []);
-
-        const appts = await api.doctors.getMyAppointments(true).catch(() => []);
+        const appts = await api.doctors.getMyAppointments(false).catch(() => []);
         setAppointments(appts || []);
       } catch (err) {
         console.error("Failed to load appointments:", err);
@@ -43,12 +39,9 @@ export default function DoctorAppointmentsPage() {
       }
     }
     loadData();
-  }, []);
+  }, [workspace?.hospital_ref_id]);
 
   const filtered = appointments.filter((a) => {
-    if (selectedHospitalFilter && a.hospital_id !== selectedHospitalFilter) {
-      return false;
-    }
     if (selectedStatusFilter && a.status !== selectedStatusFilter) {
       return false;
     }
@@ -71,12 +64,17 @@ export default function DoctorAppointmentsPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Outpatient Consultation Appointments</h1>
                 <p className="text-xs text-slate-500">
-                  Doctor-scoped appointments across authorized hospital facilities
+                  Doctor-scoped appointments at {currentHospitalName} ({currentBranchName})
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-left flex items-center gap-2 text-xs">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="font-semibold text-slate-800">{currentHospitalName}</span>
+              </div>
+
               <Link
                 href="/doctor/prescriptions/new"
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition"
@@ -94,21 +92,8 @@ export default function DoctorAppointmentsPage() {
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                 <Filter className="w-4 h-4 text-blue-600" />
-                <span>Filter By Facility:</span>
+                <span>Filter By Status:</span>
               </div>
-              <select
-                value={selectedHospitalFilter}
-                onChange={(e) => setSelectedHospitalFilter(e.target.value)}
-                className="text-xs bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Authorized Hospitals</option>
-                {hospitals.map((h) => (
-                  <option key={h.hospital_ref_id} value={h.hospital_ref_id}>
-                    {h.hospital_name} ({h.branch_name || "Main"})
-                  </option>
-                ))}
-              </select>
-
               <select
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value)}
@@ -135,7 +120,6 @@ export default function DoctorAppointmentsPage() {
                   <th className="py-3 px-4">Time Slot</th>
                   <th className="py-3 px-4">Token</th>
                   <th className="py-3 px-4">Patient Name & OH-ID</th>
-                  <th className="py-3 px-4">Hospital Facility Context</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Clinical Indication</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -144,13 +128,13 @@ export default function DoctorAppointmentsPage() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
                       Loading appointments...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
                       No appointments matching the selected filters.
                     </td>
                   </tr>
@@ -168,10 +152,11 @@ export default function DoctorAppointmentsPage() {
                       <td className="py-3.5 px-4">
                         <p className="font-bold text-slate-900">{appt.patient_name}</p>
                         <p className="text-[11px] font-mono text-slate-400">{appt.onehealth_id || appt.patient_id}</p>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <p className="font-semibold text-slate-800">{appt.hospital_name || "Kedar Hospital"}</p>
-                        <p className="text-[11px] text-slate-500">{appt.branch_name || "Main Branch"}</p>
+                        {appt.booked_by_name && appt.relationship_context === "FAMILY" && (
+                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-medium">
+                            Booked by: {appt.booked_by_name} ({appt.booked_by_relationship || "Family"})
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">

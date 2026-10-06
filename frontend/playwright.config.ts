@@ -7,7 +7,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3001",
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || "http://localhost:3050",
     trace: "on-first-retry",
     video: "on",
     screenshot: "only-on-failure",
