@@ -23,8 +23,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, NurseRegisterPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function NursesPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [nurses, setNurses] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,20 +49,20 @@ export default function NursesPage() {
     department_id: "",
     ward: "Ward 3B - Step Down ICU",
     shift: "MORNING",
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [nurseList, deptList] = await Promise.all([
-        api.hospital.getNurses("hosp-kedar").catch(() => []),
+        api.hospital.getNurses(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
       ]);
       setNurses(nurseList || []);
       setDepartments(deptList || []);
       if (deptList && deptList.length > 0 && !formData.department_id) {
-        setFormData((prev) => ({ ...prev, department_id: deptList[0].id }));
+        setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId, department_id: deptList[0].id }));
       }
     } catch (err: any) {
       console.error("Failed to load nursing data:", err);
@@ -70,14 +73,14 @@ export default function NursesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await api.hospital.registerNurse(formData);
+      await api.hospital.registerNurse({ ...formData, hospital_id: activeHospitalId });
       setSuccessMessage(`Nurse ${formData.name} registered and assigned successfully!`);
       setShowRegisterModal(false);
       setFormData({
@@ -89,7 +92,7 @@ export default function NursesPage() {
         department_id: departments[0]?.id || "",
         ward: "Ward 3B - Step Down ICU",
         shift: "MORNING",
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -412,7 +415,7 @@ export default function NursesPage() {
                     <input
                       type="email"
                       required
-                      placeholder="deepa.nurse@kedarhospital.in"
+                      placeholder="nurse@hospital.org"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"

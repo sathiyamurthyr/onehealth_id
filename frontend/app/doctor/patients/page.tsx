@@ -66,7 +66,7 @@ export default function DoctorPatientsPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Assigned Patient Roster</h1>
                 <p className="text-xs text-slate-500">
-                  Current Hospital: <span className="font-semibold text-slate-800">{workspace?.hospital_name || "Kedar Hospital"}</span> ({workspace?.branch_name || "Mugalivakkam"})
+                  Current Hospital: <span className="font-semibold text-slate-800">{workspace?.hospital_name || "Healthcare Facility"}</span> ({workspace?.branch_name || "Main Branch"})
                 </p>
               </div>
             </div>
@@ -140,7 +140,7 @@ export default function DoctorPatientsPage() {
                         {p.phone || "+91 98400 12345"}
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">
-                        <span className="font-semibold text-slate-800">{p.hospital_name || workspace?.hospital_name || "Kedar Hospital"}</span>
+                        <span className="font-semibold text-slate-800">{p.hospital_name || workspace?.hospital_name || "Healthcare Facility"}</span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">

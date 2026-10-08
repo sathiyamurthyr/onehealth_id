@@ -160,10 +160,10 @@ export const Sidebar: React.FC<{ className?: string }> = ({ className }) => {
         <div className="rounded-xl bg-slate-50 p-3 border border-slate-200">
           <div className="flex items-center gap-2 text-slate-800 font-semibold mb-1 truncate">
             <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-            <span className="truncate">{workspace?.hospital_name || "Kedar Hospital"}</span>
+            <span className="truncate">{workspace?.hospital_name || "Healthcare Facility"}</span>
           </div>
           <p className="text-[11px] text-slate-500 truncate">
-            {workspace?.branch_name || "Mugalivakkam Main"}<br />
+            {workspace?.branch_name || "Main Branch"}<br />
             <span className="text-[10px] text-slate-400">
               User: {user?.name || user?.username || "Authenticated User"}
             </span>

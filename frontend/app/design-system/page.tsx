@@ -337,8 +337,8 @@ export default function DesignSystemPage() {
                   { level: "Heading 2 (24px/32px)", className: "text-lg sm:text-xl font-bold text-slate-900", sample: "Clinical Vitals Telemetry", token: "TYPOGRAPHY.scale.h2" },
                   { level: "Heading 3 (20px/28px)", className: "text-base font-bold text-slate-900", sample: "Assigned Specialist Roster", token: "TYPOGRAPHY.scale.h3" },
                   { level: "Body Text (14px/20px)", className: "text-sm text-slate-700", sample: "Patient presents with acute chest discomfort radiating to left arm.", token: "TYPOGRAPHY.scale.body" },
-                  { level: "Body Small (12px/16px)", className: "text-xs text-slate-500", sample: "Scheduled follow-up on 08-Oct-2026 at Mugalivakkam Main Branch", token: "TYPOGRAPHY.scale.bodySmall" },
-                  { level: "Identifier / Monospace", className: "font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block", sample: "OHID-KEDAR-2026-09142A", token: "TYPOGRAPHY.scale.identifier" },
+                  { level: "Body Small (12px/16px)", className: "text-xs text-slate-500", sample: "Scheduled follow-up on 08-Oct-2026 at Main Branch", token: "TYPOGRAPHY.scale.bodySmall" },
+                  { level: "Identifier / Monospace", className: "font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block", sample: "OHID-IND-2026-09142A", token: "TYPOGRAPHY.scale.identifier" },
                 ].map((t) => (
                   <div key={t.level} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="w-48 shrink-0">
@@ -709,7 +709,7 @@ export default function DesignSystemPage() {
                   </label>
                   <input
                     type="text"
-                    defaultValue="OHID-KEDAR-2026-07235E"
+                    defaultValue="OHID-IND-2026-07235E"
                     className="w-full px-3.5 py-2 bg-white border border-blue-600 ring-2 ring-blue-500/20 rounded-xl text-xs text-slate-900 focus:outline-none min-h-[42px] font-mono"
                   />
                   <span className="text-[11px] text-blue-600 mt-1 block font-medium">Active focus glow</span>

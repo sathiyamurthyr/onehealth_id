@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ShieldCheck, Hospital, Stethoscope, Calendar, Clock,
   AlertCircle, CheckCircle2, QrCode, Lock, ExternalLink,
@@ -48,9 +49,20 @@ export default function PublicPrescriptionVerificationPage({ params }: PageProps
       <div className="max-w-xl mx-auto w-full space-y-6 pt-6 md:pt-12">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-bold uppercase tracking-wider">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>OneHealth ID (OH-ID) National Registry</span>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-center p-1 overflow-hidden">
+              <Image
+                src="/images/oh-id-logo.png"
+                alt="One Health ID"
+                width={36}
+                height={36}
+                className="object-contain"
+              />
+            </div>
+            <div className="text-left">
+              <span className="font-bold text-sm text-slate-900 block leading-tight">ONE HEALTH ID (OH-ID)</span>
+              <span className="text-[10px] text-blue-600 font-semibold block">Powered by Sathus Technology Pvt Ltd</span>
+            </div>
           </div>
           <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
             Prescription Verification Portal
@@ -204,7 +216,7 @@ export default function PublicPrescriptionVerificationPage({ params }: PageProps
 
         {/* Footer */}
         <div className="text-center text-xs text-slate-400 space-y-1">
-          <p>© 2026 OneHealth ID (OH-ID) · National Healthcare Operating System</p>
+          <p>© 2026 OneHealth ID (OH-ID) · <strong className="text-slate-600">Powered by Sathus Technology Pvt Ltd</strong></p>
           <p className="text-[11px]">Authorized digital healthcare verification endpoint</p>
         </div>
       </div>

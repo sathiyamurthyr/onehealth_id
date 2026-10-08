@@ -129,8 +129,8 @@ export default function DoctorQueuePage() {
   const doctorSpecialty = doctorProfile?.specialty || "General Medicine & Diabetology";
   const doctorReg = doctorProfile?.registration_number || "TN-MCI-2026-REG";
 
-  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
-  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
+  const currentHospitalName = workspace?.hospital_name || "Healthcare Facility";
+  const currentBranchName = workspace?.branch_name || "Main Branch";
 
   return (
     <WorkspaceLayout allowedWorkspaceTypes={["DOCTOR"]}>

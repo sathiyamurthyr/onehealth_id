@@ -23,8 +23,8 @@ export default function DoctorAppointmentsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
-  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
-  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
+  const currentHospitalName = workspace?.hospital_name || "Healthcare Facility";
+  const currentBranchName = workspace?.branch_name || "Main Branch";
 
   useEffect(() => {
     async function loadData() {

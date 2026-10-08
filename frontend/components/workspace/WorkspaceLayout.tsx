@@ -51,6 +51,26 @@ export function WorkspaceLayout({
         )}
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
+          {/* Active Impersonation Warning Banner */}
+          {typeof window !== "undefined" && localStorage.getItem("oh_impersonation") && (
+            <div className="mb-4 p-3.5 rounded-2xl bg-amber-500 text-white shadow-md flex items-center justify-between animate-pulse">
+              <div className="flex items-center gap-2.5">
+                <span className="px-2 py-0.5 rounded bg-black/20 font-black text-xs">AUDITED SUPPORT SESSION</span>
+                <p className="text-xs font-semibold">
+                  Acting on behalf of Hospital Administration. Direct access to raw patient clinical EHR records is strictly restricted.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  localStorage.removeItem("oh_impersonation");
+                  window.location.href = "/super-admin/security";
+                }}
+                className="px-3 py-1 bg-slate-900 text-white hover:bg-black rounded-xl text-xs font-bold transition shrink-0"
+              >
+                Exit Session
+              </button>
+            </div>
+          )}
           <FamilyContextBanner />
           {children}
         </main>

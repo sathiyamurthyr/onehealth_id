@@ -83,7 +83,7 @@ export function ConsultationSummaryPrintView({
                 OH
               </div>
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                {summary.hospital_name || "Kedar Hospital & Medical Research Institute"}
+                {summary.hospital_name || "Healthcare & Medical Research Facility"}
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-1">

@@ -292,7 +292,7 @@ function NewPrescriptionContent() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-blue-600">Prescription Desk</span>
                   <span className="text-slate-300">•</span>
-                  <span className="text-xs text-slate-500 font-medium">{workspace?.hospital_name || "Kedar Hospital"}</span>
+                  <span className="text-xs text-slate-500 font-medium">{workspace?.hospital_name || "Healthcare Facility"}</span>
                 </div>
                 <h1 className="text-xl font-bold text-slate-900">
                   {currentStep === 1 && "Create New Prescription"}
@@ -390,8 +390,8 @@ function NewPrescriptionContent() {
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
                       Hospital Facility Context
                     </label>
-                    <p className="text-sm font-bold text-slate-900 truncate">{workspace?.hospital_name || "Kedar Hospital"}</p>
-                    <p className="text-xs text-slate-500 truncate">{workspace?.branch_name || "Mugalivakkam Main"}</p>
+                    <p className="text-sm font-bold text-slate-900 truncate">{workspace?.hospital_name || "Healthcare Facility"}</p>
+                    <p className="text-xs text-slate-500 truncate">{workspace?.branch_name || "Main Campus"}</p>
                   </div>
                 </div>
               </div>
@@ -741,8 +741,8 @@ function NewPrescriptionContent() {
                         Clinical Rx
                       </span>
                     </div>
-                    <h2 className="text-base font-bold text-slate-800 mt-1">{workspace?.hospital_name || "Kedar Hospital"}</h2>
-                    <p className="text-xs text-slate-500">{workspace?.branch_name || "Mugalivakkam Main Branch, Chennai"}</p>
+                    <h2 className="text-base font-bold text-slate-800 mt-1">{workspace?.hospital_name || "Healthcare Facility"}</h2>
+                    <p className="text-xs text-slate-500">{workspace?.branch_name || "Main Branch"}</p>
                   </div>
 
                   <div className="text-right">

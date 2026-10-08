@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 from backend.app.schemas.models import (
     ConsultationCreate,
     ConsultationResponse,
@@ -176,6 +177,47 @@ def list_pharmacy_dispensary(
 # FHIR MedicationRequest Endpoints
 # ------------------------------------------------------------------------------
 
+@router.post("/prescriptions", status_code=status.HTTP_201_CREATED)
+def create_standalone_prescription_endpoint(
+    payload: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_any_permission("prescription.create", "clinical.write", "system.manage"))
+):
+    """Create a digital prescription directly."""
+    patient_id = payload.get("patient_id")
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="patient_id is required")
+    
+    patient = sp_repository.get_patient_by_id(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    user_perms = user.get("permissions") or []
+    if "system.manage" not in user_perms and "organization.read" not in user_perms:
+        validate_hospital_tenant_scope(user, patient.get("hospital_id"))
+
+    hospital_id = user.get("hospital_ref_id") or patient.get("hospital_id") or "hosp-kedar"
+    doctor_id = payload.get("doctor_id") or "doc-k-01"
+    diagnosis = payload.get("diagnosis") or "General Clinical Evaluation"
+    doctor_notes = payload.get("instructions") or payload.get("doctor_notes")
+    items = payload.get("items") or []
+    actor_id = user.get("username") or "doctor"
+
+    try:
+        rx = sp_repository.create_standalone_prescription(
+            patient_id=patient_id,
+            doctor_id=doctor_id,
+            hospital_id=hospital_id,
+            diagnosis=diagnosis,
+            doctor_notes=doctor_notes,
+            status=payload.get("status", "FINALIZED"),
+            items=items,
+            actor_id=actor_id
+        )
+        return rx
+    except Exception as e:
+        logger.error("Failed to create prescription: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create prescription: {str(e)}")
+
 @router.get("/prescriptions", response_model=List[Dict[str, Any]])
 def list_prescriptions(
     patient_id: Optional[str] = Query(None),
@@ -337,4 +379,163 @@ def update_doctor_schedule_endpoint(
     except Exception as e:
         logger.error("Failed to update doctor schedule: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update doctor schedule")
+
+# ------------------------------------------------------------------------------
+# Phase 1: Record Immutability, Finalization & State Machine Endpoints
+# ------------------------------------------------------------------------------
+
+class ConsultationFinalizeRequest(BaseModel):
+    digital_signature: Optional[str] = None
+    notes: Optional[str] = None
+
+class PrescriptionSupersedePayload(BaseModel):
+    new_items: List[Dict[str, Any]]
+    instructions: Optional[str] = None
+    reason: str = "Clinical adjustment or dosage modification"
+
+class LabReportFinalizePayload(BaseModel):
+    pathologist_name: Optional[str] = "Dr. Diagnostic Pathologist"
+
+class LabReportCorrectPayload(BaseModel):
+    corrected_data: Dict[str, Any]
+    reason: str = "Diagnostic re-evaluation"
+    pathologist_name: Optional[str] = "Dr. Diagnostic Pathologist"
+
+@router.post("/consultations/{consultation_id}/finalize")
+def finalize_consultation_endpoint(
+    consultation_id: str,
+    payload: Optional[ConsultationFinalizeRequest] = None,
+    user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "consultation.update", "clinical.write", "system.manage"))
+):
+    """
+    Locks consultation into immutable FINALIZED state with digital signature.
+    Prevents silent mutation of finalized clinical records.
+    """
+    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    try:
+        finalized = sp_repository.finalize_consultation(
+            consultation_id=consultation_id,
+            doctor_id=doctor_id,
+            actor_id=user.get("username", "doctor")
+        )
+        log_security_event(
+            "CONSULTATION_FINALIZED",
+            actor_id=user.get("username"),
+            resource=f"consultation:{consultation_id}",
+            status="SUCCESS"
+        )
+        return {"success": True, "message": "Consultation successfully finalized and locked.", "consultation": finalized}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed to finalize consultation %s: %s", consultation_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to finalize consultation.")
+
+@router.post("/prescriptions/{prescription_id}/finalize")
+def finalize_prescription_endpoint(
+    prescription_id: str,
+    user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "clinical.write", "prescription.sign", "system.manage"))
+):
+    """Locks digital prescription into immutable FINALIZED status."""
+    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    try:
+        finalized = sp_repository.finalize_prescription(
+            prescription_id=prescription_id,
+            doctor_id=doctor_id,
+            actor_id=user.get("username", "doctor")
+        )
+        log_security_event(
+            "PRESCRIPTION_FINALIZED",
+            actor_id=user.get("username"),
+            resource=f"prescription:{prescription_id}",
+            status="SUCCESS"
+        )
+        return {"success": True, "message": "Digital prescription finalized successfully.", "prescription": finalized}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed to finalize prescription %s: %s", prescription_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to finalize prescription.")
+
+@router.post("/prescriptions/{prescription_id}/supersede")
+def supersede_prescription_endpoint(
+    prescription_id: str,
+    payload: PrescriptionSupersedePayload,
+    user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "clinical.write", "system.manage"))
+):
+    """
+    Prescription Correction Workflow:
+    Marks current prescription as SUPERSEDED and creates an audit-linked new version.
+    """
+    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    try:
+        new_rx = sp_repository.supersede_prescription(
+            old_prescription_id=prescription_id,
+            new_items=payload.new_items,
+            instructions=payload.instructions,
+            doctor_id=doctor_id,
+            reason=payload.reason,
+            actor_id=user.get("username", "doctor")
+        )
+        log_security_event(
+            "PRESCRIPTION_SUPERSEDED",
+            actor_id=user.get("username"),
+            resource=f"prescription:{prescription_id}",
+            status="SUCCESS",
+            details={"superseded_by": new_rx.get("id"), "reason": payload.reason}
+        )
+        return {"success": True, "message": "Prescription successfully superseded with new active version.", "prescription": new_rx}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed to supersede prescription %s: %s", prescription_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to supersede prescription.")
+
+@router.post("/investigations/{order_id}/cancel")
+def cancel_investigation_order_endpoint(
+    order_id: str,
+    reason: Optional[str] = Query("Order cancelled by clinician"),
+    user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "lab.order", "clinical.write", "system.manage"))
+):
+    """Cancels a pending investigation order with audit reason."""
+    try:
+        with sp_repository.get_db_cursor() if hasattr(sp_repository, 'get_db_cursor') else get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.lab_orders SET
+                    status = 'CANCELLED',
+                    doctor_notes = %s
+                WHERE id = %s
+                RETURNING *;
+            """, (f"Cancelled: {reason}", order_id))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Investigation order not found.")
+        return {"success": True, "message": "Investigation order cancelled.", "order": dict(row)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to cancel investigation order %s: %s", order_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to cancel investigation order.")
+
+@router.post("/lab/reports/{report_id}/finalize")
+def finalize_lab_report_endpoint(
+    report_id: str,
+    payload: Optional[LabReportFinalizePayload] = None,
+    user: Dict[str, Any] = Depends(require_any_permission("lab.write", "lab.verify", "clinical.write", "system.manage"))
+):
+    """Finalizes a digital diagnostic lab report into immutable FINAL status."""
+    p_name = payload.pathologist_name if payload else "Dr. Diagnostic Pathologist"
+    try:
+        finalized = sp_repository.finalize_lab_report(
+            report_id=report_id,
+            pathologist_name=p_name,
+            actor_id=user.get("username", "lab_staff")
+        )
+        return {"success": True, "message": "Diagnostic lab report finalized.", "report": finalized}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed to finalize lab report %s: %s", report_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to finalize lab report.")
+
 

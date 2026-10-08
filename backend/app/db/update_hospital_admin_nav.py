@@ -13,6 +13,7 @@ def update_hospital_admin_navigation():
     logger.info("Updating Hospital Admin Navigation Menu...")
     nav_items = [
         {"title": "Hospital Dashboard", "href": "/hospital", "icon": "LayoutDashboard", "section": "Overview"},
+        {"title": "Executive Analytics", "href": "/hospital/executive-dashboard", "icon": "Activity", "section": "Overview"},
         
         # Administration → Users & Access
         {"title": "All Users", "href": "/hospital/users", "icon": "Users", "section": "Users & Access"},
@@ -37,9 +38,12 @@ def update_hospital_admin_navigation():
         {"title": "OPD Counters", "href": "/hospital/counters", "icon": "ListOrdered", "section": "Facility & Counters"},
         {"title": "Roster & Shifts", "href": "/hospital/roster", "icon": "Clock", "section": "Facility & Counters"},
         
-        # Financial & Governance
-        {"title": "Billing & Invoices", "href": "/billing", "icon": "Receipt", "section": "Finance"},
-        {"title": "Services & Tariffs", "href": "/hospital/services", "icon": "CreditCard", "section": "Finance"},
+        # Financial & Operations (Phase 5)
+        {"title": "Patient Invoices & Billing", "href": "/hospital/billing", "icon": "Receipt", "section": "Financial Operations"},
+        {"title": "Services & Price Schedules", "href": "/hospital/billing/services", "icon": "Tag", "section": "Financial Operations"},
+        {"title": "Insurance & Preauths", "href": "/hospital/insurance", "icon": "ShieldCheck", "section": "Financial Operations"},
+        
+        # Governance & Compliance
         {"title": "Facilities & Branches", "href": "/hospital/facilities", "icon": "Building2", "section": "Governance & Compliance"},
         {"title": "Compliance Records", "href": "/hospital/compliance", "icon": "ShieldCheck", "section": "Governance & Compliance"},
         {"title": "Hospital Settings", "href": "/hospital/settings", "icon": "Settings", "section": "Governance & Compliance"}

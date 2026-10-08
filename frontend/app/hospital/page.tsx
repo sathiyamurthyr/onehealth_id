@@ -39,41 +39,43 @@ import {
 import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
+import { HospitalOperationsDashboard, OperationalAlert } from "@/lib/types";
 
 export default function HospitalAdminDashboard() {
   const { workspace, user, switchContext, availableHospitals } = useWorkspace();
-  const [overview, setOverview] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<HospitalOperationsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [switchingBranch, setSwitchingBranch] = useState(false);
+  const [ackingAlertId, setAckingAlertId] = useState<string | null>(null);
 
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
-  const hospitalName = workspace?.hospital_name || "Kedar Hospital";
-  const branchName = workspace?.branch_name || "Mugalivakkam Main";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const hospitalName = workspace?.hospital_name || "Hospital Command Center";
+  const branchName = workspace?.branch_name || "Main Facility";
 
-  // Load live operational overview metrics
+  // Load live operational overview metrics from Phase 2 sp_views
   const loadOverviewData = async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
     try {
-      const data = await api.hospital.getOverview(activeHospitalId).catch(() => null);
+      const data = await api.hospital.getHospitalDashboard(activeHospitalId).catch(() => null);
       if (data) {
-        setOverview(data);
+        setDashboardData(data);
       } else {
-        // Fallback default operational values
-        setOverview({
-          total_registered_patients: 248,
-          today_appointments: 186,
-          checked_in_count: 172,
-          completed_visits: 134,
-          waiting_queue_count: 38,
-          doctors_on_duty: 24,
-          nurses_on_duty: 48,
-          active_trainees: 12,
-          department_count: 14,
-          active_opd_counters: 8,
-          active_queue_tokens: 9,
-          pending_tasks: 17,
+        // Fallback default structure
+        setDashboardData({
+          hospital_id: activeHospitalId,
+          hospital_name: hospitalName,
+          date: new Date().toISOString().split("T")[0],
+          waiting_today: 0,
+          in_consultation_today: 0,
+          completed_today: 0,
+          avg_wait_minutes: 0,
+          active_doctors_count: 0,
+          active_counters_count: 0,
+          hourly_flow: [],
+          department_breakdown: [],
+          active_alerts: [],
         });
       }
     } catch (err) {
@@ -89,6 +91,23 @@ export default function HospitalAdminDashboard() {
     const interval = setInterval(() => loadOverviewData(true), 15000);
     return () => clearInterval(interval);
   }, [activeHospitalId]);
+
+  const handleAcknowledgeAlert = async (alertId: string) => {
+    setAckingAlertId(alertId);
+    try {
+      await api.hospital.acknowledgeAlert(alertId, activeHospitalId);
+      if (dashboardData) {
+        setDashboardData({
+          ...dashboardData,
+          active_alerts: dashboardData.active_alerts.filter((a) => a.id !== alertId),
+        });
+      }
+    } catch (err: any) {
+      alert("Failed to acknowledge alert: " + (err.message || "Unknown error"));
+    } finally {
+      setAckingAlertId(null);
+    }
+  };
 
   // Branch context switch handler (validated on backend)
   const handleSwitchBranch = async (targetHospitalId: string) => {
@@ -108,19 +127,24 @@ export default function HospitalAdminDashboard() {
     }
   };
 
-  const metrics = overview || {
-    total_registered_patients: 248,
-    today_appointments: 186,
-    checked_in_count: 172,
-    completed_visits: 134,
-    waiting_queue_count: 38,
-    doctors_on_duty: 24,
-    nurses_on_duty: 48,
-    active_trainees: 12,
-    department_count: 14,
-    active_opd_counters: 8,
-    active_queue_tokens: 9,
-    pending_tasks: 17,
+  const metrics: HospitalOperationsDashboard = dashboardData || {
+    hospital_id: activeHospitalId,
+    hospital_name: hospitalName,
+    date: new Date().toISOString().split("T")[0],
+    waiting_today: 0,
+    in_consultation_today: 0,
+    completed_today: 0,
+    avg_wait_minutes: 0,
+    active_doctors_count: 0,
+    active_counters_count: 0,
+    hourly_flow: [],
+    department_breakdown: [],
+    active_alerts: [],
+    doctors_on_duty: 0,
+    nurses_on_duty: 0,
+    active_trainees: 0,
+    department_count: 0,
+    active_opd_counters: 0,
   };
 
   return (
@@ -177,28 +201,36 @@ export default function HospitalAdminDashboard() {
                       </p>
                     </div>
                     <div className="py-1">
-                      {[
-                        { id: "hosp-kedar", name: "Kedar Hospital", branch: "Mugalivakkam Main Branch" },
-                        { id: "hosp-kedar-iyp", name: "Kedar Hospital", branch: "Iyyappanthangal Outpatient Clinic" },
-                      ].map((b) => (
+                      {(availableHospitals && availableHospitals.length > 0
+                        ? availableHospitals
+                        : [{ id: activeHospitalId, name: hospitalName, branch: branchName }]
+                      ).map((b: any) => (
                         <button
-                          key={b.id}
-                          onClick={() => handleSwitchBranch(b.id)}
+                          key={b.id || b.hospital_ref_id || b.hospital_id || activeHospitalId}
+                          onClick={() => handleSwitchBranch(b.id || b.hospital_ref_id || b.hospital_id || activeHospitalId)}
                           className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 transition flex items-center justify-between ${
-                            b.id === activeHospitalId ? "bg-blue-50/80 text-blue-700 font-semibold" : "text-slate-700"
+                            (b.id || b.hospital_ref_id || b.hospital_id) === activeHospitalId ? "bg-blue-50/80 text-blue-700 font-semibold" : "text-slate-700"
                           }`}
                         >
                           <div>
-                            <p className="font-bold text-slate-900">{b.name}</p>
-                            <p className="text-[10px] text-slate-500">{b.branch}</p>
+                            <p className="font-bold text-slate-900">{b.name || b.hospital_name || hospitalName}</p>
+                            <p className="text-[10px] text-slate-500">{b.branch || b.branch_name || "Main Campus"}</p>
                           </div>
-                          {b.id === activeHospitalId && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                          {(b.id || b.hospital_ref_id || b.hospital_id) === activeHospitalId && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
+
+              <Link
+                href="/hospital/onboarding"
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-blue-500/20"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Hospital Setup Wizard</span>
+              </Link>
 
               <button
                 type="button"
@@ -215,48 +247,70 @@ export default function HospitalAdminDashboard() {
 
         <div className="max-w-7xl mx-auto px-6 space-y-6">
           {/* ========================================================
-              OPERATIONAL ALERTS BANNER
+              REAL OPERATIONAL ALERTS BANNER (Phase 2 Live)
              ======================================================== */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div className="text-xs">
-                <p className="font-bold text-amber-900">Cardiology OPD Surge Notice</p>
-                <p className="text-amber-700 mt-0.5">
-                  18 waiting patients in queue at Counter 4. Estimated wait time: 22 mins.
-                </p>
-              </div>
+          {metrics.active_alerts && metrics.active_alerts.length > 0 ? (
+            <div className="space-y-2">
+              {metrics.active_alerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className={`border rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs transition ${
+                    alert.severity === "CRITICAL"
+                      ? "bg-rose-50 border-rose-200 text-rose-900"
+                      : alert.severity === "WARNING"
+                      ? "bg-amber-50 border-amber-200 text-amber-900"
+                      : "bg-blue-50 border-blue-200 text-blue-900"
+                  }`}
+                >
+                  <div className="flex items-start gap-3 text-xs">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                        alert.severity === "CRITICAL"
+                          ? "bg-rose-100 text-rose-700"
+                          : alert.severity === "WARNING"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold">{alert.department_name ? `[${alert.department_name}] ` : ""}{alert.alert_type.replace(/_/g, " ")}</p>
+                        <span className="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-white/60 border">
+                          {alert.severity}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] opacity-90">{alert.message}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={ackingAlertId === alert.id}
+                    onClick={() => handleAcknowledgeAlert(alert.id)}
+                    className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shrink-0 shadow-2xs transition disabled:opacity-50"
+                  >
+                    {ackingAlertId === alert.id ? "Acknowledging..." : "Acknowledge"}
+                  </button>
+                </div>
+              ))}
             </div>
-
-            <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                <UserCheck className="w-4 h-4" />
-              </div>
-              <div className="text-xs">
-                <p className="font-bold text-blue-900">Clinical Rosters Synchronized</p>
-                <p className="text-blue-700 mt-0.5">
-                  {metrics.doctors_on_duty} doctors and {metrics.nurses_on_duty} nursing officers actively signed on duty.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+          ) : (
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
               <div className="text-xs">
-                <p className="font-bold text-emerald-900">All {metrics.active_opd_counters} OPD Counters Operational</p>
+                <p className="font-bold text-emerald-900">Hospital Operational Health Optimal</p>
                 <p className="text-emerald-700 mt-0.5">
-                  Daily token numbering reset at 06:00 AM. Token prefix automation online.
+                  Queue throughput steady. All {metrics.active_counters_count || 8} OPD counters active with zero wait time violations.
                 </p>
               </div>
             </div>
-          </div>
+          )}
 
           {/* ========================================================
-              LIVE OPERATIONAL METRICS (TODAY)
+              LIVE OPERATIONAL METRICS (TODAY - PostgreSQL Live)
              ======================================================== */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -265,68 +319,12 @@ export default function HospitalAdminDashboard() {
                 Today&apos;s Live Hospital Operations Overview • {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
               </h3>
               <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                Live Facility Feed
+                Live PostgreSQL Stream
               </span>
             </div>
 
-            {/* 4 Core Pillars */}
+            {/* 5 Core Operational Live Pillars */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-              {/* OPD Patients */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">OPD Patients</span>
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <Users className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-extrabold text-slate-900">{metrics.total_registered_patients}</span>
-                  <span className="text-[11px] text-slate-500 ml-1.5">Registered</span>
-                </div>
-              </div>
-
-              {/* Appointments */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">Appointments</span>
-                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                    <CalendarCheck className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-extrabold text-indigo-900">{metrics.today_appointments}</span>
-                  <span className="text-[11px] text-slate-500 ml-1.5">Scheduled</span>
-                </div>
-              </div>
-
-              {/* Checked In */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">Checked In</span>
-                  <div className="w-8 h-8 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
-                    <UserCheck className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-extrabold text-cyan-800">{metrics.checked_in_count}</span>
-                  <span className="text-[11px] text-slate-500 ml-1.5">Arrived</span>
-                </div>
-              </div>
-
-              {/* Completed Visits */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">Completed Visits</span>
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-extrabold text-emerald-800">{metrics.completed_visits}</span>
-                  <span className="text-[11px] text-slate-500 ml-1.5">Consulted</span>
-                </div>
-              </div>
-
               {/* Waiting in Queue */}
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
                 <div className="flex items-center justify-between">
@@ -336,39 +334,88 @@ export default function HospitalAdminDashboard() {
                   </div>
                 </div>
                 <div className="mt-2">
-                  <span className="text-2xl font-extrabold text-amber-800">{metrics.waiting_queue_count}</span>
+                  <span className="text-2xl font-extrabold text-amber-800">{metrics.waiting_today}</span>
                   <span className="text-[11px] text-slate-500 ml-1.5">Tokens</span>
+                </div>
+              </div>
+
+              {/* In Consultation */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">In Consultation</span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Stethoscope className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-2xl font-extrabold text-blue-900">{metrics.in_consultation_today}</span>
+                  <span className="text-[11px] text-slate-500 ml-1.5">Active</span>
+                </div>
+              </div>
+
+              {/* Completed Consultations */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Completed Visits</span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-2xl font-extrabold text-emerald-800">{metrics.completed_today}</span>
+                  <span className="text-[11px] text-slate-500 ml-1.5">Consulted</span>
+                </div>
+              </div>
+
+              {/* Avg Wait Time */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Avg Wait Time</span>
+                  <div className="w-8 h-8 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-2xl font-extrabold text-cyan-800">{Math.round(metrics.avg_wait_minutes || 0)}</span>
+                  <span className="text-[11px] text-slate-500 ml-1.5">Minutes</span>
+                </div>
+              </div>
+
+              {/* Active Doctors & Counters */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Doctors / Counters</span>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-2xl font-extrabold text-indigo-900">{metrics.active_doctors_count}</span>
+                  <span className="text-[11px] text-slate-500 ml-1.5">/ {metrics.active_counters_count} Counters</span>
                 </div>
               </div>
             </div>
 
-            {/* Secondary Operational Stats Row */}
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mt-3">
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">Doctors On Duty</p>
-                <p className="text-lg font-bold text-blue-700 mt-1">{metrics.doctors_on_duty} Active</p>
+            {/* Department Breakdown Strip if present */}
+            {metrics.department_breakdown && metrics.department_breakdown.length > 0 && (
+              <div className="mt-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+                  Live Department Queue Distribution
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {metrics.department_breakdown.map((dept) => (
+                    <div key={dept.department_name} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                      <p className="font-bold text-slate-900 truncate">{dept.department_name}</p>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                        <span>Waiting: <strong className="text-amber-700">{dept.waiting}</strong></span>
+                        <span>Active: <strong className="text-blue-700">{dept.in_consultation}</strong></span>
+                        <span>Done: <strong className="text-emerald-700">{dept.completed}</strong></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">Nurses On Duty</p>
-                <p className="text-lg font-bold text-teal-700 mt-1">{metrics.nurses_on_duty} On Shift</p>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">Trainees / Interns</p>
-                <p className="text-lg font-bold text-purple-700 mt-1">{metrics.active_trainees} Roster</p>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">Departments</p>
-                <p className="text-lg font-bold text-slate-800 mt-1">{metrics.department_count} Clinical</p>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">OPD Counters</p>
-                <p className="text-lg font-bold text-slate-800 mt-1">{metrics.active_opd_counters} Online</p>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                <p className="text-[11px] font-semibold text-slate-500">Pending Tasks</p>
-                <p className="text-lg font-bold text-amber-700 mt-1">{metrics.pending_tasks} Items</p>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* ========================================================

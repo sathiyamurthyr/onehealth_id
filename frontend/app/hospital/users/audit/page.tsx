@@ -22,7 +22,7 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function HospitalAccessAuditPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   const [logs, setLogs] = useState<UserAuditRecord[]>([]);
   const [loading, setLoading] = useState(true);

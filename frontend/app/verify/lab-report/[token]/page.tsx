@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ShieldCheck, 
   CheckCircle2, 
@@ -55,8 +56,14 @@ export default function PublicLabReportVerificationPage() {
         
         {/* Verification Header */}
         <div className="bg-gradient-to-r from-teal-800 via-teal-700 to-emerald-800 p-6 sm:p-8 text-white text-center relative overflow-hidden">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center mx-auto mb-3">
-            <ShieldCheck className="w-8 h-8 text-teal-300" />
+          <div className="w-14 h-14 rounded-2xl bg-white p-1.5 shadow-xl flex items-center justify-center mx-auto mb-3 overflow-hidden">
+            <Image
+              src="/images/oh-id-logo.png"
+              alt="One Health ID"
+              width={44}
+              height={44}
+              className="object-contain"
+            />
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
             Digital Laboratory Report Verification
@@ -64,6 +71,9 @@ export default function PublicLabReportVerificationPage() {
           <p className="text-xs text-teal-100/90 mt-1 max-w-sm mx-auto">
             OneHealth ID Zero-Knowledge Cryptographic Authenticity Validation
           </p>
+          <span className="text-[10px] text-teal-200 font-semibold block mt-1">
+            Powered by Sathus Technology Pvt Ltd
+          </span>
         </div>
 
         {/* Verification Content */}
@@ -160,7 +170,7 @@ export default function PublicLabReportVerificationPage() {
 
         {/* Verification Footer */}
         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>OneHealth ID Trust Network</span>
+          <span>OneHealth ID Trust Network • <strong>Powered by Sathus Technology Pvt Ltd</strong></span>
           <Link href="/" className="text-teal-600 hover:underline font-semibold flex items-center gap-1">
             Learn More <ArrowRight className="h-3 w-3" />
           </Link>

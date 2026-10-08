@@ -61,7 +61,7 @@ export default function DoctorDashboardPage() {
       try {
         setLoading(true);
         const meProfile = await api.me.getProfile().catch(() => null);
-        const currentHospId = meProfile?.hospital_ref_id || workspace?.hospital_ref_id || "hosp-kedar";
+        const currentHospId = meProfile?.hospital_ref_id || workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
         // Load Doctor Profile Details
         const doc = await api.doctors.getMe().catch(() => null);
@@ -144,8 +144,8 @@ export default function DoctorDashboardPage() {
   const inConsultationCount = appointments.filter(a => a.status === "IN_CONSULTATION").length;
   const completedCount = appointments.filter(a => a.status === "COMPLETED").length;
 
-  const currentHospitalName = workspace?.hospital_name || "Kedar Hospital";
-  const currentBranchName = workspace?.branch_name || "Mugalivakkam Main";
+  const currentHospitalName = workspace?.hospital_name || "Healthcare Facility";
+  const currentBranchName = workspace?.branch_name || "Main Branch";
 
   return (
     <WorkspaceLayout allowedWorkspaceTypes={["DOCTOR"]}>
@@ -446,7 +446,7 @@ export default function DoctorDashboardPage() {
                       <p className="text-xs font-bold text-slate-900 mt-1">{rx.patient_name}</p>
                       <p className="text-[11px] text-slate-500 truncate">{rx.diagnosis || "Consultation Rx"}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(rx.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} • {rx.hospital_name || "Kedar Hospital"}
+                        {new Date(rx.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} • {rx.hospital_name || currentHospitalName}
                       </p>
                     </div>
 
@@ -563,7 +563,7 @@ export default function DoctorDashboardPage() {
                         <div>
                           <p className="text-xs font-bold text-slate-900">{doc.name}</p>
                           <p className="text-[11px] text-blue-700 font-medium">{doc.specialty}</p>
-                          <p className="text-[10px] text-slate-500">{doc.hospital_name || "Kedar Hospital Network"}</p>
+                          <p className="text-[10px] text-slate-500">{doc.hospital_name || currentHospitalName}</p>
                         </div>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${doc.is_available ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
                           {doc.is_available ? "On Call / Available" : "Consultation"}

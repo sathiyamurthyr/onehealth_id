@@ -21,7 +21,7 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function HospitalInvitationsPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   const [invitations, setInvitations] = useState<StaffInvitation[]>([]);
   const [loading, setLoading] = useState(true);

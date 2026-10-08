@@ -267,7 +267,7 @@ def test_qr_verification_masks_pii_for_unauthenticated_requests(admin_token):
     patient = patients[0]
     qr_token = patient.get("qr_token")
     if not qr_token:
-        rot_res = client.post(f"/api/v1/patients/{patient['id']}/refresh-qr", headers={"Authorization": f"Bearer {admin_token}"})
+        rot_res = client.post(f"/api/v1/patients/{patient['id']}/qr/rotate", headers={"Authorization": f"Bearer {admin_token}"})
         assert rot_res.status_code == 200
         qr_token = rot_res.json()["qr_token"]
 
@@ -275,5 +275,5 @@ def test_qr_verification_masks_pii_for_unauthenticated_requests(admin_token):
     assert verify_res.status_code == 200
     data = verify_res.json()
     
-    assert data.get("address") == "[Protected demographic]" or "***" in str(data.get("phone", ""))
-    assert "phone" not in data or "*" in str(data.get("phone")), "Phone number must be omitted or masked"
+    assert data.get("address") == "[Protected demographic]"
+    assert data.get("phone") is None or "*" in str(data.get("phone")), "Phone number must be None or masked"

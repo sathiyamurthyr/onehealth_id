@@ -13,8 +13,8 @@ router = APIRouter(prefix="/queue", tags=["Queue Management"])
 
 # Queue actions that require queue.call (doctor-only: calling/recalling a patient to consultation)
 CALL_ACTIONS = {"CALL_NEXT", "RECALL", "START_CONSULT"}
-# Queue actions that require queue.manage (nurse/staff: check-in, skip, hold, complete)
-MANAGE_ACTIONS = {"HOLD", "SKIP", "COMPLETE"}
+# Queue actions that require queue.manage (nurse/staff: check-in, skip, hold, complete, transfer)
+MANAGE_ACTIONS = {"HOLD", "SKIP", "COMPLETE", "TRANSFER"}
 
 
 @router.get("", response_model=List[QueueEntryResponse])
@@ -59,13 +59,11 @@ def perform_queue_action(
 
     Permission enforcement:
       - CALL_NEXT / RECALL / START_CONSULT → requires queue.call (doctor-only)
-      - HOLD / SKIP / COMPLETE → requires queue.manage (nurse/staff)
+      - HOLD / SKIP / COMPLETE / TRANSFER → requires queue.manage (nurse/staff)
       - SUPER_ADMIN with system.manage bypasses all checks
     """
-    valid_actions = ["CALL_NEXT", "START_CONSULT", "COMPLETE", "HOLD", "SKIP", "RECALL"]
+    valid_actions = ["CALL_NEXT", "START_CONSULT", "COMPLETE", "HOLD", "SKIP", "RECALL", "TRANSFER"]
     action = payload.action.upper()
-    if action == "RECALL":
-        action = "CALL_NEXT"
 
     if action not in valid_actions:
         raise HTTPException(
@@ -81,7 +79,7 @@ def perform_queue_action(
             if "queue.call" not in user_perms:
                 raise HTTPException(
                     status_code=403,
-                    detail="Forbidden: Action 'CALL_NEXT' requires queue.call permission (Doctor role only)"
+                    detail=f"Forbidden: Action '{action}' requires queue.call permission (Doctor role only)"
                 )
         elif action in MANAGE_ACTIONS:
             if "queue.manage" not in user_perms and "queue.call" not in user_perms:
@@ -98,14 +96,21 @@ def perform_queue_action(
     validate_hospital_tenant_scope(user, entry.get("hospital_id"))
 
     try:
-        result = sp_repository.execute_queue_action(queue_id, action)
+        actor = user.get("user_ref_id") or user.get("id") or user.get("username", "staff")
+        result = sp_repository.execute_queue_transition(
+            queue_id=queue_id,
+            action=action,
+            actor_id=actor,
+            target_doctor_id=payload.target_doctor_id,
+            reason=payload.reason
+        )
         return {
             "success": True,
             "message": f"Action {action} executed successfully",
             "data": result
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to execute queue state transition.")
+        raise HTTPException(status_code=500, detail=f"Failed to execute queue state transition: {str(e)}")
 
 
 @router.post("/{queue_id}/call")

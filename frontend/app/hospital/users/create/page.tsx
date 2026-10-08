@@ -27,7 +27,9 @@ import {
   ChevronRight,
   Info,
   Check,
-  Award
+  Award,
+  Copy,
+  UserCheck
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { CreateHospitalUserPayload, HospitalRoleOption } from "@/lib/types";
@@ -66,12 +68,14 @@ const STANDARD_PERMISSIONS = [
 export default function CreateHospitalUserPage() {
   const router = useRouter();
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   const [currentStep, setCurrentStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [rolesCatalog, setRolesCatalog] = useState<HospitalRoleOption[]>([]);
+  const [createdUserResult, setCreatedUserResult] = useState<any>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -91,8 +95,8 @@ export default function CreateHospitalUserPage() {
     employee_id: "",
     joining_date: new Date().toISOString().split("T")[0],
     employment_type: "FULL_TIME",
-    department_id: "dept-k-01",
-    branch_id: "br-kedar-01",
+    department_id: "dept-gen-01",
+    branch_id: "br-main",
     designation: "",
     reporting_manager_id: "usr-hosp-admin",
     reporting_manager_name: "Hospital Administrator",
@@ -100,8 +104,8 @@ export default function CreateHospitalUserPage() {
     // Step 3: Role & Access Scope
     role_code: "DOCTOR",
     additional_roles: [] as string[],
-    branch_ids: ["br-kedar-01"],
-    department_ids: ["dept-k-01"],
+    branch_ids: ["br-main"],
+    department_ids: ["dept-gen-01"],
     shift_access: "ALL_SHIFTS",
     login_enabled: true,
     mfa_enabled: false,
@@ -360,13 +364,25 @@ export default function CreateHospitalUserPage() {
     };
 
     try {
-      await api.hospital.createUser(payload);
-      router.push("/hospital/users");
+      const res = await api.hospital.createUser(payload);
+      if (res?.invitation?.token) {
+        setCreatedUserResult(res);
+      } else {
+        router.push("/hospital/users");
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to create staff user account");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const copyInviteLink = () => {
+    if (!createdUserResult?.invitation?.token) return;
+    const url = `${window.location.origin}/invite?token=${createdUserResult.invitation.token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
   };
 
   return (
@@ -505,7 +521,7 @@ export default function CreateHospitalUserPage() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => updateField("email", e.target.value)}
-                    placeholder="dr.arun@kedarhospital.in"
+                    placeholder="doctor@hospital.org"
                     className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
                   />
                 </div>
@@ -574,7 +590,7 @@ export default function CreateHospitalUserPage() {
                   type="text"
                   value={formData.address}
                   onChange={(e) => updateField("address", e.target.value)}
-                  placeholder="Plot 14, Mount-Poonamallee High Rd, Mugalivakkam, Chennai - 600125"
+                  placeholder="Plot 14, Healthcare Avenue, City - 600001"
                   className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
@@ -749,8 +765,8 @@ export default function CreateHospitalUserPage() {
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    { id: "br-kedar-01", name: "Kedar Hospital - Mugalivakkam (Main)", isMain: true },
-                    { id: "br-kedar-02", name: "Kedar Hospital - Iyyappanthangal Branch", isMain: false },
+                    { id: "br-main", name: `${workspace?.hospital_name || "Hospital"} - Main Campus`, isMain: true },
+                    { id: "br-satellite", name: `${workspace?.hospital_name || "Hospital"} - Satellite Branch`, isMain: false },
                   ].map((b) => {
                     const checked = formData.branch_ids.includes(b.id);
                     return (
@@ -1409,6 +1425,71 @@ export default function CreateHospitalUserPage() {
             )}
           </div>
         </div>
+
+        {/* STAFF INVITATION SUCCESS MODAL */}
+        {createdUserResult && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-200 shadow-sm">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+
+              <div className="text-center space-y-1">
+                <h3 className="text-xl font-bold text-slate-900">Staff Account Successfully Provisioned!</h3>
+                <p className="text-xs text-slate-500">
+                  User <strong>{createdUserResult.name}</strong> ({createdUserResult.role}) has been registered with initial status INVITED.
+                </p>
+              </div>
+
+              {/* Invitation Token Card */}
+              {createdUserResult.invitation && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Staff Workspace Invitation Link
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      SINGLE-USE
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-600">
+                    Send this secure link to the staff member to activate their account and configure password & MFA:
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={
+                        typeof window !== "undefined"
+                          ? `${window.location.origin}/invite?token=${createdUserResult.invitation.token}`
+                          : `/invite?token=${createdUserResult.invitation.token}`
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-slate-300 font-mono text-slate-700 select-all"
+                    />
+                    <button
+                      onClick={copyInviteLink}
+                      className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1 shrink-0"
+                    >
+                      {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedLink ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <Link
+                  href="/hospital/users"
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-bold transition"
+                >
+                  Return to Users Directory
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </WorkspaceLayout>
   );

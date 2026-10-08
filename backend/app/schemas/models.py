@@ -160,8 +160,8 @@ class AppointmentBase(BaseModel):
     patient_id: str
     doctor_id: str
     slot: Optional[str] = None
-    appointment_date: Optional[str] = None
-    appointment_time: Optional[str] = None
+    appointment_date: Optional[Any] = None
+    appointment_time: Optional[Any] = None
     status: str = "scheduled"
     notes: Optional[str] = None
     priority: Optional[str] = "NORMAL"
@@ -193,19 +193,26 @@ class AppointmentResponse(AppointmentBase):
     department_id: Optional[str] = None
     department_name: Optional[str] = None
     token_number: Optional[int] = 1
+    token_prefix: Optional[str] = "OPD-"
+    checked_in_at: Optional[Any] = None
+    visit_id: Optional[str] = None
     is_demo_data: Optional[bool] = False
     created_at: Optional[Any] = None
 
 # --- Queue Schemas ---
 class QueueActionRequest(BaseModel):
-    action: str = Field(..., description="CALL_NEXT, START_CONSULT, COMPLETE, HOLD, SKIP, RECALL")
+    action: str = Field(..., description="CALL_NEXT, START_CONSULT, COMPLETE, HOLD, SKIP, RECALL, TRANSFER")
+    target_doctor_id: Optional[str] = None
+    reason: Optional[str] = None
 
 class QueueEntryResponse(BaseModel):
     id: str
     token_number: int
+    token_prefix: Optional[str] = "OPD-"
     status: str
     estimated_wait_minutes: Optional[int] = 15
     called_at: Optional[Any] = None
+    in_service_at: Optional[Any] = None
     completed_at: Optional[Any] = None
     created_at: Optional[Any] = None
     patient_id: Optional[str] = None

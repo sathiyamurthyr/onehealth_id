@@ -61,6 +61,7 @@ export default function PatientAppointmentIntakePage() {
   useEffect(() => {
     async function loadCurrentIntake() {
       setLoading(true);
+      try {
         let resolvedPatientId = "p-101";
         try {
           const profileRes = await api.patient.getProfile();

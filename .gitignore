@@ -40,3 +40,19 @@ frontend/test-results/
 .env.local
 frontend/.env.local
 scratch/
+
+# Database files & Local dumps
+*.db
+*.sqlite
+*.sqlite3
+backend/*.db
+frontend/*.db
+*.sql.gz
+*.dump
+
+# Credentials & Key material
+*.pem
+*.key
+*.cert
+*.crt
+

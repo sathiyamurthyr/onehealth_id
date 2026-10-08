@@ -1060,26 +1060,116 @@ def get_my_hospitals(
         })
     return items
 
-@router.get("/me/timeline")
-def get_my_comprehensive_timeline(
-    type: Optional[str] = Query(None),
-    hospital_id: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+@router.get("/me/oh-id")
+def get_my_ohid_card(
     patient_id: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """
-    Returns complete chronological unified healthcare timeline across all hospitals:
-    Doctor Visits, Prescriptions, Lab Reports, Documents, Diagnoses, Bills, Appointments.
+    Returns official personal OneHealth ID card metadata, Zero-Knowledge QR token,
+    verification status, and all connected healthcare facility relationships.
     """
-    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_TIMELINE")
-    timeline = sp_repository.get_comprehensive_patient_timeline(
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_OHID_CARD")
+    memberships = sp_repository.list_patient_facility_memberships(patient["id"])
+    return success_response(data={
+        "onehealth_id": patient.get("onehealth_id"),
+        "qr_token": patient.get("qr_token"),
+        "name": patient.get("name"),
+        "dob": patient.get("dob") or f"{2026 - (patient.get('age') or 30)}-01-01",
+        "gender": patient.get("gender"),
+        "blood_group": patient.get("blood_group"),
+        "emergency_contact": patient.get("emergency_contact"),
+        "verification_status": "VERIFIED_ACTIVE",
+        "connected_facilities": memberships,
+        "facilities_count": len(memberships)
+    })
+
+@router.get("/me/health-timeline")
+@router.get("/me/timeline")
+def get_my_comprehensive_health_timeline(
+    type: Optional[str] = Query(None, description="Event type filter: CONSULTATION, PRESCRIPTION, LAB_REPORT, INVESTIGATION, DOCUMENT, REFERRAL, VISIT"),
+    hospital_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Authoritative Unified Health Timeline:
+    Aggregates structured multi-provider clinical events (Doctor Consultations, Prescriptions,
+    Lab Reports, Investigations, Documents, Referrals, Visits) in reverse chronological order.
+    """
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_HEALTH_TIMELINE")
+    event_types = [type.strip().upper()] if type and type.strip() else None
+
+    events = sp_repository.get_unified_health_timeline(
         patient_id=patient["id"],
-        filter_type=type,
+        event_types=event_types,
         hospital_id=hospital_id,
-        search=search
+        from_date=from_date,
+        to_date=to_date,
+        search=search,
+        limit=limit,
+        offset=offset
     )
-    return success_response(data=timeline)
+    total_count = sp_repository.count_health_timeline_events(
+        patient_id=patient["id"],
+        event_types=event_types,
+        hospital_id=hospital_id
+    )
+
+    return success_response(
+        data=events,
+        meta={
+            "patient_id": patient["id"],
+            "onehealth_id": patient.get("onehealth_id"),
+            "total_events": total_count,
+            "limit": limit,
+            "offset": offset,
+            "filters": {
+                "type": type,
+                "hospital_id": hospital_id,
+                "from_date": from_date,
+                "to_date": to_date,
+                "search": search
+            }
+        }
+    )
+
+@router.get("/me/consultations")
+def list_my_consultations(
+    hospital_id: Optional[str] = Query(None),
+    doctor_id: Optional[str] = Query(None),
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """Returns digital clinical consultations for the active patient."""
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_CONSULTATIONS")
+    visits = sp_repository.list_patient_visits(patient_id=patient["id"], hospital_id=hospital_id, doctor_id=doctor_id)
+    return success_response(data=visits)
+
+@router.get("/me/investigations")
+def list_my_investigations(
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """Returns ordered laboratory and diagnostic investigations for the active patient."""
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_INVESTIGATIONS")
+    invs = sp_repository.get_patient_investigations(patient["id"])
+    return success_response(data=invs)
+
+@router.get("/me/referrals")
+def list_my_referrals(
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """Returns specialist referrals for the active patient."""
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_REFERRALS")
+    referrals = sp_repository.get_patient_referrals(patient["id"])
+    return success_response(data=referrals)
 
 @router.get("/me/qr")
 def get_my_qr_pass(

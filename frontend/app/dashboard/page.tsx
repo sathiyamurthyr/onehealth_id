@@ -48,7 +48,7 @@ export default function DashboardPage() {
     setError("");
     try {
       const [sum, m, a, q] = await Promise.all([
-        api.dashboard.getSummary("hosp-kedar"),
+        api.dashboard.getSummary(workspace?.hospital_ref_id),
         api.dashboard.getMetrics(),
         api.appointments.list(),
         api.queue.getLive(),
@@ -67,7 +67,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [workspace?.hospital_ref_id]);
 
   return (
     <AppLayout>
@@ -79,11 +79,11 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-blue-600" />
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 ">
-                  {summary?.hospital_name || user?.hospital_name || "Kedar Hospital"}
+                  {summary?.hospital_name || workspace?.hospital_name || user?.hospital_name || "Healthcare Facility"}
                 </h1>
               </div>
               <Badge variant="primary" className="text-xs">
-                {summary?.branch_area || "Mugalivakkam"}, Chennai
+                {summary?.branch_area || "Main Campus"}
               </Badge>
               {user && (
                 <Badge variant="outline" className="text-xs font-semibold">
@@ -92,7 +92,7 @@ export default function DashboardPage() {
               )}
             </div>
             <p className="text-xs sm:text-sm text-slate-500">
-              {summary?.branch_name || "Kedar Hospital - Mugalivakkam Main"} • OneHealth ID Pilot Operating System
+              {summary?.branch_name || `${workspace?.hospital_name || "Hospital"} - Main Campus`} • OneHealth ID Operating System
             </p>
           </div>
 
@@ -113,7 +113,7 @@ export default function DashboardPage() {
         </div>
 
         {loading ? (
-          <LoadingState message="Loading Kedar Hospital operations from PostgreSQL views..." />
+          <LoadingState message="Loading hospital operations data..." />
         ) : error ? (
           <ErrorState message={error} onRetry={loadDashboardData} />
         ) : (

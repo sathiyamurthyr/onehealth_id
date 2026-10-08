@@ -19,8 +19,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function DepartmentsPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [departments, setDepartments] = useState<any[]>([]);
   const [counters, setCounters] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
@@ -32,8 +35,8 @@ export default function DepartmentsPage() {
     try {
       const [deptList, counterList, docList] = await Promise.all([
         api.admin.departments().catch(() => []),
-        api.hospital.getCounters("hosp-kedar").catch(() => []),
-        api.hospital.getDoctors("hosp-kedar").catch(() => []),
+        api.hospital.getCounters(activeHospitalId).catch(() => []),
+        api.hospital.getDoctors(activeHospitalId).catch(() => []),
       ]);
       setDepartments(deptList || []);
       setCounters(counterList || []);
@@ -47,7 +50,7 @@ export default function DepartmentsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const filteredDepts = departments.filter((d) => {
     return (

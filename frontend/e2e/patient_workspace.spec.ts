@@ -156,6 +156,10 @@ test.describe("OH-ID Patient-Only Workspace — Strict Boundary & Multi-Hospital
     await page.goto("/patient/bills");
     await expect(page.locator("h1:has-text('Bills & Payments')")).toBeVisible({ timeout: 10000 });
 
+    // Receipts
+    await page.goto("/patient/receipts");
+    await expect(page.locator("h1:has-text('Digital Payment Receipts')")).toBeVisible({ timeout: 10000 });
+
     // Insurance
     await page.goto("/patient/insurance");
     await expect(page.locator("h1:has-text('My Health Insurance')")).toBeVisible({ timeout: 10000 });

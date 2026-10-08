@@ -1,0 +1,218 @@
+[
+  {
+    "page": "/login",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 2,
+    "hasSubmitButton": true,
+    "role": "PUBLIC",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/network/marketplace",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 1,
+    "hasSubmitButton": true,
+    "role": "SUPER_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/network/pharmacies",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 1,
+    "hasSubmitButton": true,
+    "role": "SUPER_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/network/referrals",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "SUPER_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/network/emergency",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 4,
+    "hasSubmitButton": true,
+    "role": "SUPER_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/hospital/discharges",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 2,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/hospital/referrals",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 2,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/hospital/ai-intelligence",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/hospital/knowledge-base",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/billing",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/laboratory",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/radiology",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 3,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/settings",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 12,
+    "hasSubmitButton": false,
+    "role": "HOSPITAL_ADMIN",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/ipd",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "NURSE",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/emergency",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 2,
+    "hasSubmitButton": false,
+    "role": "NURSE",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/reception",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/queue",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/opd",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/appointments",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/patients",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 1,
+    "hasSubmitButton": true,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/patients/new",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 12,
+    "hasSubmitButton": true,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/patients/register",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 12,
+    "hasSubmitButton": true,
+    "role": "RECEPTIONIST",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/patient/appointments/apt-k-101/intake",
+    "formIdOrSelector": "#form-0",
+    "fieldsCount": 8,
+    "hasSubmitButton": true,
+    "role": "PATIENT",
+    "tested": true,
+    "status": "PASS"
+  },
+  {
+    "page": "/patient/ai-assistant",
+    "formIdOrSelector": "div.form-container",
+    "fieldsCount": 1,
+    "hasSubmitButton": false,
+    "role": "PATIENT",
+    "tested": true,
+    "status": "PASS"
+  }
+]

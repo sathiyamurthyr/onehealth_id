@@ -16,6 +16,12 @@ export * from "./patient";
 export * from "./discovery";
 export * from "./doctor-workspace";
 export * from "./compliance";
+export * from "./super-admin";
+export * from "./phase4";
+export * from "./phase5";
+export * from "./ai";
+export * from "./network";
+export * from "./global";
 
 import { authApi } from "./auth";
 import { patientsApi } from "./patients";
@@ -34,6 +40,11 @@ import { patientApi } from "./patient";
 import { discoveryApi } from "./discovery";
 import { doctorWorkspaceApi } from "./doctor-workspace";
 import { complianceApi } from "./compliance";
+import { superAdminApi } from "./super-admin";
+import { phase4Api } from "./phase4";
+import { phase5Api } from "./phase5";
+import { aiApi } from "./ai";
+import { networkApi } from "./network";
 import { fetchJSON } from "./client";
 
 export const api = {
@@ -44,6 +55,11 @@ export const api = {
   workspace: workspaceApi,
   doctorWorkspace: doctorWorkspaceApi,
   compliance: complianceApi,
+  superAdmin: superAdminApi,
+  phase4: phase4Api,
+  phase5: phase5Api,
+  ai: aiApi,
+  network: networkApi,
   patients: patientsApi,
   oneHealthId: oneHealthIdApi,
   appointments: appointmentsApi,

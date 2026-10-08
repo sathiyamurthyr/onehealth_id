@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ShieldCheck, Share2, AlertCircle, Clock, Lock,
   FileDown, Printer, ArrowLeft, CheckCircle2
@@ -59,13 +60,19 @@ export default function SharedPrescriptionRecipientPage({ params }: PageProps) {
       {/* Header bar */}
       <div className="bg-slate-900 text-white px-4 py-3 sticky top-0 z-30 shadow-md">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-teal-500/20 border border-teal-500/40 flex items-center justify-center">
-              <ShieldCheck className="w-5 h-5 text-teal-400" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-white p-0.5 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
+              <Image
+                src="/images/oh-id-logo.png"
+                alt="One Health ID"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
             </div>
             <div>
               <span className="font-bold text-sm text-slate-100 block leading-tight">OneHealth ID (OH-ID)</span>
-              <span className="text-[10px] text-slate-400 block">Secure Document Viewer</span>
+              <span className="text-[10px] text-cyan-400 block font-semibold">Secure Share • Powered by Sathus Technology Pvt Ltd</span>
             </div>
           </div>
 

@@ -207,15 +207,15 @@ export function PrescriptionDocumentView({
                 </div>
                 <div>
                   <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                    {rx.hospital_name || "Kedar Hospital"}
+                    {rx.hospital_name || "Healthcare Facility"}
                   </h1>
                   <p className="text-xs font-semibold text-slate-600 tracking-wide uppercase">
-                    Healthcare Facility · Facility Code: {rx.hospital_code || "HOSP-KEDAR"}
+                    Healthcare Facility · Facility Code: {rx.hospital_code || rx.hospital_id || "HOSP-001"}
                   </p>
                 </div>
               </div>
               <p className="text-xs text-slate-500 max-w-md leading-relaxed pt-1">
-                {rx.hospital_address || "Mount-Poonamallee High Road, Mugalivakkam, Chennai 600125"}
+                {rx.hospital_address || "Healthcare Facility Address, India"}
               </p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 pt-0.5">
                 <span>Phone: {rx.hospital_phone || "+91 44 2252 1100"}</span>

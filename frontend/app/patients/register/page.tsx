@@ -23,9 +23,12 @@ import { Patient, DuplicateCheckResult } from "@/lib/types";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from "@/components/ui/Card";
 import { OneHealthQRCard } from "@/components/qr/OneHealthQRCard";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function RegisterPatientPage() {
   const router = useRouter();
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   const [formData, setFormData] = useState({
     name: "",
@@ -39,10 +42,16 @@ export default function RegisterPatientPage() {
     emergency_contact: "",
     identity_type: "VOTER_ID",
     identity_number: "",
-    hospital_id: "hosp-kedar",
-    branch_id: "branch-kedar-01",
+    hospital_id: activeHospitalId,
+    branch_id: "br-main",
     consent_given: true,
   });
+
+  useEffect(() => {
+    if (activeHospitalId) {
+      setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId }));
+    }
+  }, [activeHospitalId]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -124,7 +133,7 @@ export default function RegisterPatientPage() {
         email: formData.email.trim() || undefined,
         blood_group: formData.blood_group,
         diagnosis: formData.diagnosis.trim() || "General Outpatient Intake",
-        address: formData.address.trim() || "Mugalivakkam, Chennai, Tamil Nadu",
+        address: formData.address.trim() || undefined,
         emergency_contact: formData.emergency_contact.trim() || formData.phone.trim(),
         identity_type: formData.identity_type,
         identity_number: formData.identity_number.trim() || undefined,
@@ -152,7 +161,7 @@ export default function RegisterPatientPage() {
             <span>Back to Patient Registry</span>
           </Link>
           <Badge variant="primary" className="text-xs">
-            Kedar Hospital Pilot • Mugalivakkam
+            {workspace?.hospital_name || "Healthcare Facility"} • OPD Enrollment
           </Badge>
         </div>
 
@@ -226,7 +235,7 @@ export default function RegisterPatientPage() {
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase">Registered Facility</span>
                       <span className="font-medium text-slate-700 ">
-                        Kedar Hospital (Mugalivakkam)
+                        {createdPatient.hospital_name || workspace?.hospital_name || "Healthcare Facility"}
                       </span>
                     </div>
                     <div>
@@ -260,8 +269,8 @@ export default function RegisterPatientPage() {
                           emergency_contact: "",
                           identity_type: "VOTER_ID",
                           identity_number: "",
-                          hospital_id: "hosp-kedar",
-                          branch_id: "branch-kedar-01",
+                          hospital_id: activeHospitalId,
+                          branch_id: "br-main",
                           consent_given: true,
                         });
                         setDuplicateMatches([]);
@@ -284,9 +293,9 @@ export default function RegisterPatientPage() {
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">Kedar Hospital Patient Registration</CardTitle>
+                  <CardTitle className="text-lg">{workspace?.hospital_name || "Hospital"} Patient Registration</CardTitle>
                   <p className="text-xs text-slate-500">
-                    Mugalivakkam Branch • Live Duplicate Detection & Zero-Knowledge QR Generation
+                    Live Duplicate Detection & Zero-Knowledge QR Generation
                   </p>
                 </div>
               </div>
@@ -516,7 +525,7 @@ export default function RegisterPatientPage() {
                         name="address"
                         value={formData.address}
                         onChange={handleChange}
-                        placeholder="e.g. 14 Sabari Nagar, Mugalivakkam, Chennai 600125"
+                        placeholder="e.g. 14 Gandhi Road, City, State - 600001"
                         className="w-full px-4 py-2.5 bg-slate-50  border border-slate-300  rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                       />
                     </div>
@@ -553,7 +562,7 @@ export default function RegisterPatientPage() {
                           className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                         />
                         <span className="text-xs text-slate-600 ">
-                          <strong>Patient Consent:</strong> Patient consents to create a secure OneHealth ID, generate a zero-knowledge QR identity token, and permit authorized Kedar Hospital clinicians to view health records.
+                          <strong>Patient Consent:</strong> Patient consents to create a secure OneHealth ID, generate a zero-knowledge QR identity token, and permit authorized clinicians to view health records.
                         </span>
                       </label>
                     </div>

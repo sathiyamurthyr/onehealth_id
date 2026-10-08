@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -18,6 +19,7 @@ import {
 import { api } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
 import { Badge, Button } from "@/components/ui/Card";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 interface NavbarProps {
   onOpenMobileMenu?: () => void;
@@ -26,6 +28,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOpen }) => {
   const router = useRouter();
+  const { workspace } = useWorkspace();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrInput, setQrInput] = useState("");
@@ -74,20 +77,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-sm shrink-0">
-              <Activity className="w-5 h-5" />
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-white border border-slate-200 p-1 text-white shadow-xs shrink-0 overflow-hidden">
+              <Image
+                src="/images/oh-id-logo.png"
+                alt="One Health ID"
+                width={36}
+                height={36}
+                className="object-contain"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-sm sm:text-lg font-bold tracking-tight text-slate-900 ">
-                  ONEHEALTH
+                <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900">
+                  ONEHEALTH ID
                 </span>
-                <span className="text-[10px] sm:text-xs font-black tracking-wider text-blue-600 bg-blue-50  px-1 sm:px-1.5 py-0.5 rounded">
-                  ID
+                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-blue-100 text-blue-700">
+                  v1.0
                 </span>
               </div>
-              <span className="hidden sm:block text-[11px] font-medium text-slate-400">
-                Hospital Operating System
+              <span className="hidden sm:block text-[10px] font-semibold text-blue-600">
+                Powered by Sathus Technology Pvt Ltd
               </span>
             </div>
           </Link>
@@ -95,10 +104,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
           <div className="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-slate-200  text-xs text-slate-500">
             <Building2 className="w-4 h-4 text-blue-600" />
             <span className="font-semibold text-slate-700 ">
-              {user?.hospital_name || "Kedar Hospital"}
+              {workspace?.hospital_name || user?.hospital_name || "Healthcare Facility"}
             </span>
             <Badge variant="primary" className="text-[10px] py-0 px-2">
-              Mugalivakkam, Chennai
+              {workspace?.branch_name || "Main Campus"}
             </Badge>
           </div>
         </div>

@@ -107,7 +107,7 @@ export function InvestigationOrderer({
           instructions: "",
           fasting_required: test.category === "Blood" && test.name.toLowerCase().includes("fasting"),
           collection_type: "Hospital",
-          preferred_lab_name: "Kedar Central Pathology Lab",
+          preferred_lab_name: "Central Pathology Laboratory",
         },
       ]);
     }

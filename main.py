@@ -216,7 +216,7 @@ def update_appointment_status(appointment_id: str, update: AppointmentStatusUpda
 from backend.app.routers import (
     auth, patients as pt_router, doctors as doc_router, appointments as appt_router,
     queue, clinical, billing, dashboard, admin, hospital, workspace, me, prescriptions,
-    family, discovery, public_verify, doctor_workspace
+    family, discovery, public_verify, doctor_workspace, compliance, super_admin
 )
 
 api_v1 = FastAPI(title="OneHealth ID API v1")
@@ -237,16 +237,20 @@ api_v1.include_router(billing.router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(admin.router)
 api_v1.include_router(hospital.router)
+api_v1.include_router(compliance.router)
+api_v1.include_router(super_admin.router)
 
 app.mount("/api/v1", api_v1)
 
-# Also mount workspace, me, family, discovery, hospital, doctor_workspace and public_verify directly for root convenience
+# Also mount workspace, me, family, discovery, hospital, doctor_workspace, compliance, super_admin and public_verify directly for root convenience
 app.include_router(workspace.router)
 app.include_router(hospital.router)
 app.include_router(me.router)
 app.include_router(family.router)
 app.include_router(discovery.router)
 app.include_router(doctor_workspace.router)
+app.include_router(compliance.router)
+app.include_router(super_admin.router)
 app.include_router(public_verify.router)
 
 

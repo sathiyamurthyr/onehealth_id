@@ -42,7 +42,7 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function HospitalUsersPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   // Data State
   const [users, setUsers] = useState<HospitalUser[]>([]);
@@ -616,7 +616,7 @@ export default function HospitalUsersPage() {
                             <span className="truncate">{u.department_name || "General"}</span>
                           </div>
                           <div className="text-xs text-slate-500 truncate">
-                            {u.branch_name || "Mugalivakkam Main"}
+                            {u.branch_name || "Main Branch"}
                           </div>
                           {u.branch_ids && u.branch_ids.length > 1 && (
                             <span className="inline-block text-[10px] text-blue-600 font-semibold">

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ShieldCheck, 
   Clock, 
@@ -63,12 +64,18 @@ export default function PublicSharedLabReportPage() {
       <div className="max-w-4xl mx-auto mb-6 print:hidden">
         <div className="rounded-2xl border border-teal-200 bg-white dark:bg-slate-900 dark:border-slate-800 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300 rounded-xl shrink-0">
-              <ShieldCheck className="h-5 w-5" />
+            <div className="w-10 h-10 rounded-xl bg-white border border-teal-200 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+              <Image
+                src="/images/oh-id-logo.png"
+                alt="One Health ID"
+                width={36}
+                height={36}
+                className="object-contain"
+              />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                OneHealth ID Secure Clinical Share Portal
+                OneHealth ID Secure Clinical Share Portal • Powered by Sathus Technology
               </p>
               <p className="text-sm font-semibold text-slate-900 dark:text-white">
                 {sharedData?.share_metadata?.recipient_name 

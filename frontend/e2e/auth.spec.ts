@@ -14,7 +14,7 @@ test.describe("OneHealth ID - Authentication & Dashboard E2E", () => {
   test("should authenticate successfully with admin credentials and navigate to dynamic dashboard", async ({ page }) => {
     await page.goto("/login");
 
-    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="text"]').fill("9840000000");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
 

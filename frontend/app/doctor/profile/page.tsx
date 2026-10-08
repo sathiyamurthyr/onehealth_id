@@ -42,10 +42,10 @@ export default function DoctorProfilePage() {
           registration_number: "TN-MCI-2026-REG",
           qualifications: "MBBS, MS (Orthopedics), DNB, Fellow in Joint Replacement",
           experience_years: 14,
-          phone: "+91 98401 22345",
-          email: "dr.kumar@kedarhospital.org",
+          phone: (user as any)?.phone || user?.username || "+91 98401 22345",
+          email: user?.email || "doctor@hospital.org",
           consultation_fee: 600,
-          timings: "Mon-Sat: 09:00 AM - 01:00 PM (Mugalivakkam) | 02:00 PM - 05:00 PM (Iyyappanthangal)",
+          timings: "Mon-Sat: 09:00 AM - 01:00 PM | 02:00 PM - 05:00 PM",
           is_available: true
         });
         setHospitals(meHosp || []);
@@ -160,7 +160,7 @@ export default function DoctorProfilePage() {
                 Consultation Timings
               </h4>
               <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                {doctorProfile?.timings || "Mon-Sat: 09:00 AM - 01:00 PM (Mugalivakkam) | 02:00 PM - 05:00 PM (Iyyappanthangal)"}
+                {doctorProfile?.timings || "Mon-Sat: 09:00 AM - 01:00 PM | 02:00 PM - 05:00 PM"}
               </p>
               <p className="text-[11px] text-slate-500">
                 OP Consultation Slots: 15-minute standard slots
@@ -173,7 +173,7 @@ export default function DoctorProfilePage() {
                 Contact & Clinical Credentials
               </h4>
               <p className="text-xs text-slate-700">
-                Email: <span className="font-semibold">{doctorProfile?.email || user?.email || "dr.kumar@kedarhospital.org"}</span>
+                Email: <span className="font-semibold">{doctorProfile?.email || user?.email || "doctor@hospital.org"}</span>
               </p>
               <p className="text-xs text-slate-700">
                 Phone: <span className="font-semibold">{doctorProfile?.phone || "+91 98401 22345"}</span>

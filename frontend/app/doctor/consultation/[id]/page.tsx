@@ -54,6 +54,7 @@ import {
   ConsultationSummary,
 } from "@/lib/types";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { LoadingState, ErrorState } from "@/components/ui/FeedbackStates";
 
 // Clinical Workspace Subcomponents
@@ -83,9 +84,11 @@ import { MedicalDocumentViewerModal } from "@/components/documents/MedicalDocume
 import { DoctorReviewDocumentModal } from "@/components/documents/DoctorReviewDocumentModal";
 import { DoctorRequestDocumentModal } from "@/components/documents/DoctorRequestDocumentModal";
 import { DoctorUploadExternalDocumentModal } from "@/components/documents/DoctorUploadExternalDocumentModal";
+import { DoctorAICopilotPanel } from "@/components/clinical/DoctorAICopilotPanel";
 
 type TabKey =
   | "OVERVIEW"
+  | "AI_COPILOT"
   | "CONSULTATION"
   | "HISTORY"
   | "VISITS"
@@ -104,6 +107,7 @@ export default function DoctorConsultationWorkspace() {
   const patientId = params?.id as string;
   const appointmentId = searchParams?.get("appointment_id") || undefined;
   const queueId = searchParams?.get("queue_id") || undefined;
+  const { workspace } = useWorkspace();
 
   // Global Context & Patient State
   const [contextData, setContextData] = useState<PatientConsultationContext | null>(null);
@@ -253,6 +257,17 @@ export default function DoctorConsultationWorkspace() {
     setSelectedDocIdsForConsultation((prev) =>
       prev.includes(doc.id) ? prev.filter((id) => id !== doc.id) : [...prev, doc.id]
     );
+  };
+
+  const handleApplyAIDraft = (draft: any) => {
+    if (draft.subjective_hpi) setHpiText(draft.subjective_hpi);
+    if (draft.objective_exam) setExaminationNotes(draft.objective_exam);
+    if (draft.assessment_summary) setAssessmentText(draft.assessment_summary);
+    if (draft.patient_instructions_draft) setTreatmentPlanText(draft.patient_instructions_draft);
+    if (draft.extracted_vitals && typeof draft.extracted_vitals === "object") {
+      setVitals((prev) => ({ ...prev, ...draft.extracted_vitals }));
+    }
+    setActiveTab("CONSULTATION");
   };
 
   const patient = contextData?.patient;
@@ -439,7 +454,7 @@ export default function DoctorConsultationWorkspace() {
                 </div>
               )}
               <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200">
-                {patient.hospital_name || "Kedar Hospital"} • General Medicine
+                {patient.hospital_name || workspace?.hospital_name || "Healthcare Facility"} • General Medicine
               </span>
             </div>
           </div>
@@ -466,6 +481,7 @@ export default function DoctorConsultationWorkspace() {
           <div className="bg-white border border-slate-200 rounded-2xl p-1.5 shadow-xs overflow-x-auto flex items-center gap-1">
             {[
               { key: "OVERVIEW", label: "Overview", icon: Layers },
+              { key: "AI_COPILOT", label: "AI Copilot", icon: Sparkles },
               { key: "CONSULTATION", label: "Consultation", icon: Stethoscope },
               { key: "HISTORY", label: "Medical History", icon: History },
               { key: "VISITS", label: "Visits", icon: Calendar },
@@ -509,7 +525,7 @@ export default function DoctorConsultationWorkspace() {
                   <p className="font-bold text-slate-900 text-sm">
                     {contextData?.recent_clinical_summary?.last_visit_date || "02 Oct 2026"}
                   </p>
-                  <span className="text-slate-500 text-[11px]">Kedar Hospital • Dr. Senthil</span>
+                  <span className="text-slate-500 text-[11px]">{patient.hospital_name || workspace?.hospital_name || "Healthcare Facility"}</span>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-1">
@@ -587,9 +603,30 @@ export default function DoctorConsultationWorkspace() {
             </div>
           )}
 
+          {/* TAB: AI COPILOT */}
+          {activeTab === "AI_COPILOT" && (
+            <div className="space-y-4">
+              <DoctorAICopilotPanel
+                patientId={patientId}
+                hospitalId={patient.hospital_id || workspace?.hospital_ref_id || ""}
+                chiefComplaint={chiefComplaintText || "Scheduled OPD Review"}
+                onApplyDraftToConsultation={handleApplyAIDraft}
+              />
+            </div>
+          )}
+
           {/* TAB 2: CONSULTATION (MAIN DOCTOR WORKSPACE) */}
           {activeTab === "CONSULTATION" && (
             <div className="space-y-5">
+              {/* Doctor AI Copilot Quick Assist Banner */}
+              <DoctorAICopilotPanel
+                patientId={patientId}
+                hospitalId={patient.hospital_id || workspace?.hospital_ref_id || ""}
+                chiefComplaint={chiefComplaintText || "Scheduled OPD Review"}
+                onApplyDraftToConsultation={handleApplyAIDraft}
+                className="mb-2"
+              />
+
               {/* 1. Patient-Reported Intake (Requirement 7, 8, 9, 11) */}
               <PatientReportedIntakeSection
                 intake={contextData?.patient_intake}
@@ -1155,7 +1192,7 @@ export default function DoctorConsultationWorkspace() {
                   <div key={idx} className="p-4 rounded-2xl bg-white border border-slate-200 flex justify-between text-xs">
                     <div>
                       <p className="font-bold text-slate-900">{app.department || "General Medicine"}</p>
-                      <p className="text-slate-500">{app.hospital_name || "Kedar Hospital"} • Slot {app.slot_time || "Morning"}</p>
+                      <p className="text-slate-500">{app.hospital_name || workspace?.hospital_name || "Healthcare Facility"} • Slot {app.slot_time || "Morning"}</p>
                     </div>
                     <span className="font-mono text-indigo-700 font-bold">{app.appointment_date}</span>
                   </div>

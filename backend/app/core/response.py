@@ -41,8 +41,8 @@ def success_response(
 
 
 def error_response(
-    code: str,
-    message: str,
+    code: str = "ERROR",
+    message: str = "",
     details: Optional[Dict[str, Any]] = None,
     status_code: int = 400
 ) -> JSONResponse:

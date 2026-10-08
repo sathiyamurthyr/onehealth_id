@@ -1,467 +1,351 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  Shield,
-  KeyRound,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Lock,
-  RefreshCw,
-  QrCode,
-  ExternalLink,
-  Ban,
-  Check,
-  X,
-  FileText,
-  Building,
-  UserCheck,
-  Scale,
-  Send,
-  HelpCircle,
-  ChevronRight
+import { 
+  Shield, Key, Lock, Unlock, Clock, AlertCircle, CheckCircle2, 
+  Trash2, Plus, Building2, User, FileText, ArrowRight, Activity
 } from "lucide-react";
-import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
-import { api, AbhaProfile, ConsentArtifact, PrivacyGrievance } from "@/lib/api";
+import { networkApi } from "@/lib/api/network";
+import { NetworkConsent, NetworkRecordExchange, NetworkProvider } from "@/lib/types";
 
-export default function PatientConsentPage() {
+export default function PatientConsentManagerPage() {
+  const [consents, setConsents] = useState<NetworkConsent[]>([]);
+  const [accessHistory, setAccessHistory] = useState<NetworkRecordExchange[]>([]);
+  const [providers, setProviders] = useState<NetworkProvider[]>([]);
+  const [patientId, setPatientId] = useState("p-dccc29e4");
   const [loading, setLoading] = useState(true);
-  const [abhaProfile, setAbhaProfile] = useState<AbhaProfile | null>(null);
-  const [consents, setConsents] = useState<ConsentArtifact[]>([]);
-  const [myGrievances, setMyGrievances] = useState<PrivacyGrievance[]>([]);
+  const [showGrantModal, setShowGrantModal] = useState(false);
 
-  // Modals & Forms
-  const [showLinkAbhaModal, setShowLinkAbhaModal] = useState(false);
-  const [showGrievanceModal, setShowGrievanceModal] = useState(false);
-  const [newAbhaAddress, setNewAbhaAddress] = useState("sathiya.murthy@abdm");
-  const [newAbhaNumber, setNewAbhaNumber] = useState("91-4421-9982-1044");
-  const [grievanceType, setGrievanceType] = useState("DATA_CORRECTION");
-  const [grievanceDescription, setGrievanceDescription] = useState("");
-  const [actionLoading, setActionLoading] = useState(false);
+  // Grant Form
+  const [targetProviderId, setTargetProviderId] = useState("hosp-apollo");
+  const [consentScope, setConsentScope] = useState("ALL_RECORDS");
+  const [purpose, setPurpose] = useState("CARE_TREATMENT");
+  const [validDays, setValidDays] = useState(30);
 
-  const loadPatientData = async () => {
+  useEffect(() => {
+    loadData();
+  }, [patientId]);
+
+  const loadData = async () => {
     setLoading(true);
     try {
-      const [abha, conList, grvList] = await Promise.all([
-        api.compliance.getPatientAbha("p-101").catch(() => null),
-        api.compliance.listPatientConsents("ALL", "p-101").catch(() => []),
-        api.compliance.listMyPrivacyGrievances("hosp-kedar", "p-101").catch(() => [])
+      const [cstList, histList, provList] = await Promise.all([
+        networkApi.listPatientConsents(patientId),
+        networkApi.getExchangeAudit(patientId),
+        networkApi.listProviders({ stage: "ACTIVE" }),
       ]);
-      setAbhaProfile(abha);
-      setConsents(conList || []);
-      setMyGrievances(grvList || []);
+      setConsents(cstList || []);
+      setAccessHistory(histList || []);
+      setProviders(provList || []);
     } catch (err) {
-      console.error("Failed to load patient consent data", err);
+      console.error("Failed to load patient consent data:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadPatientData();
-  }, []);
-
-  const handleLinkAbha = async (e: React.FormEvent) => {
+  const handleGrantConsent = async (e: React.FormEvent) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
-      await api.compliance.linkPatientAbha({
-        abha_address: newAbhaAddress,
-        abha_number: newAbhaNumber,
-        auth_method: "AADHAAR_OTP"
-      }, "p-101");
-      setShowLinkAbhaModal(false);
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to link ABHA ID.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleUnlinkAbha = async () => {
-    if (!confirm("Are you sure you want to unlink your ABHA ID? This will revoke automatic cross-hospital record sharing.")) return;
-    setActionLoading(true);
-    try {
-      await api.compliance.unlinkPatientAbha("p-101");
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to unlink ABHA ID.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleGrantConsent = async (consentId: string) => {
-    setActionLoading(true);
-    try {
-      await api.compliance.grantConsent(consentId, "ECDSA_P256_SHA256:USER_APPROVED_TOKEN", "p-101");
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to grant consent.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDenyConsent = async (consentId: string) => {
-    setActionLoading(true);
-    try {
-      await api.compliance.denyConsent(consentId, "p-101");
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to reject consent request.");
-    } finally {
-      setActionLoading(false);
+      await networkApi.grantConsent({
+        patient_id: patientId,
+        grantee_provider_id: targetProviderId,
+        consent_scope: consentScope,
+        purpose,
+        valid_days: validDays,
+      });
+      setShowGrantModal(false);
+      loadData();
+    } catch (err) {
+      console.error("Failed to grant consent:", err);
     }
   };
 
   const handleRevokeConsent = async (consentId: string) => {
-    if (!confirm("Revoke this consent authorization immediately? The hospital will no longer be able to access your records.")) return;
-    setActionLoading(true);
+    if (!confirm("Are you sure you want to revoke this consent immediately? The hospital will lose access to records.")) return;
     try {
-      await api.compliance.revokeConsent(consentId, "Patient requested immediate revocation", "p-101");
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to revoke consent.");
-    } finally {
-      setActionLoading(false);
+      await networkApi.revokeConsent(consentId, patientId, "Manually revoked by patient via OH-ID Privacy Center.");
+      loadData();
+    } catch (err) {
+      console.error("Failed to revoke consent:", err);
     }
   };
-
-  const handleLodgeGrievance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setActionLoading(true);
-    try {
-      await api.compliance.lodgePatientGrievance({
-        hospital_id: "hosp-kedar",
-        grievance_type: grievanceType,
-        description: grievanceDescription
-      }, "p-101");
-      setShowGrievanceModal(false);
-      setGrievanceDescription("");
-      await loadPatientData();
-    } catch (e) {
-      alert("Failed to lodge grievance.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const pendingRequests = consents.filter((c) => c.consent_status === "REQUESTED");
-  const activeConsents = consents.filter((c) => c.consent_status === "GRANTED");
-  const historyConsents = consents.filter((c) => c.consent_status !== "REQUESTED" && c.consent_status !== "GRANTED");
 
   return (
-    <WorkspaceLayout allowedWorkspaceTypes={["PATIENT"]}>
-      <div className="max-w-6xl mx-auto space-y-6 pb-16">
-        {/* Header Banner */}
-        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-950 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden border border-emerald-900/40">
-          <div className="absolute -right-10 -top-10 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-            <div className="space-y-2 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-xs font-semibold uppercase tracking-wider border border-emerald-400/20">
-                <Shield className="w-3.5 h-3.5" /> ABDM & DPDP Health Privacy
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight">Privacy & Consent Center</h1>
-              <p className="text-emerald-100/80 text-sm leading-relaxed">
-                You have full control over your health records. Manage your linked <strong>Ayushman Bharat Health Account (ABHA)</strong>, approve doctor access requests, and revoke sharing permissions at any time.
-              </p>
+    <div style={{ padding: "2rem", minHeight: "100vh", backgroundColor: "#0b0f19", color: "#f8fafc", fontFamily: "sans-serif" }}>
+      {/* Header Banner */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)",
+        border: "1px solid rgba(255, 255, 255, 0.1)",
+        borderRadius: "16px",
+        padding: "2rem",
+        marginBottom: "2rem",
+        backdropFilter: "blur(12px)"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", padding: "0.3rem 0.8rem", borderRadius: "20px", color: "#60a5fa", fontSize: "0.85rem", marginBottom: "0.8rem" }}>
+              <Shield size={16} /> Patient-Controlled Sovereign Privacy
             </div>
-
-            <button
-              onClick={() => setShowGrievanceModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-xs font-bold transition border border-white/20 backdrop-blur-md shrink-0"
-            >
-              <Scale className="w-4 h-4 text-emerald-400" />
-              Lodge Privacy Grievance
-            </button>
+            <h1 style={{ fontSize: "2rem", fontWeight: "700", margin: "0 0 0.5rem 0", background: "linear-gradient(90deg, #ffffff, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              Granular Consent & Record Sharing
+            </h1>
+            <p style={{ color: "#94a3b8", margin: 0, fontSize: "1rem", maxWidth: "700px" }}>
+              Control exactly which hospitals, doctors, and diagnostic labs can view your medical history. Set record scopes, expiration dates, and audit real-time access.
+            </p>
           </div>
+
+          <button
+            onClick={() => setShowGrantModal(true)}
+            style={{
+              padding: "0.8rem 1.6rem",
+              background: "linear-gradient(90deg, #2563eb, #1d4ed8)",
+              border: "none",
+              borderRadius: "10px",
+              color: "#ffffff",
+              fontWeight: "600",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)"
+            }}
+          >
+            <Plus size={18} /> Grant Provider Consent
+          </button>
         </div>
+      </div>
 
-        {/* ABHA Digital Health Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-200 text-sky-700 flex items-center justify-center font-bold shrink-0">
-                <QrCode className="w-7 h-7" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-slate-900">ABHA Digital Health Account</h3>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      abhaProfile?.link_status === "LINKED"
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {abhaProfile?.link_status === "LINKED" ? "LINKED & KYC VERIFIED" : "UNLINKED"}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  National Digital Health Mission (ABDM) identification linked to OH-ID record: <strong>{abhaProfile?.oh_id || "OH-101-7890"}</strong>
-                </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "2rem", alignItems: "start" }}>
+        {/* Left Column: Active Consents */}
+        <div style={{
+          background: "rgba(30, 41, 59, 0.5)",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          borderRadius: "14px",
+          padding: "1.5rem",
+          backdropFilter: "blur(8px)"
+        }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "0 0 1rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Key size={18} style={{ color: "#60a5fa" }} /> Active Consent Grants ({consents.filter(c => c.status === "GRANTED").length})
+          </h2>
 
-                {abhaProfile?.link_status === "LINKED" ? (
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs font-mono">
-                    <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                      <span className="text-slate-400 font-sans text-[10px] block">ABHA Address:</span>
-                      <span className="font-bold text-sky-900">{abhaProfile.abha_address}</span>
-                    </div>
-                    <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                      <span className="text-slate-400 font-sans text-[10px] block">ABHA Number:</span>
-                      <span className="font-bold text-slate-800">{abhaProfile.abha_number || "91-4421-9982-1044"}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 mt-2 italic">
-                    Link your ABHA address to seamlessly discover and share health records across national hospitals.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              {abhaProfile?.link_status === "LINKED" ? (
-                <button
-                  onClick={handleUnlinkAbha}
-                  disabled={actionLoading}
-                  className="px-4 py-2 border border-rose-200 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-bold transition"
-                >
-                  Unlink ABHA
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowLinkAbhaModal(true)}
-                  disabled={actionLoading}
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                >
-                  Link My ABHA ID
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Pending Consent Requests Banner */}
-        {pendingRequests.length > 0 && (
-          <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2.5 text-amber-900">
-              <Clock className="w-5 h-5 text-amber-600" />
-              <h3 className="font-bold text-base">Pending Health Record Access Requests ({pendingRequests.length})</h3>
-            </div>
-
-            <div className="space-y-3">
-              {pendingRequests.map((req) => (
-                <div key={req.consent_id} className="bg-white rounded-2xl p-5 border border-amber-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm">{req.requester_name}</span>
-                      <span className="text-xs text-slate-500 font-medium">({req.requester_hospital_name})</span>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      <strong>Purpose:</strong> {req.purpose_text} &bull; <strong>Source:</strong> {req.provider_hospital_name}
-                    </p>
-                    <div className="text-[11px] text-slate-500 flex items-center gap-2 pt-1">
-                      <span>Categories: {Array.isArray(req.data_categories) ? req.data_categories.join(", ") : req.data_categories}</span>
-                      <span>&bull;</span>
-                      <span>Valid until: {req.expires_at ? new Date(req.expires_at).toLocaleDateString() : "6 months"}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleDenyConsent(req.consent_id)}
-                      disabled={actionLoading}
-                      className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition"
-                    >
-                      Deny
-                    </button>
-                    <button
-                      onClick={() => handleGrantConsent(req.consent_id)}
-                      disabled={actionLoading}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Approve Access
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Active Health Record Sharing Authorizations */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Active Record Sharing Permissions</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Healthcare providers currently authorized to access portions of your medical vault</p>
-            </div>
-          </div>
-
-          {activeConsents.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs bg-slate-50 rounded-2xl border border-slate-100">
-              No active third-party sharing permissions. Your health records are completely private to your active consultation providers.
-            </div>
+          {consents.length === 0 ? (
+            <p style={{ color: "#94a3b8", fontSize: "0.9rem", textAlign: "center", padding: "2rem" }}>
+              No active or historical consents found for your OH-ID.
+            </p>
           ) : (
-            <div className="space-y-3">
-              {activeConsents.map((con) => (
-                <div key={con.consent_id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm">{con.requester_name}</span>
-                      <span className="text-xs text-slate-500">({con.requester_hospital_name})</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        ACTIVE
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {consents.map((cst) => {
+                const isGranted = cst.status === "GRANTED";
+                return (
+                  <div
+                    key={cst.id}
+                    style={{
+                      background: isGranted ? "rgba(15, 23, 42, 0.7)" : "rgba(15, 23, 42, 0.4)",
+                      border: "1px solid",
+                      borderColor: isGranted ? "rgba(59, 130, 246, 0.3)" : "rgba(255, 255, 255, 0.06)",
+                      borderRadius: "10px",
+                      padding: "1.2rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      flexWrap: "wrap",
+                      gap: "1rem"
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.4rem" }}>
+                        <span style={{
+                          fontSize: "0.75rem",
+                          fontWeight: "700",
+                          padding: "0.2rem 0.5rem",
+                          borderRadius: "4px",
+                          background: isGranted ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                          color: isGranted ? "#34d399" : "#f87171"
+                        }}>
+                          {cst.status}
+                        </span>
+                        <span style={{ fontSize: "0.8rem", color: "#60a5fa", fontWeight: "600" }}>
+                          Scope: {cst.consent_scope}
+                        </span>
+                      </div>
+
+                      <h3 style={{ fontSize: "1.1rem", fontWeight: "600", margin: "0 0 0.3rem 0" }}>
+                        {cst.grantee_provider_name || cst.grantee_provider_id}
+                      </h3>
+
+                      <p style={{ color: "#94a3b8", fontSize: "0.85rem", margin: "0 0 0.4rem 0" }}>
+                        Purpose: {cst.purpose}
+                      </p>
+
+                      <span style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                        Valid Until: {cst.valid_until ? new Date(cst.valid_until).toLocaleDateString() : "30 Days"}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600">
-                      <strong>Source Facility:</strong> {con.provider_hospital_name} &bull; <strong>Purpose:</strong> {con.purpose_code}
-                    </p>
-                  </div>
 
-                  <button
-                    onClick={() => handleRevokeConsent(con.consent_id)}
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition shrink-0"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                    Revoke Permission
-                  </button>
-                </div>
-              ))}
+                    {isGranted && (
+                      <button
+                        onClick={() => handleRevokeConsent(cst.id)}
+                        style={{
+                          padding: "0.45rem 0.9rem",
+                          background: "rgba(239, 68, 68, 0.15)",
+                          border: "1px solid rgba(239, 68, 68, 0.4)",
+                          borderRadius: "6px",
+                          color: "#f87171",
+                          fontSize: "0.8rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.3rem"
+                        }}
+                      >
+                        <Trash2 size={14} /> Revoke
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Modal: Link ABHA */}
-        {showLinkAbhaModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-bold text-slate-900 text-base">Link ABHA Digital Health Account</h3>
-                <button onClick={() => setShowLinkAbhaModal(false)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
+        {/* Right Column: Real-Time Access Audit */}
+        <div style={{
+          background: "rgba(30, 41, 59, 0.5)",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          borderRadius: "14px",
+          padding: "1.5rem",
+          backdropFilter: "blur(8px)"
+        }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "0 0 1rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Activity size={18} style={{ color: "#34d399" }} /> Access & Provenance Log
+          </h2>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+            {accessHistory.map((exc) => (
+              <div
+                key={exc.id}
+                style={{
+                  background: "rgba(15, 23, 42, 0.6)",
+                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  borderRadius: "8px",
+                  padding: "0.9rem",
+                  fontSize: "0.82rem"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
+                  <strong style={{ color: "#f8fafc" }}>{exc.record_type}</strong>
+                  <span style={{ color: "#64748b", fontSize: "0.75rem" }}>
+                    {exc.accessed_at ? new Date(exc.accessed_at).toLocaleTimeString() : "Recent"}
+                  </span>
+                </div>
+                <p style={{ margin: "0 0 0.3rem 0", color: "#94a3b8" }}>
+                  Accessed by: <strong style={{ color: "#cbd5e1" }}>{exc.requester_organization || exc.requester_provider_id}</strong>
+                </p>
+                <span style={{ fontSize: "0.7rem", color: "#475569", fontFamily: "monospace", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Hash: {exc.provenance_hash}
+                </span>
               </div>
-
-              <form onSubmit={handleLinkAbha} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-semibold text-slate-700">ABHA Address (PHR Handle)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. yourname@abdm"
-                    value={newAbhaAddress}
-                    onChange={(e) => setNewAbhaAddress(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">14-Digit ABHA Number (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="91-XXXX-XXXX-XXXX"
-                    value={newAbhaNumber}
-                    onChange={(e) => setNewAbhaNumber(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900"
-                  />
-                </div>
-
-                <div className="bg-sky-50 p-3 rounded-xl border border-sky-100 text-[11px] text-sky-900">
-                  By linking your ABHA account, you authorize OH-ID to query and exchange consented health records via the national ABDM gateway in compliance with the ABDM Health Data Management Policy.
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowLinkAbhaModal(false)}
-                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold"
-                  >
-                    {actionLoading ? "Linking..." : "Confirm & Link"}
-                  </button>
-                </div>
-              </form>
-            </div>
+            ))}
           </div>
-        )}
-
-        {/* Modal: Lodge Privacy Grievance */}
-        {showGrievanceModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-100">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-bold text-slate-900 text-base">Lodge Privacy Grievance / Data Correction</h3>
-                <button onClick={() => setShowGrievanceModal(false)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleLodgeGrievance} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-semibold text-slate-700">Grievance Category</label>
-                  <select
-                    value={grievanceType}
-                    onChange={(e) => setGrievanceType(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
-                  >
-                    <option value="DATA_CORRECTION">Correction / Rectification of Personal Details</option>
-                    <option value="CONSENT_REVOCATION_DISPUTE">Consent Revocation Dispute</option>
-                    <option value="UNAUTHORIZED_ACCESS_REPORT">Report Unauthorized Record Access</option>
-                    <option value="DATA_ERASURE_REQUEST">Request Record Deletion (Subject to Statutory Retention)</option>
-                    <option value="GENERAL_PRIVACY">General DPDP Privacy Inquiry</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Detailed Description of Request</label>
-                  <textarea
-                    rows={4}
-                    required
-                    placeholder="Describe what information needs updating or your specific privacy inquiry..."
-                    value={grievanceDescription}
-                    onChange={(e) => setGrievanceDescription(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
-                  />
-                </div>
-
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-                  <strong>DPDP Act Statutory SLA:</strong> All privacy grievances are assigned directly to the Hospital Data Protection Officer (DPO) and must be reviewed and resolved within 30 statutory days.
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowGrievanceModal(false)}
-                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading || !grievanceDescription.trim()}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold"
-                  >
-                    {actionLoading ? "Submitting..." : "Submit Grievance"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
-    </WorkspaceLayout>
+
+      {/* Grant Modal */}
+      {showGrantModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.75)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          backdropFilter: "blur(6px)"
+        }}>
+          <div style={{
+            background: "#1e293b",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            borderRadius: "16px",
+            padding: "2rem",
+            maxWidth: "500px",
+            width: "90%"
+          }}>
+            <h2 style={{ fontSize: "1.3rem", fontWeight: "700", margin: "0 0 1rem 0" }}>
+              Grant Scoped Healthcare Consent
+            </h2>
+
+            <form onSubmit={handleGrantConsent} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", color: "#94a3b8", marginBottom: "0.3rem" }}>
+                  Select Healthcare Provider:
+                </label>
+                <select
+                  value={targetProviderId}
+                  onChange={(e) => setTargetProviderId(e.target.value)}
+                  style={{ width: "100%", padding: "0.7rem", background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", color: "#f8fafc" }}
+                >
+                  {providers.map(p => (
+                    <option key={p.id} value={p.id}>{p.organization_name} ({p.provider_type})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", color: "#94a3b8", marginBottom: "0.3rem" }}>
+                  Data Record Scope:
+                </label>
+                <select
+                  value={consentScope}
+                  onChange={(e) => setConsentScope(e.target.value)}
+                  style={{ width: "100%", padding: "0.7rem", background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", color: "#f8fafc" }}
+                >
+                  <option value="ALL_RECORDS">Full Medical History (All Records)</option>
+                  <option value="LABS_ONLY">Diagnostic & Lab Reports Only</option>
+                  <option value="PRESCRIPTIONS_ONLY">Prescriptions & Medications Only</option>
+                  <option value="CONSULTATIONS_ONLY">Consultation Notes Only</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", color: "#94a3b8", marginBottom: "0.3rem" }}>
+                  Access Duration (Days):
+                </label>
+                <select
+                  value={validDays}
+                  onChange={(e) => setValidDays(Number(e.target.value))}
+                  style={{ width: "100%", padding: "0.7rem", background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", color: "#f8fafc" }}
+                >
+                  <option value={7}>7 Days (Single Episode)</option>
+                  <option value={15}>15 Days</option>
+                  <option value={30}>30 Days (Standard Care)</option>
+                  <option value={90}>90 Days (Chronic Care Episode)</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.8rem", marginTop: "1rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowGrantModal(false)}
+                  style={{ padding: "0.6rem 1.2rem", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "8px", color: "#f8fafc", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: "0.6rem 1.5rem", background: "#2563eb", border: "none", borderRadius: "8px", color: "#ffffff", fontWeight: "600", cursor: "pointer" }}
+                >
+                  Grant Consent
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -18,6 +18,9 @@ export const authApi = {
     if (typeof window !== "undefined") {
       localStorage.removeItem("oh_access_token");
       localStorage.removeItem("oh_user");
+      localStorage.removeItem("oh_workspace");
+      localStorage.removeItem("oh_impersonation");
+      localStorage.removeItem("sathus_impersonation_session");
     }
   },
 
@@ -37,5 +40,20 @@ export const authApi = {
 
   getMe: async () => {
     return fetchJSON<{ success: boolean; data: UserProfile }>("/auth/me");
+  },
+
+  getWorkspace: async () => {
+    return fetchJSON<{ success: boolean; data: any }>("/auth/me/workspace");
+  },
+
+  validateInvitation: async (token: string) => {
+    return fetchJSON<{ success: boolean; data: any; message?: string }>(`/auth/invitations/${token}/validate`);
+  },
+
+  acceptInvitation: async (token: string, payload: { password: string; mfa_enabled?: boolean }) => {
+    return fetchJSON<{ success: boolean; data: any; message?: string }>(`/auth/invitations/${token}/accept`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };

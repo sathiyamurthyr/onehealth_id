@@ -16,7 +16,10 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/api/v1")
+    ? endpoint.replace(/^\/api\/v1/, "")
+    : endpoint;
+  const url = `${API_BASE}${cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`}`;
   const response = await fetch(url, {
     ...options,
     headers,
@@ -45,4 +48,40 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
 
   return response.json();
 }
+
+export const apiClient = {
+  get: async <T = any>(endpoint: string, options?: RequestInit): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, { ...options, method: "GET" });
+    return { data };
+  },
+  post: async <T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, {
+      ...options,
+      method: "POST",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return { data };
+  },
+  put: async <T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, {
+      ...options,
+      method: "PUT",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return { data };
+  },
+  patch: async <T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return { data };
+  },
+  delete: async <T = any>(endpoint: string, options?: RequestInit): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, { ...options, method: "DELETE" });
+    return { data };
+  },
+};
+
 

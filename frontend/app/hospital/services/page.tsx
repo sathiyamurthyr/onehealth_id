@@ -26,8 +26,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, HospitalServiceUpsertPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function ServicesPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [services, setServices] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,20 +51,20 @@ export default function ServicesPage() {
     duration_mins: 15,
     fee: 500,
     status: "ACTIVE",
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [serviceList, deptList] = await Promise.all([
-        api.hospital.getServices("hosp-kedar").catch(() => []),
+        api.hospital.getServices(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
       ]);
       setServices(serviceList || []);
       setDepartments(deptList || []);
       if (deptList && deptList.length > 0 && !formData.department_id) {
-        setFormData((prev) => ({ ...prev, department_id: deptList[0].id }));
+        setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId, department_id: deptList[0].id }));
       }
     } catch (err: any) {
       console.error("Failed to load hospital services:", err);
@@ -72,14 +75,14 @@ export default function ServicesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await api.hospital.upsertService(formData);
+      await api.hospital.upsertService({ ...formData, hospital_id: activeHospitalId });
       setSuccessMessage(`${formData.service_name} updated in tariff catalogue!`);
       setShowUpsertModal(false);
       setFormData({
@@ -90,7 +93,7 @@ export default function ServicesPage() {
         duration_mins: 15,
         fee: 500,
         status: "ACTIVE",
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -358,7 +361,7 @@ export default function ServicesPage() {
                               duration_mins: service.duration_mins,
                               fee: service.fee,
                               status: service.status,
-                              hospital_id: "hosp-kedar",
+                              hospital_id: activeHospitalId,
                             });
                             setShowUpsertModal(true);
                           }}

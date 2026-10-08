@@ -59,7 +59,7 @@ export function AppointmentBookingModal({
 
   // Form State
   const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || "");
-  const [locationQuery, setLocationQuery] = useState<string>("Mugalivakkam, Chennai");
+  const [locationQuery, setLocationQuery] = useState<string>("Chennai, Tamil Nadu");
   const [useGps, setUseGps] = useState<boolean>(false);
   const [gpsCoords, setGpsCoords] = useState<{ lat?: number; lon?: number }>({ lat: 13.0182, lon: 80.1654 });
   const [radiusKm, setRadiusKm] = useState<number>(25);
@@ -216,14 +216,14 @@ export function AppointmentBookingModal({
           setLocationQuery("Current Location (GPS)");
         },
         (err) => {
-          console.warn("Geolocation denied, using default Mugalivakkam coordinates", err);
+          console.warn("Geolocation denied, using default coordinates", err);
           setGpsCoords({ lat: 13.0182, lon: 80.1654 });
           setUseGps(true);
-          setLocationQuery("Mugalivakkam, Chennai (2.1 km)");
+          setLocationQuery("Chennai (Central)");
         }
       );
     } else {
-      setLocationQuery("Mugalivakkam, Chennai");
+      setLocationQuery("Chennai, Tamil Nadu");
     }
   };
 
@@ -497,7 +497,7 @@ export function AppointmentBookingModal({
                       setLocationQuery(e.target.value);
                       setUseGps(false);
                     }}
-                    placeholder="Search city, area or PIN code (e.g. Mugalivakkam, Porur, 600116, Chennai)"
+                    placeholder="Search city, area or PIN code (e.g. Porur, Anna Nagar, 600001, Chennai)"
                     className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
                   />
                 </div>

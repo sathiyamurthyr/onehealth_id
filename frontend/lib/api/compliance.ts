@@ -200,16 +200,29 @@ export interface RegulatoryComplianceReport {
   legal_declaration: string;
 }
 
+const getHospitalId = (explicitId?: string): string => {
+  if (explicitId) return explicitId;
+  if (typeof window !== "undefined") {
+    try {
+      const ws = JSON.parse(localStorage.getItem("oh_workspace") || "{}");
+      if (ws.hospital_ref_id) return ws.hospital_ref_id;
+    } catch {
+      // ignore
+    }
+  }
+  return "";
+};
+
 export const complianceApi = {
   // 1. Hospital Overview & Scorecard
-  getOverview: async (hospitalId: string = "hosp-kedar") => {
-    return fetchJSON<any>(`/hospital/compliance/overview?hospital_id=${encodeURIComponent(hospitalId)}`);
+  getOverview: async (hospitalId?: string) => {
+    return fetchJSON<any>(`/hospital/compliance/overview?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`);
   },
 
   // 2. Statutory Licenses
-  listLicenses: async (hospitalId: string = "hosp-kedar", category: string = "ALL", status: string = "ALL") => {
+  listLicenses: async (hospitalId?: string, category: string = "ALL", status: string = "ALL") => {
     return fetchJSON<StatutoryLicense[]>(
-      `/hospital/compliance/licenses?hospital_id=${encodeURIComponent(hospitalId)}&category=${encodeURIComponent(category)}&status=${encodeURIComponent(status)}`
+      `/hospital/compliance/licenses?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}&category=${encodeURIComponent(category)}&status=${encodeURIComponent(status)}`
     );
   },
 
@@ -228,23 +241,23 @@ export const complianceApi = {
   },
 
   // 3. ABDM HFR & HPR
-  getAbdmConfig: async (hospitalId: string = "hosp-kedar") => {
-    return fetchJSON<AbdmFacilityConfig>(`/hospital/compliance/abdm?hospital_id=${encodeURIComponent(hospitalId)}`);
+  getAbdmConfig: async (hospitalId?: string) => {
+    return fetchJSON<AbdmFacilityConfig>(`/hospital/compliance/abdm?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`);
   },
 
-  updateAbdmHfr: async (hospitalId: string = "hosp-kedar", payload: Partial<AbdmFacilityConfig>) => {
+  updateAbdmHfr: async (hospitalId?: string, payload?: Partial<AbdmFacilityConfig>) => {
     return fetchJSON<AbdmFacilityConfig>(
-      `/hospital/compliance/abdm/hfr?hospital_id=${encodeURIComponent(hospitalId)}`,
+      `/hospital/compliance/abdm/hfr?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`,
       {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload || {}),
       }
     );
   },
 
-  listDoctorHprMappings: async (hospitalId: string = "hosp-kedar") => {
+  listDoctorHprMappings: async (hospitalId?: string) => {
     return fetchJSON<AbdmPractitionerMapping[]>(
-      `/hospital/compliance/abdm/practitioners?hospital_id=${encodeURIComponent(hospitalId)}`
+      `/hospital/compliance/abdm/practitioners?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`
     );
   },
 
@@ -259,10 +272,10 @@ export const complianceApi = {
       ncahp_status_label?: string;
       hpr_verification_status?: string;
     },
-    hospitalId: string = "hosp-kedar"
+    hospitalId?: string
   ) => {
     return fetchJSON<any>(
-      `/hospital/compliance/abdm/practitioners/${encodeURIComponent(doctorId)}/sync?hospital_id=${encodeURIComponent(hospitalId)}`,
+      `/hospital/compliance/abdm/practitioners/${encodeURIComponent(doctorId)}/sync?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`,
       {
         method: "POST",
         body: JSON.stringify(payload),
@@ -271,9 +284,9 @@ export const complianceApi = {
   },
 
   // 4. Hospital Consent Register
-  listHospitalConsents: async (hospitalId: string = "hosp-kedar", status: string = "ALL") => {
+  listHospitalConsents: async (hospitalId?: string, status: string = "ALL") => {
     return fetchJSON<ConsentArtifact[]>(
-      `/hospital/compliance/consents?hospital_id=${encodeURIComponent(hospitalId)}&status=${encodeURIComponent(status)}`
+      `/hospital/compliance/consents?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}&status=${encodeURIComponent(status)}`
     );
   },
 
@@ -296,9 +309,9 @@ export const complianceApi = {
   },
 
   // 5. Privacy Grievances
-  listGrievances: async (hospitalId: string = "hosp-kedar", status: string = "ALL") => {
+  listGrievances: async (hospitalId?: string, status: string = "ALL") => {
     return fetchJSON<PrivacyGrievance[]>(
-      `/hospital/compliance/grievances?hospital_id=${encodeURIComponent(hospitalId)}&status=${encodeURIComponent(status)}`
+      `/hospital/compliance/grievances?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}&status=${encodeURIComponent(status)}`
     );
   },
 
@@ -320,9 +333,9 @@ export const complianceApi = {
   },
 
   // 6. Regulatory Inspection Export
-  getRegulatoryExport: async (hospitalId: string = "hosp-kedar") => {
+  getRegulatoryExport: async (hospitalId?: string) => {
     return fetchJSON<RegulatoryComplianceReport>(
-      `/hospital/compliance/reports/regulatory-export?hospital_id=${encodeURIComponent(hospitalId)}`
+      `/hospital/compliance/reports/regulatory-export?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}`
     );
   },
 
@@ -407,8 +420,8 @@ export const complianceApi = {
     return res.data !== undefined ? res.data : res;
   },
 
-  listMyPrivacyGrievances: async (hospitalId: string = "hosp-kedar", patientId?: string) => {
-    const query = `?hospital_id=${encodeURIComponent(hospitalId)}${patientId ? `&patient_id=${encodeURIComponent(patientId)}` : ""}`;
+  listMyPrivacyGrievances: async (hospitalId?: string, patientId?: string) => {
+    const query = `?hospital_id=${encodeURIComponent(getHospitalId(hospitalId))}${patientId ? `&patient_id=${encodeURIComponent(patientId)}` : ""}`;
     const res = await fetchJSON<{ data?: PrivacyGrievance[] } | PrivacyGrievance[]>(`/me/privacy/grievances${query}`);
     return (Array.isArray(res) ? res : (res as any).data || []) as PrivacyGrievance[];
   },

@@ -109,8 +109,8 @@ export function PatientHeader({
         {/* Hospital & Department */}
         <div className="space-y-1">
           <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">Hospital / Dept</span>
-          <p className="font-semibold text-slate-800 truncate" title={patient.hospital_name || "Kedar Hospital"}>
-            {patient.hospital_name || "Kedar Hospital"}
+          <p className="font-semibold text-slate-800 truncate" title={patient.hospital_name || "Healthcare Facility"}>
+            {patient.hospital_name || "Healthcare Facility"}
           </p>
           <span className="text-[11px] text-slate-500 block truncate">{department}</span>
         </div>

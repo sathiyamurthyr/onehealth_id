@@ -41,8 +41,13 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, StatutoryLicense, AbdmFacilityConfig, AbdmPractitionerMapping, ConsentArtifact, PrivacyGrievance, RegulatoryComplianceReport } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function CompliancePage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+
+  const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"OVERVIEW" | "LICENSES" | "ABDM" | "CONSENT" | "DPDP" | "EXPORT">("OVERVIEW");
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<any>(null);
@@ -73,15 +78,16 @@ export default function CompliancePage() {
   const [newLicExpiryDate, setNewLicExpiryDate] = useState("2030-01-01");
 
   const loadAllData = async () => {
+    setUser(api.auth.getCurrentUser());
     setLoading(true);
     try {
       const [ov, lics, abdm, docs, con, grv] = await Promise.all([
-        api.compliance.getOverview("hosp-kedar").catch(() => null),
-        api.compliance.listLicenses("hosp-kedar").catch(() => []),
-        api.compliance.getAbdmConfig("hosp-kedar").catch(() => null),
-        api.compliance.listDoctorHprMappings("hosp-kedar").catch(() => []),
-        api.compliance.listHospitalConsents("hosp-kedar").catch(() => []),
-        api.compliance.listGrievances("hosp-kedar").catch(() => [])
+        api.compliance.getOverview(activeHospitalId).catch(() => null),
+        api.compliance.listLicenses(activeHospitalId).catch(() => []),
+        api.compliance.getAbdmConfig(activeHospitalId).catch(() => null),
+        api.compliance.listDoctorHprMappings(activeHospitalId).catch(() => []),
+        api.compliance.listHospitalConsents(activeHospitalId).catch(() => []),
+        api.compliance.listGrievances(activeHospitalId).catch(() => [])
       ]);
 
       setOverview(ov || {
@@ -108,11 +114,11 @@ export default function CompliancePage() {
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleGenerateReport = async () => {
     try {
-      const rep = await api.compliance.getRegulatoryExport("hosp-kedar");
+      const rep = await api.compliance.getRegulatoryExport(activeHospitalId);
       setRegulatoryReport(rep);
     } catch (e) {
       console.error("Failed to generate report", e);
@@ -124,7 +130,7 @@ export default function CompliancePage() {
     setSaving(true);
     try {
       await api.compliance.upsertLicense({
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
         license_category: newLicCategory as any,
         title: newLicTitle,
         license_number: newLicNumber,
@@ -153,7 +159,7 @@ export default function CompliancePage() {
     try {
       await api.compliance.resolveGrievance(showResolveGrievanceModal.grievance_id, {
         resolution_notes: resolutionNotes,
-        grievance_officer_name: "Kedar Admin (Data Protection Officer)",
+        grievance_officer_name: `${workspace?.hospital_name || "Hospital"} Admin (Data Protection Officer)`,
         status: "RESOLVED"
       });
       setShowResolveGrievanceModal(null);
@@ -418,7 +424,7 @@ export default function CompliancePage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Data Protection Officer:</span>
-                    <span className="font-medium text-slate-800">Kedar Admin</span>
+                    <span className="font-medium text-slate-800">{user?.name || "Hospital Compliance Officer"}</span>
                   </div>
                 </div>
               </div>
@@ -607,7 +613,7 @@ export default function CompliancePage() {
                 </div>
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                   <span className="text-slate-400 font-medium">ABDM Gateway Bridge</span>
-                  <p className="text-xs font-mono text-slate-700 mt-1 truncate">abdm-bridge.kedarhealth.com</p>
+                  <p className="text-xs font-mono text-slate-700 mt-1 truncate">abdm-bridge.onehealthid.in</p>
                 </div>
               </div>
 
@@ -781,7 +787,7 @@ export default function CompliancePage() {
 
                 <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200 text-xs">
                   <span className="text-slate-500">Designated DPO:</span>{" "}
-                  <span className="font-bold text-slate-900">Kedar Admin (dpo@kedarhealth.com)</span>
+                  <span className="font-bold text-slate-900">{user?.name || "Compliance Officer"} (dpo@onehealthid.in)</span>
                 </div>
               </div>
 

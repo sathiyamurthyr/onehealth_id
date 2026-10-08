@@ -24,8 +24,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, OPDCounterUpsertPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function CountersPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [counters, setCounters] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
@@ -48,16 +51,16 @@ export default function CountersPage() {
     status: "ACTIVE",
     assigned_doctor_id: "",
     operating_hours: "08:00 AM - 08:00 PM",
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [counterList, deptList, docList] = await Promise.all([
-        api.hospital.getCounters("hosp-kedar").catch(() => []),
+        api.hospital.getCounters(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
-        api.hospital.getDoctors("hosp-kedar").catch(() => []),
+        api.hospital.getDoctors(activeHospitalId).catch(() => []),
       ]);
       setCounters(counterList || []);
       setDepartments(deptList || []);
@@ -65,6 +68,7 @@ export default function CountersPage() {
       if (deptList && deptList.length > 0 && !formData.department_id) {
         setFormData((prev) => ({
           ...prev,
+          hospital_id: activeHospitalId,
           department_id: deptList[0].id,
           token_prefix: (deptList[0].code ? `${deptList[0].code}-` : "OPD-").toUpperCase(),
         }));
@@ -78,7 +82,7 @@ export default function CountersPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleDepartmentChange = (deptId: string) => {
     const dept = departments.find((d) => d.id === deptId);
@@ -95,7 +99,7 @@ export default function CountersPage() {
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await api.hospital.upsertCounter(formData);
+      await api.hospital.upsertCounter({ ...formData, hospital_id: activeHospitalId });
       setSuccessMessage(`${formData.counter_name} configured and operational!`);
       setShowUpsertModal(false);
       setFormData({
@@ -108,7 +112,7 @@ export default function CountersPage() {
         status: "ACTIVE",
         assigned_doctor_id: "",
         operating_hours: "08:00 AM - 08:00 PM",
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -346,7 +350,7 @@ export default function CountersPage() {
                           status: counter.status,
                           assigned_doctor_id: counter.assigned_doctor_id || "",
                           operating_hours: counter.operating_hours,
-                          hospital_id: "hosp-kedar",
+                          hospital_id: activeHospitalId,
                         });
                         setShowUpsertModal(true);
                       }}

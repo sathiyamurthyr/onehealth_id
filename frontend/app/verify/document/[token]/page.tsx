@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -64,8 +65,14 @@ export default function PublicDocumentVerificationPage() {
       <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Verification Header Banner */}
         <div className="bg-gradient-to-r from-blue-800 via-indigo-800 to-blue-900 p-6 sm:p-8 text-white text-center relative overflow-hidden">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center mx-auto mb-3">
-            <ShieldCheck className="w-8 h-8 text-blue-300" />
+          <div className="w-14 h-14 rounded-2xl bg-white p-1.5 shadow-xl flex items-center justify-center mx-auto mb-3 overflow-hidden">
+            <Image
+              src="/images/oh-id-logo.png"
+              alt="One Health ID"
+              width={44}
+              height={44}
+              className="object-contain"
+            />
           </div>
           <span className="inline-block px-3 py-1 bg-white/20 text-white rounded-full text-xs font-bold uppercase tracking-wider mb-2">
             OneHealth ID Trust Network
@@ -76,6 +83,9 @@ export default function PublicDocumentVerificationPage() {
           <p className="text-xs text-blue-100 mt-1 max-w-md mx-auto">
             Zero-knowledge cryptographic verification of healthcare records and hospital certificates.
           </p>
+          <span className="text-[10px] text-cyan-300 font-semibold block mt-1">
+            Powered by Sathus Technology Pvt Ltd
+          </span>
         </div>
 
         {/* Verification Body */}
@@ -197,13 +207,14 @@ export default function PublicDocumentVerificationPage() {
           )}
 
           {/* Footer Back */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center space-y-1">
             <Link
               href="/login"
               className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
             >
               Sign in to OneHealth ID Portal <ArrowRight className="w-3.5 h-3.5" />
             </Link>
+            <p className="text-[10px] text-slate-400 block">Powered by Sathus Technology Pvt Ltd</p>
           </div>
         </div>
       </div>

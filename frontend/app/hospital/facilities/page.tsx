@@ -25,8 +25,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function FacilitiesPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [facilities, setFacilities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,7 +38,7 @@ export default function FacilitiesPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const list = await api.hospital.getFacilities("hosp-kedar");
+      const list = await api.hospital.getFacilities(activeHospitalId);
       setFacilities(list || []);
     } catch (err: any) {
       console.error("Failed to load facilities:", err);
@@ -46,7 +49,7 @@ export default function FacilitiesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const getFacilityIcon = (type: string) => {
     switch (type?.toUpperCase()) {
@@ -242,7 +245,7 @@ export default function FacilitiesPage() {
                     <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
                       <ShieldCheck className="w-3.5 h-3.5" /> NABH Safety Verified
                     </span>
-                    <span className="text-[11px]">Branch: Mugalivakkam</span>
+                    <span className="text-[11px]">Branch: {facility.branch_name || "Main Campus"}</span>
                   </div>
                 </div>
               );

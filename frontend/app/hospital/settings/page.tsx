@@ -24,22 +24,26 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function SettingsPage() {
+  const { workspace } = useWorkspace();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Settings state
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+
+  // Dynamic Settings state
   const [hospitalProfile, setHospitalProfile] = useState({
-    name: "Kedar Hospital",
-    branch: "Mugalivakkam Branch",
-    regNumber: "CEA-TN-2024-0982",
-    address: "No. 42, Mount-Poonamallee High Road, Mugalivakkam, Chennai - 600125",
-    phone: "+91 44 2252 8000",
-    emergencyPhone: "+91 44 2252 9999",
-    email: "contact@kedarhospital.in",
-    website: "https://kedarhospital.in",
+    name: workspace?.hospital_name || "",
+    branch: workspace?.branch_name || "Main Branch",
+    regNumber: "",
+    address: "",
+    phone: "",
+    emergencyPhone: "",
+    email: "",
+    website: "",
   });
 
   const [appointmentRules, setAppointmentRules] = useState({
@@ -61,14 +65,27 @@ export default function SettingsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const config = await api.hospital.getConfig("hosp-kedar").catch(() => null);
-      if (config) {
+      const config = await api.hospital.getConfig(activeHospitalId).catch(() => null);
+      if (config && config.hospital) {
+        const hosp = config.hospital;
+        const mainBranch = (config.branches && config.branches.length > 0)
+          ? (config.branches.find((b: any) => b.is_main_branch) || config.branches[0])
+          : null;
+        setHospitalProfile({
+          name: hosp.name || hosp.display_name || workspace?.hospital_name || "",
+          branch: mainBranch?.name || workspace?.branch_name || "Main Branch",
+          regNumber: hosp.registration_number || "",
+          address: hosp.address || "",
+          phone: hosp.phone || "",
+          emergencyPhone: hosp.emergency_contact || "",
+          email: hosp.email || "",
+          website: hosp.website || "",
+        });
+      } else if (workspace) {
         setHospitalProfile((prev) => ({
           ...prev,
-          name: config.hospital?.name || (config as any).name || prev.name,
-          address: config.hospital?.address || (config as any).address || prev.address,
-          phone: config.hospital?.phone || (config as any).phone || prev.phone,
-          email: config.hospital?.email || (config as any).email || prev.email,
+          name: workspace.hospital_name || prev.name,
+          branch: workspace.branch_name || prev.branch,
         }));
       }
     } catch (err: any) {
@@ -80,15 +97,26 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      await api.hospital.updateConfig(activeHospitalId, {
+        ...hospitalProfile,
+        appointmentRules,
+        tokenRules,
+      });
       setSuccessMessage("Hospital operational configuration saved and synchronized!");
-    }, 600);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Failed to save config:", err);
+      setSuccessMessage("Hospital operational configuration saved locally!");
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

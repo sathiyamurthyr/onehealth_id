@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -22,8 +23,15 @@ export default function Home() {
       <header className="border-b border-slate-200/80 backdrop-blur-md bg-white/90 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-blue-500/20">
-              <HeartPulse className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
+              <Image
+                src="/images/oh-id-logo.png"
+                alt="One Health ID"
+                width={36}
+                height={36}
+                priority
+                className="object-contain"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -31,10 +39,10 @@ export default function Home() {
                   ONEHEALTH ID
                 </span>
                 <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  HOS v2.4
+                  v1.0
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 hidden sm:block">Role-First Healthcare Operating Platform</p>
+              <p className="text-[11px] text-slate-500 hidden sm:block">Unified Healthcare Network • Powered by Sathus Technology Pvt Ltd</p>
             </div>
           </div>
 
@@ -125,7 +133,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-200/80 bg-slate-50/50 py-6 text-center text-xs text-slate-500">
-        <p>© 2026 OneHealth ID Hospital Operating System. Powered by FastAPI & PostgreSQL Views & Stored Procedures.</p>
+        <p>© 2026 OneHealth ID (OH-ID) Unified Healthcare Network • <strong className="text-slate-700">Powered by Sathus Technology Pvt Ltd</strong></p>
       </footer>
     </div>
   );

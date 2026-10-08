@@ -24,8 +24,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, StaffInvitationPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function StaffPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [invitations, setInvitations] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,20 +47,20 @@ export default function StaffPage() {
     role_code: "RECEPTIONIST",
     department_id: "",
     employment_type: "FULL_TIME",
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [invList, deptList] = await Promise.all([
-        api.hospital.getInvitations("hosp-kedar").catch(() => []),
+        api.hospital.getInvitations(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
       ]);
       setInvitations(invList || []);
       setDepartments(deptList || []);
       if (deptList && deptList.length > 0 && !formData.department_id) {
-        setFormData((prev) => ({ ...prev, department_id: deptList[0].id }));
+        setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId, department_id: deptList[0].id }));
       }
     } catch (err: any) {
       console.error("Failed to load staff invitations:", err);
@@ -68,14 +71,14 @@ export default function StaffPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await api.hospital.createInvitation(formData);
+      await api.hospital.createInvitation({ ...formData, hospital_id: activeHospitalId });
       setSuccessMessage(`Invitation sent to ${formData.full_name} (${formData.email})!`);
       setShowInviteModal(false);
       setFormData({
@@ -85,7 +88,7 @@ export default function StaffPage() {
         role_code: "RECEPTIONIST",
         department_id: departments[0]?.id || "",
         employment_type: "FULL_TIME",
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -354,7 +357,7 @@ export default function StaffPage() {
                     <input
                       type="email"
                       required
-                      placeholder="senthil.frontdesk@kedarhospital.in"
+                      placeholder="staff@hospital.org"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"

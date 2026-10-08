@@ -33,7 +33,7 @@ export default function DoctorSchedulePage() {
 
   // Configurable Slot Duration Rules (Hospital, Department, Doctor, Service)
   const [slotConfigs, setSlotConfigs] = useState({
-    hospital: "Kedar Super Speciality Hospital",
+    hospital: "Main Specialty Hospital",
     department: "General Medicine / OPD Block A",
     doctor: "Dr. Senthil Kumar, MD",
     workingHoursStart: "09:00",

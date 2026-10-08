@@ -71,11 +71,27 @@ def create_appointment(
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found in registry")
 
+    target_hospital = payload.hospital_id or user.get("hospital_ref_id") or doctor.get("hospital_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(user, target_hospital)
+
+    # Validate double-booking and schedule availability
+    appt_date = payload.appointment_date or (payload.slot.split(" ")[0] if payload.slot and " " in payload.slot else None)
+    appt_time = payload.appointment_time or (payload.slot.split(" ", 1)[1] if payload.slot and " " in payload.slot else None)
+    if appt_date and appt_time:
+        schedule_validation = sp_repository.validate_appointment_schedule(
+            doctor_id=payload.doctor_id,
+            appointment_date=appt_date,
+            appointment_time=appt_time,
+            hospital_id=target_hospital
+        )
+        if not schedule_validation.get("is_valid", True):
+            raise HTTPException(
+                status_code=400,
+                detail=schedule_validation.get("message", "Appointment scheduling conflict detected.")
+            )
+
     assigned_id = payload.id or f"appt-{str(uuid4())[:8]}"
     slot_val = payload.slot or f"{payload.appointment_date or '2026-10-01'} {payload.appointment_time or '10:00 AM'}"
-    target_hospital = payload.hospital_id or user.get("hospital_ref_id") or doctor.get("hospital_id") or "hosp-kedar"
-
-    validate_hospital_tenant_scope(user, target_hospital)
 
     try:
         appt = sp_repository.book_appointment(
@@ -96,6 +112,48 @@ def create_appointment(
         raise HTTPException(status_code=500, detail="Booking failed. Please try again.")
 
     raise HTTPException(status_code=500, detail="Failed to create appointment")
+
+
+@router.post("/walk-in", status_code=status.HTTP_201_CREATED)
+def create_walk_in_appointment(
+    payload: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_any_permission("appointment.create", "appointment.manage")),
+):
+    """
+    Registers a walk-in patient arrival directly, creating appointment, visit, department token, and queue entry.
+    """
+    patient_id = payload.get("patient_id")
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="patient_id is required")
+
+    patient = sp_repository.get_patient_by_id(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    target_hospital = payload.get("hospital_id") or user.get("hospital_ref_id") or patient.get("hospital_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(user, target_hospital)
+
+    actor_id = user.get("user_ref_id") or user.get("id") or user.get("username", "receptionist")
+    try:
+        result = sp_repository.generate_walk_in_visit(
+            hospital_id=target_hospital,
+            patient_id=patient_id,
+            department_id=payload.get("department_id"),
+            doctor_id=payload.get("doctor_id"),
+            priority=payload.get("priority", "NORMAL"),
+            reason=payload.get("reason", "Direct Walk-In Arrival"),
+            actor_id=actor_id
+        )
+        log_security_event("WALK_IN_CREATED", actor_id=user.get("username"), resource=f"appointment:{result.get('appointment_id')}", status="SUCCESS")
+        return {
+            "success": True,
+            "message": f"Walk-in registered. Token: {result.get('token_str')}",
+            "data": result
+        }
+    except Exception as e:
+        logger.error("Walk-in creation failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create walk-in visit: {str(e)}")
+
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
 def get_appointment(
@@ -118,6 +176,7 @@ def get_appointment(
 
     return appt
 
+
 @router.post("/{appointment_id}/check-in")
 def check_in_appointment(
     appointment_id: str,
@@ -130,17 +189,17 @@ def check_in_appointment(
     validate_hospital_tenant_scope(user, appt.get("hospital_id"))
 
     try:
-        actor_id = user.get("user_ref_id") or user.get("id") or "receptionist"
-        check_in_result = sp_repository.check_in_appointment(appointment_id, actor_id=actor_id)
+        actor_id = user.get("user_ref_id") or user.get("id") or user.get("username", "receptionist")
+        check_in_result = sp_repository.check_in_patient_visit(appointment_id=appointment_id, actor_id=actor_id)
         log_security_event("APPOINTMENT_CHECKED_IN", actor_id=user.get("username"), resource=f"appointment:{appointment_id}", status="SUCCESS")
         return {
             "success": True,
-            "message": f"Patient checked in successfully. Assigned OPD Token #{check_in_result['token_number']}",
+            "message": f"Patient checked in successfully. Assigned OPD Token #{check_in_result.get('token_number')} ({check_in_result.get('token_str')})",
             "data": check_in_result
         }
     except Exception as e:
         logger.error("Check-in failed for appointment %s: %s", appointment_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Check-in failed. Please verify appointment state.")
+        raise HTTPException(status_code=500, detail=f"Check-in failed: {str(e)}")
 
 @router.patch("/{appointment_id}/status", response_model=AppointmentResponse)
 def update_appointment_status(

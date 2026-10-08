@@ -142,7 +142,7 @@ export default function PatientDetailPage() {
                   <span>Age: <strong className="text-slate-700 ">{patient.age} yrs</strong></span>
                   <span>Gender: <strong className="text-slate-700 ">{patient.gender}</strong></span>
                   <span>Blood: <strong className="text-rose-600 ">{patient.blood_group || "N/A"}</strong></span>
-                  <span>Hospital: <strong className="text-slate-700 ">{patient.hospital_name || "Kedar Hospital"}</strong></span>
+                  <span>Hospital: <strong className="text-slate-700 ">{patient.hospital_name || "Healthcare Facility"}</strong></span>
                 </p>
               </div>
             </div>

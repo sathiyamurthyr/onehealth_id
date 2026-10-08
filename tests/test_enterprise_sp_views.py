@@ -71,10 +71,12 @@ def test_enterprise_appointments_and_queue(client, auth_headers):
     doctor = d_res.json()[0]
 
     # Book appointment via SP
+    import uuid
+    dynamic_slot = f"2026-11-{10 + (uuid.uuid4().int % 18):02d} {10 + (uuid.uuid4().int % 8):02d}:{10 + (uuid.uuid4().int % 40):02d}"
     appt_payload = {
         "patient_id": patient["id"],
         "doctor_id": doctor["id"],
-        "slot": "2026-10-10 10:30",
+        "slot": dynamic_slot,
         "status": "scheduled",
         "notes": "Cardiology screening consultation",
         "priority": "NORMAL"

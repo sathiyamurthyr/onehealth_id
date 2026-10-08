@@ -24,8 +24,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, DoctorRegisterPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function DoctorsPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [doctors, setDoctors] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [counters, setCounters] = useState<any[]>([]);
@@ -52,22 +55,22 @@ export default function DoctorsPage() {
     opd_counter_id: "",
     room_number: "Room 101",
     employment_type: "FULL_TIME",
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [docList, deptList, counterList] = await Promise.all([
-        api.hospital.getDoctors("hosp-kedar").catch(() => []),
+        api.hospital.getDoctors(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
-        api.hospital.getCounters("hosp-kedar").catch(() => []),
+        api.hospital.getCounters(activeHospitalId).catch(() => []),
       ]);
       setDoctors(docList || []);
       setDepartments(deptList || []);
       setCounters(counterList || []);
       if (deptList && deptList.length > 0 && !formData.department_id) {
-        setFormData((prev) => ({ ...prev, department_id: deptList[0].id }));
+        setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId, department_id: deptList[0].id }));
       }
     } catch (err: any) {
       console.error("Failed to load doctor data:", err);
@@ -78,14 +81,14 @@ export default function DoctorsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await api.hospital.registerDoctor(formData);
+      await api.hospital.registerDoctor({ ...formData, hospital_id: activeHospitalId });
       setSuccessMessage(`Dr. ${formData.name} registered and mapped successfully!`);
       setShowRegisterModal(false);
       setFormData({
@@ -101,7 +104,7 @@ export default function DoctorsPage() {
         opd_counter_id: "",
         room_number: "Room 101",
         employment_type: "FULL_TIME",
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -433,7 +436,7 @@ export default function DoctorsPage() {
                       <input
                         type="email"
                         required
-                        placeholder="arun.kumar@kedarhospital.in"
+                        placeholder="doctor@hospital.org"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"

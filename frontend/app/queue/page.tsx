@@ -71,7 +71,7 @@ export default function QueuePage() {
     return () => clearInterval(timer);
   }, [selectedDoctorId]);
 
-  const handleQueueAction = async (queueId: string, action: string, tokenNumber?: number) => {
+  const handleQueueAction = async (queueId: string, action: string, tokenNumber?: string | number) => {
     setActionLoading(queueId);
     try {
       const res = await api.queue.action(queueId, action);

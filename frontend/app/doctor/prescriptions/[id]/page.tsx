@@ -230,13 +230,13 @@ function PrescriptionDetailsContent() {
                     </span>
                   </div>
                   <h2 className="text-lg font-bold text-slate-900 mt-1 uppercase tracking-wide">
-                    {prescription.hospital_name || "Kedar Hospital Network"}
+                    {prescription.hospital_name || "Healthcare Facility"}
                   </h2>
                   <p className="text-xs text-slate-600 max-w-md leading-relaxed">
-                    {prescription.hospital_address || "Mount-Poonamallee High Road, Mugalivakkam, Chennai - 600125"}
+                    {prescription.hospital_address || "Healthcare Facility Address, India"}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Phone: {prescription.hospital_phone || "+91 44 2252 1100"} • NABH Accredited Healthcare Facility
+                    Phone: {prescription.hospital_phone || "+91 44 2252 1100"} • Accredited Healthcare Facility
                   </p>
                 </div>
 

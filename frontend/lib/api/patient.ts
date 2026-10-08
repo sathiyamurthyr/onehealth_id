@@ -315,16 +315,54 @@ export interface PatientVisitedHospital {
   last_visit_date?: string;
 }
 
-export interface PatientTimelineEvent {
-  id: string;
-  event_type: "VISIT" | "PRESCRIPTION" | "LAB" | "BILL" | "DOCUMENT" | "APPOINTMENT";
-  title: string;
-  subtitle: string;
-  date: string;
+export interface ConnectedFacility {
+  membership_id: string;
+  patient_id: string;
+  onehealth_id: string;
+  patient_name: string;
+  hospital_id: string;
   hospital_name: string;
-  doctor_name?: string;
+  hospital_code?: string;
+  hospital_city?: string;
+  hospital_phone?: string;
+  local_uhid?: string;
+  first_registration_date?: string;
+  last_visit_date?: string;
   status: string;
-  raw: any;
+}
+
+export interface OneHealthIdCardData {
+  onehealth_id: string;
+  qr_token: string;
+  name: string;
+  dob: string;
+  gender: string;
+  blood_group?: string;
+  emergency_contact?: string;
+  verification_status: string;
+  connected_facilities: ConnectedFacility[];
+  facilities_count: number;
+}
+
+export interface PatientTimelineEvent {
+  id?: string;
+  event_id?: string;
+  event_type: "VISIT" | "PRESCRIPTION" | "LAB" | "LAB_REPORT" | "BILL" | "DOCUMENT" | "APPOINTMENT" | "CONSULTATION" | "INVESTIGATION" | "REFERRAL" | string;
+  title: string;
+  subtitle?: string;
+  summary?: string;
+  date?: string;
+  event_timestamp?: string;
+  hospital_id?: string;
+  hospital_name: string;
+  doctor_id?: string;
+  doctor_name?: string;
+  provider_name?: string;
+  provider_specialty?: string;
+  status?: string;
+  metadata?: Record<string, any>;
+  reference_id?: string;
+  raw?: any;
 }
 
 // --------------------------------------------------------------------------
@@ -657,6 +695,13 @@ export const patientApi = {
     if (params?.patient_id) q.set("patient_id", params.patient_id);
     const qs = q.toString();
     return fetchJSON<{ success: boolean; data: PatientTimelineEvent[] }>(`/me/timeline${qs ? `?${qs}` : ""}`);
+  },
+
+  getOneHealthIdCard: (patient_id?: string) => {
+    const q = new URLSearchParams();
+    if (patient_id) q.set("patient_id", patient_id);
+    const qs = q.toString();
+    return fetchJSON<{ success: boolean; data: OneHealthIdCardData }>(`/me/oh-id${qs ? `?${qs}` : ""}`);
   },
 
   getQrToken: (patient_id?: string) => {

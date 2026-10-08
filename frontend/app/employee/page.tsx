@@ -74,7 +74,7 @@ export default function EmployeeWorkspacePage() {
         {/* Dynamic Header & Registration Metrics */}
         <DynamicDashboard
           title={`Frontdesk Operations — ${user?.name || "Reception"}`}
-          subtitle={`Citizen Enrollment & Outpatient Reception at ${workspace?.hospital_name || "Kedar Hospital"} • OneHealth ID issuance, appointment check-in, and OPD tokens.`}
+          subtitle={`Citizen Enrollment & Outpatient Reception at ${workspace?.hospital_name || "Healthcare Facility"} • OneHealth ID issuance, appointment check-in, and OPD tokens.`}
         />
 
         {/* Quick Action Tiles */}

@@ -257,7 +257,7 @@ export function DoctorReferralModal({
                       <div className="truncate">
                         <p className="font-bold text-slate-900 truncate">{doc.name}</p>
                         <p className="text-[11px] text-slate-500 truncate">
-                          {doc.qualification || doc.specialty} • {doc.hospital_name || "Kedar Hospital"}
+                          {doc.qualification || doc.specialty} • {doc.hospital_name || "Healthcare Facility"}
                         </p>
                       </div>
                     </button>

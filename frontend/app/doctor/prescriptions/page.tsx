@@ -71,7 +71,7 @@ export default function DoctorPrescriptionsListPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Clinical Prescriptions Registry</h1>
                 <p className="text-xs text-slate-500">
-                  Scoped to {workspace?.hospital_name || "Kedar Hospital"} • Digitally signed prescriptions
+                  Scoped to {workspace?.hospital_name || "Healthcare Facility"} • Digitally signed prescriptions
                 </p>
               </div>
             </div>

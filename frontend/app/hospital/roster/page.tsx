@@ -25,8 +25,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function RosterPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [roster, setRoster] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,7 +43,7 @@ export default function RosterPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const rosterList = await api.hospital.getRoster("hosp-kedar");
+      const rosterList = await api.hospital.getRoster(activeHospitalId);
       setRoster(rosterList || []);
     } catch (err: any) {
       console.error("Failed to load staff roster:", err);
@@ -51,7 +54,7 @@ export default function RosterPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleStatusChange = async (rosterId: string, newStatus: string) => {
     setUpdatingId(rosterId);

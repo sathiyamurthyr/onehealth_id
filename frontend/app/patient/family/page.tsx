@@ -517,7 +517,7 @@ function FamilyManagementContent() {
                 {/* Multi-Hospital Coverage */}
                 <div className="text-xs text-slate-600 flex items-center gap-2">
                   <Hospital className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>Visited Facilities: <strong>Kedar Hospital, Apollo City Hospital</strong></span>
+                  <span>Visited Facilities: <strong>Apollo City Hospital, City Multispecialty Clinic</strong></span>
                 </div>
               </div>
 

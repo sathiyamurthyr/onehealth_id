@@ -19,13 +19,14 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function HospitalBranchAccessPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || "hosp-kedar";
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
 
   const [users, setUsers] = useState<HospitalUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    if (!activeHospitalId) return;
     api.hospital.getUsers({ hospital_id: activeHospitalId, limit: 100 })
       .then((res) => {
         if (res?.users) setUsers(res.users);
@@ -38,6 +39,9 @@ export default function HospitalBranchAccessPage() {
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
     u.role_code.toLowerCase().includes(search.toLowerCase())
   );
+
+  const mainBranchName = `${workspace?.hospital_name || "Hospital"} (Main Campus)`;
+  const satelliteBranchName = `${workspace?.hospital_name || "Hospital"} (Satellite Branch)`;
 
   return (
     <WorkspaceLayout>
@@ -79,14 +83,15 @@ export default function HospitalBranchAccessPage() {
               <tr>
                 <th className="px-5 py-3.5">Staff Member</th>
                 <th className="px-4 py-3.5">Role</th>
-                <th className="px-4 py-3.5">Mugalivakkam (Main)</th>
-                <th className="px-4 py-3.5">Iyyappanthangal Branch</th>
+                <th className="px-4 py-3.5">{mainBranchName}</th>
+                <th className="px-4 py-3.5">{satelliteBranchName}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredUsers.map((u) => {
-                const hasMain = (u.branch_ids || ["br-kedar-01"]).includes("br-kedar-01");
-                const hasBranch2 = (u.branch_ids || []).includes("br-kedar-02");
+                const branchIds = u.branch_ids || (u.branch_id ? [u.branch_id] : ["br-main"]);
+                const hasMain = branchIds.length > 0;
+                const hasBranch2 = branchIds.length > 1;
                 return (
                   <tr key={u.user_id} className="hover:bg-slate-50 transition">
                     <td className="px-5 py-3.5 font-bold text-slate-900">

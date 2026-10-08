@@ -26,8 +26,11 @@ import {
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api, TraineeRegisterPayload } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function TraineesPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
   const [trainees, setTrainees] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -53,26 +56,27 @@ export default function TraineesPage() {
     supervisor_name: "",
     start_date: new Date().toISOString().split("T")[0],
     end_date: new Date(Date.now() + 180 * 86400000).toISOString().split("T")[0],
-    hospital_id: "hosp-kedar",
+    hospital_id: activeHospitalId,
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [traineeList, docList, deptList] = await Promise.all([
-        api.hospital.getTrainees("hosp-kedar").catch(() => []),
-        api.hospital.getDoctors("hosp-kedar").catch(() => []),
+        api.hospital.getTrainees(activeHospitalId).catch(() => []),
+        api.hospital.getDoctors(activeHospitalId).catch(() => []),
         api.admin.departments().catch(() => []),
       ]);
       setTrainees(traineeList || []);
       setDoctors(docList || []);
       setDepartments(deptList || []);
       if (deptList && deptList.length > 0 && !formData.department_id) {
-        setFormData((prev) => ({ ...prev, department_id: deptList[0].id }));
+        setFormData((prev) => ({ ...prev, hospital_id: activeHospitalId, department_id: deptList[0].id }));
       }
       if (docList && docList.length > 0 && !formData.supervisor_doctor_id) {
         setFormData((prev) => ({
           ...prev,
+          hospital_id: activeHospitalId,
           supervisor_doctor_id: docList[0].id,
           supervisor_name: docList[0].name,
         }));
@@ -86,7 +90,7 @@ export default function TraineesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,7 +118,7 @@ export default function TraineesPage() {
         supervisor_name: doctors[0]?.name || "",
         start_date: new Date().toISOString().split("T")[0],
         end_date: new Date(Date.now() + 180 * 86400000).toISOString().split("T")[0],
-        hospital_id: "hosp-kedar",
+        hospital_id: activeHospitalId,
       });
       await loadData();
     } catch (err: any) {
@@ -442,7 +446,7 @@ export default function TraineesPage() {
                     <input
                       type="email"
                       required
-                      placeholder="kavitha.trainee@kedarhospital.in"
+                      placeholder="trainee@hospital.org"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"

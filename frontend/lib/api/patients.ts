@@ -29,6 +29,12 @@ export const patientsApi = {
       body: JSON.stringify(data),
     }),
 
+  create: (data: Partial<Patient>) =>
+    fetchJSON<Patient>("/patients", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   checkDuplicate: (data: { phone?: string; email?: string; identity_number?: string; name?: string; age?: number }) =>
     fetchJSON<DuplicateCheckResult>("/patients/check-duplicate", {
       method: "POST",

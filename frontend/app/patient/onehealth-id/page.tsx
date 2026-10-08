@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   QrCode, ShieldCheck, Download, Printer, Share2, Heart,
   ArrowLeft, RefreshCw, CheckCircle2, Lock, Eye, Sparkles
@@ -69,13 +70,20 @@ export default function PatientOneHealthIdPage() {
           {/* Card Header */}
           <div className="flex items-start justify-between gap-4 mb-6 relative z-10">
             <div>
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
-                  OH
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-white p-1 border border-white/20 shadow-md overflow-hidden shrink-0 flex items-center justify-center">
+                  <Image
+                    src="/images/oh-id-logo.png"
+                    alt="One Health ID"
+                    width={36}
+                    height={36}
+                    className="object-contain"
+                  />
                 </div>
                 <div>
                   <h3 className="font-bold text-base tracking-tight leading-none">OneHealth ID</h3>
-                  <span className="text-[10px] text-cyan-300 font-medium">Universal Health Network</span>
+                  <span className="text-[10px] text-cyan-300 font-medium block mt-0.5">Universal Health Network</span>
+                  <span className="text-[9px] text-cyan-200/80 font-semibold block">Powered by Sathus Technology Pvt Ltd</span>
                 </div>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-4">
@@ -124,7 +132,7 @@ export default function PatientOneHealthIdPage() {
           <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[10px] text-slate-400 relative z-10">
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span>ABDM Compliant • Cryptographically Signed Identity</span>
+              <span>ABDM Compliant • Cryptographically Signed Identity • Powered by Sathus Technology Pvt Ltd</span>
             </div>
             <span className="font-mono text-slate-500">Universal Access Protocol</span>
           </div>
