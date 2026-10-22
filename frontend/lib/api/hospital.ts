@@ -197,6 +197,17 @@ export const hospitalApi = {
       body: JSON.stringify(payload),
     }),
 
+  setUserPassword: (userId: string, newPassword: string, hospitalId?: string) =>
+    fetchJSON<{ user_id: string; status: string; message: string }>(`/hospital/users/${userId}/password?hospital_id=${getHospitalId(hospitalId)}`, {
+      method: "POST",
+      body: JSON.stringify({ new_password: newPassword }),
+    }),
+
+  deleteUser: (userId: string, hospitalId?: string) =>
+    fetchJSON<{ user_id: string; status: string; message: string }>(`/hospital/users/${userId}?hospital_id=${getHospitalId(hospitalId)}`, {
+      method: "DELETE",
+    }),
+
   setUserStatus: (userId: string, status: string, reason?: string, hospitalId?: string) =>
     fetchJSON<HospitalUser>(`/hospital/users/${userId}/status?hospital_id=${getHospitalId(hospitalId)}`, {
       method: "POST",

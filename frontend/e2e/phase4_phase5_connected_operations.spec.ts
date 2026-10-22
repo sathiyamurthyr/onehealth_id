@@ -3,10 +3,18 @@ import { test, expect } from "@playwright/test";
 test.describe("OH-ID Phase 4 & Phase 5: Interoperability, Enterprise Operations, Billing & Insurance E2E", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="text"]').fill("9840000000");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/.*(admin|dashboard|hospital)/);
+
+    // If multi-workspace selector appears, wait and choose Hospital Executive Admin
+    await page.getByRole("heading", { name: "Select Your Workspace" }).waitFor({ timeout: 5000 }).catch(() => {});
+    const continueButtons = page.getByRole("button", { name: "Continue" });
+    if (await continueButtons.count() > 0) {
+      await continueButtons.last().click();
+    }
+
+    await expect(page).toHaveURL(/.*(admin|dashboard|hospital)/, { timeout: 10000 });
   });
 
   // =========================================================================

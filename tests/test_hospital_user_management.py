@@ -155,9 +155,10 @@ def test_update_user_and_audit_event_generation(hosp_admin_headers):
     # Check that audit log was created
     audit_res = client.get(f"/api/v1/hospital/users/audit?target_user_id={user_id}&hospital_id=hosp-kedar", headers=hosp_admin_headers)
     assert audit_res.status_code == 200
-    audits = audit_res.json()
+    audits_data = audit_res.json()
+    audits = audits_data.get("audit_logs", audits_data.get("items", [])) if isinstance(audits_data, dict) else audits_data
     assert len(audits) >= 1
-    assert any(a["action_type"] in ("PERMISSIONS_UPDATED", "ROLE_CHANGED", "USER_UPDATED") for a in audits)
+    assert any(a.get("action_type") in ("PERMISSIONS_UPDATED", "ROLE_CHANGED", "USER_UPDATED") for a in audits)
 
 def test_non_destructive_status_transitions(hosp_admin_headers):
     user_id = "u-doc-102"
@@ -238,7 +239,8 @@ def test_access_review_summary(hosp_admin_headers):
 def test_roles_catalog(hosp_admin_headers):
     res = client.get("/api/v1/hospital/users/roles-catalog?hospital_id=hosp-kedar", headers=hosp_admin_headers)
     assert res.status_code == 200
-    roles = res.json()
+    data = res.json()
+    roles = data.get("roles", data) if isinstance(data, dict) else data
     assert len(roles) >= 10
     role_codes = [r["code"] for r in roles]
     assert "DOCTOR" in role_codes

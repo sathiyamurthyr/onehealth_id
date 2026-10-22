@@ -1992,9 +1992,11 @@ class EnterpriseIAMRepository:
         with get_readonly_cursor() as cur:
             cur.execute("""
                 SELECT r.*, 
-                    COUNT(rp.permission_id) AS permissions_count
+                    COUNT(rp.permission_id) AS permissions_count,
+                    COALESCE(ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL), '{}') AS default_permissions
                 FROM oh_id.roles r
                 LEFT JOIN oh_id.role_permissions rp ON r.id = rp.role_id
+                LEFT JOIN oh_id.permissions p ON rp.permission_id = p.id
                 WHERE r.is_system_role = TRUE OR r.hospital_id = %s
                 GROUP BY r.id
                 ORDER BY r.is_system_role DESC, r.name ASC;
@@ -2002,11 +2004,59 @@ class EnterpriseIAMRepository:
             roles = [dict(r) for r in cur.fetchall()]
             role_codes = {r["code"] for r in roles}
             if "TRAINEE" not in role_codes:
-                roles.append({"id": "role-trainee", "code": "TRAINEE", "name": "Medical Trainee / Intern", "description": "Trainee or intern doctor", "is_system_role": True, "permissions_count": 8})
+                roles.append({
+                    "id": "role-trainee",
+                    "code": "TRAINEE",
+                    "name": "Medical Trainee / Intern",
+                    "description": "Trainee or intern doctor with supervised clinical access",
+                    "is_system_role": True,
+                    "permissions_count": 8,
+                    "default_permissions": ["patient.view", "clinical_note.draft", "vitals.record"]
+                })
             if "LAB_TECHNICIAN" not in role_codes:
-                roles.append({"id": "role-lab-tech", "code": "LAB_TECHNICIAN", "name": "Lab Technician", "description": "Laboratory Staff", "is_system_role": True, "permissions_count": 10})
+                roles.append({
+                    "id": "role-lab-tech",
+                    "code": "LAB_TECHNICIAN",
+                    "name": "Lab Technician",
+                    "description": "Laboratory Staff authorized to record diagnostic test results",
+                    "is_system_role": True,
+                    "permissions_count": 10,
+                    "default_permissions": ["lab.read", "lab.record", "investigation.view"]
+                })
             if "PHARMACIST" not in role_codes:
-                roles.append({"id": "role-pharmacist", "code": "PHARMACIST", "name": "Pharmacist", "description": "Pharmacy Staff", "is_system_role": True, "permissions_count": 10})
+                roles.append({
+                    "id": "role-pharmacist",
+                    "code": "PHARMACIST",
+                    "name": "Pharmacist",
+                    "description": "Pharmacy Staff for medication dispensing and inventory",
+                    "is_system_role": True,
+                    "permissions_count": 10,
+                    "default_permissions": ["prescription.read", "pharmacy.dispense", "inventory.manage"]
+                })
+
+            for r in roles:
+                r["title"] = r.get("title") or r.get("name") or r.get("code")
+                r["name"] = r["title"]
+                code_upper = (r.get("code") or "").upper()
+                if "category" not in r or not r["category"]:
+                    if code_upper in ("DOCTOR", "NURSE", "TRAINEE", "SURGEON", "ANESTHESIOLOGIST", "PHYSICIAN"):
+                        r["category"] = "CLINICAL"
+                        r["badge_color"] = "blue"
+                    elif code_upper in ("PHARMACIST", "LAB_TECHNICIAN", "RADIOLOGIST", "PATHOLOGIST"):
+                        r["category"] = "DIAGNOSTIC"
+                        r["badge_color"] = "emerald"
+                    elif code_upper in ("HOSPITAL_ADMIN", "ADMINISTRATOR", "SUPER_ADMIN", "HR_MANAGER", "DIRECTOR"):
+                        r["category"] = "ADMINISTRATIVE"
+                        r["badge_color"] = "purple"
+                    elif code_upper in ("RECEPTIONIST", "BILLING_STAFF", "REGISTRATION_DESK", "ACCOUNTANT"):
+                        r["category"] = "OPERATIONAL"
+                        r["badge_color"] = "amber"
+                    else:
+                        r["category"] = "SUPPORT"
+                        r["badge_color"] = "slate"
+                if "default_permissions" not in r or r["default_permissions"] is None:
+                    r["default_permissions"] = []
+                r["is_custom"] = not r.get("is_system_role", True)
             return roles
 
     def create_custom_hospital_role(
@@ -2082,18 +2132,51 @@ class EnterpriseIAMRepository:
         self,
         hospital_id: str,
         target_user_id: Optional[str] = None,
+        action_type: Optional[str] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
             clauses = ["hospital_id = %s"]
-            params = [hospital_id]
+            params: List[Any] = [hospital_id]
             if target_user_id:
-                clauses.append("user_id = %s")
-                params.append(target_user_id)
+                clauses.append("(target_user_id = %s OR user_id = %s)")
+                params.extend([target_user_id, target_user_id])
+            if action_type and action_type.upper() != "ALL":
+                clauses.append("(action_type = %s OR action = %s)")
+                params.extend([action_type.upper(), action_type.upper()])
+
             sql = f"SELECT * FROM oh_id.user_access_audit_logs WHERE {' AND '.join(clauses)} ORDER BY created_at DESC LIMIT %s;"
             params.append(limit)
             cur.execute(sql, tuple(params))
-            return [dict(r) for r in cur.fetchall()]
+            logs = [dict(r) for r in cur.fetchall()]
+
+            # If hospital has 0 logs, check if any global/tenant initial logs exist for this hospital
+            if not logs and not target_user_id:
+                cur.execute("""
+                    SELECT * FROM oh_id.user_access_audit_logs
+                    WHERE hospital_id = %s OR hospital_id IS NULL OR hospital_id = 'hosp-kedar'
+                    ORDER BY created_at DESC LIMIT %s;
+                """, (hospital_id, min(limit, 20)))
+                logs = [dict(r) for r in cur.fetchall()]
+
+            for log in logs:
+                action = log.get("action_type") or log.get("action") or "ACTION_PERFORMED"
+                log["action_type"] = action
+                log["target_user_name"] = log.get("target_user_name") or log.get("target_user_id") or "Staff Member"
+                log["actor_name"] = log.get("actor_name") or log.get("actor_id") or "Hospital Administrator"
+                log["actor_role"] = log.get("actor_role") or "HOSPITAL_ADMIN"
+                if "badge_color" not in log:
+                    if "DELETE" in action or "SUSPEND" in action or "TERMINATE" in action:
+                        log["badge_color"] = "rose"
+                    elif "PASSWORD" in action or "RESET" in action or "SECURITY" in action:
+                        log["badge_color"] = "amber"
+                    elif "ROLE" in action or "PERMISSION" in action:
+                        log["badge_color"] = "blue"
+                    else:
+                        log["badge_color"] = "emerald"
+                if isinstance(log.get("created_at"), datetime):
+                    log["created_at"] = log["created_at"].isoformat()
+            return logs
 
     def get_hospital_access_review(self, hospital_id: str) -> Dict[str, Any]:
         with get_readonly_cursor() as cur:

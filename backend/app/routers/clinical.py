@@ -17,7 +17,8 @@ from backend.app.core.rbac import (
     require_any_permission,
     require_permission,
     get_current_user_context,
-    validate_hospital_tenant_scope
+    validate_hospital_tenant_scope,
+    verify_clinical_record_access
 )
 from backend.app.core.logging import logger, log_security_event
 
@@ -306,6 +307,7 @@ def get_patient_timeline(
     user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "patient.read", "patient.self.read", "system.manage"))
 ):
     """Unified Patient Clinical Timeline across encounters, labs, prescriptions, and admissions."""
+    verify_clinical_record_access(patient_id, user)
     try:
         return sp_repository.get_patient_clinical_timeline(patient_id)
     except Exception as e:
@@ -318,6 +320,7 @@ def get_reports_summary(
     user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "lab.read", "lab.result.read", "patient.read", "patient.self.read", "system.manage"))
 ):
     """Unified reports with abnormal indicators and multi-period trend comparison."""
+    verify_clinical_record_access(patient_id, user, required_category="DiagnosticReport")
     try:
         return sp_repository.get_patient_reports_summary(patient_id)
     except Exception as e:

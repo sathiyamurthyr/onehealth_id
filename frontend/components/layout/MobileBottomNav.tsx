@@ -5,59 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  CalendarCheck,
-  Calendar,
-  ListOrdered,
-  MoreHorizontal,
-  X,
-  Stethoscope,
-  BedDouble,
-  TestTube,
-  Pill,
-  Receipt,
-  ShieldCheck,
-  Settings,
-  PlusCircle,
-  Building,
-  Sparkles,
-  Search,
-  UserCheck,
-  QrCode,
-  FileText,
-  FilePlus,
-  HeartPulse,
-  Hospital,
-  Clock
-} from "lucide-react";
-
-const ICON_MAP: Record<string, React.ElementType> = {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  CalendarCheck,
-  ListOrdered,
-  Stethoscope,
-  BedDouble,
-  TestTube,
-  Pill,
-  Receipt,
-  ShieldCheck,
-  Settings,
-  PlusCircle,
-  Building,
-  Sparkles,
-  Search,
-  UserCheck,
-  QrCode,
-  FileText,
-  FilePlus,
-  HeartPulse,
-  Hospital,
-  Clock,
-};
+import { Building, MoreHorizontal, X } from "lucide-react";
+import { resolveNavigationIcon } from "@/design-system/icons";
 
 export const MobileBottomNav: React.FC = () => {
   const pathname = usePathname();
@@ -77,7 +26,7 @@ export const MobileBottomNav: React.FC = () => {
         aria-label="Mobile Navigation"
       >
         {primaryItems.map((item) => {
-          const Icon = (item.icon && ICON_MAP[item.icon]) ? ICON_MAP[item.icon] : LayoutDashboard;
+          const Icon = resolveNavigationIcon(item.icon);
           const isActive = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/doctor" && pathname.startsWith(item.href));
 
           return (
@@ -131,6 +80,7 @@ export const MobileBottomNav: React.FC = () => {
               </div>
               <button
                 onClick={() => setDrawerOpen(false)}
+                aria-label="Close workflows drawer"
                 className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
@@ -140,7 +90,7 @@ export const MobileBottomNav: React.FC = () => {
             {/* Additional Permitted Links */}
             <div className="grid grid-cols-2 gap-2 mb-4">
               {moreItems.map((item) => {
-                const Icon = (item.icon && ICON_MAP[item.icon]) ? ICON_MAP[item.icon] : LayoutDashboard;
+                const Icon = resolveNavigationIcon(item.icon);
                 const isActive = pathname === item.href;
 
                 return (

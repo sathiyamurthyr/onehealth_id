@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, status
 from typing import Optional
+import logging
 from pydantic import BaseModel, Field
-from backend.app.schemas.models import LoginRequest, LoginResponse, UserProfile
+from backend.app.schemas.models import LoginRequest, LoginResponse, UserProfile, RegisterRequest, RegisterResponse
 from backend.app.core.security import verify_password, create_access_token
 from backend.app.core.response import success_response, error_response
 from backend.app.repositories.sp_views_repository import sp_repository
@@ -9,6 +10,8 @@ from jose import jwt
 from backend.app.core.config import settings
 
 from backend.app.core.rate_limit import rate_limit_login
+
+logger = logging.getLogger("ohid.auth")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -20,7 +23,12 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[di
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username = payload.get("sub")
         if username:
-            return sp_repository.get_user_by_username(username)
+            user = sp_repository.get_user_by_username(username)
+            if user:
+                user["token_role"] = payload.get("role")
+                user["token_usertype_ref_id"] = payload.get("usertype_ref_id")
+                user["token_hospital_ref_id"] = payload.get("hospital_ref_id") or payload.get("hospital_id")
+                return user
     except Exception:
         return None
     return None
@@ -83,6 +91,117 @@ def login(creds: LoginRequest):
 
     return LoginResponse(access_token=token, user=profile)
 
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_login)])
+def register(payload: RegisterRequest):
+    """
+    Public/Citizen self-registration for OneHealth ID.
+    Enforces 10-digit mobile verification, bcrypt password hashing,
+    and establishes a unified patient profile and citizen credentials in existing tables.
+    Strictly assigns PATIENT role (ignoring any client-supplied role).
+    """
+    # 1. Reject email as identifier
+    identifier = payload.phone.strip()
+    if "@" in identifier:
+        raise HTTPException(
+            status_code=400,
+            detail="Email is not an allowed login identifier. Please enter your 10-digit registered mobile number."
+        )
+
+    # 2. Enforce 10-digit mobile number
+    digits_only = "".join(filter(str.isdigit, identifier))
+    clean_mobile = digits_only[-10:] if len(digits_only) >= 10 else digits_only
+    if len(clean_mobile) != 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a valid 10-digit Indian mobile number."
+        )
+
+    # 3. Enforce password minimum requirements
+    if len(payload.password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters in length."
+        )
+
+    # 4. Enforce mandatory patient consent
+    if not payload.consent_given:
+        raise HTTPException(
+            status_code=400,
+            detail="Consent to establish a OneHealth ID is mandatory."
+        )
+
+    # 5. Execute registration in database
+    try:
+        reg_result = sp_repository.register_citizen_patient(
+            name=payload.name.strip(),
+            phone=clean_mobile,
+            password=payload.password,
+            age=payload.age,
+            gender=payload.gender or "Unspecified",
+            email=payload.email.strip() if payload.email else None,
+            blood_group=payload.blood_group,
+            emergency_contact=payload.emergency_contact,
+            address=payload.address,
+            consent_given=payload.consent_given,
+            hospital_id="hosp-kedar"
+        )
+    except ValueError as ve:
+        err_msg = str(ve)
+        if "already registered" in err_msg.lower():
+            raise HTTPException(status_code=409, detail=err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
+    except Exception as e:
+        logger.error("Citizen registration failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to register user. Please try again.")
+
+    user_row = reg_result.get("user_row")
+    if not user_row:
+        raise HTTPException(status_code=500, detail="Failed to retrieve registered user profile.")
+
+    user_ref_id = user_row.get("user_ref_id") or user_row.get("id")
+
+    # 6. Resolve active workspace context
+    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id)
+    active_role = ws.get("role_code") if ws else "PATIENT"
+    active_usertype = ws.get("usertype_ref_id") if ws else "role-patient"
+    active_hospital = ws.get("hospital_ref_id") if ws else "hosp-kedar"
+    active_perms = ws.get("permissions") if ws else (user_row.get("permissions") or [])
+
+    profile = UserProfile(
+        id=user_row.get("id"),
+        user_ref_id=user_ref_id,
+        username=user_row["username"],
+        name=user_row.get("full_name", payload.name),
+        role=active_role,
+        usertype_ref_id=active_usertype,
+        email=user_row.get("email", ""),
+        hospital_id=active_hospital,
+        hospital_ref_id=active_hospital,
+        hospital_name=(ws.get("hospital_name") if ws else None) or user_row.get("hospital_name") or "Kedar Hospital",
+        tenant_name=(ws.get("tenant_name") if ws else None) or user_row.get("tenant_name") or "OneHealth Group",
+        roles=[active_role],
+        permissions=active_perms
+    )
+
+    token = create_access_token({
+        "sub": profile.username,
+        "uid": profile.user_ref_id,
+        "role": profile.role,
+        "usertype_ref_id": profile.usertype_ref_id,
+        "hospital_id": profile.hospital_ref_id,
+        "hospital_ref_id": profile.hospital_ref_id
+    })
+
+    return RegisterResponse(
+        message=f"Registration successful! Your OneHealth ID is {reg_result['onehealth_id']}.",
+        user_id=reg_result["user_id"],
+        patient_id=reg_result["patient_id"],
+        onehealth_id=reg_result["onehealth_id"],
+        access_token=token,
+        token_type="bearer",
+        user=profile
+    )
+
 @router.get("/me")
 def get_me(authorization: Optional[str] = Header(None)):
     user_row = get_current_user(authorization)
@@ -90,10 +209,19 @@ def get_me(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_ref_id = user_row.get("user_ref_id") or user_row.get("id")
-    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id)
-    active_role = ws.get("role_code") if ws else user_row.get("role", "STAFF")
-    active_usertype = ws.get("usertype_ref_id") if ws else user_row.get("usertype_ref_id")
-    active_hospital = ws.get("hospital_ref_id") if ws else user_row.get("hospital_ref_id") or user_row.get("hospital_id")
+    token_role = user_row.get("token_role")
+    token_usertype = user_row.get("token_usertype_ref_id")
+    token_hospital = user_row.get("token_hospital_ref_id")
+
+    ws = sp_repository.get_user_workspace(
+        user_ref_id=user_ref_id,
+        hospital_ref_id=token_hospital,
+        usertype_ref_id=token_usertype,
+        role_code=token_role
+    )
+    active_role = ws.get("role_code") if ws else (token_role or user_row.get("role", "STAFF"))
+    active_usertype = ws.get("usertype_ref_id") if ws else (token_usertype or user_row.get("usertype_ref_id"))
+    active_hospital = ws.get("hospital_ref_id") if ws else (token_hospital or user_row.get("hospital_ref_id") or user_row.get("hospital_id"))
     active_perms = ws.get("permissions") if ws else user_row.get("permissions") or []
 
     profile = UserProfile(
@@ -121,12 +249,22 @@ def get_me_workspace(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_ref_id = user_row.get("user_ref_id") or user_row.get("id")
-    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id)
+    token_role = user_row.get("token_role")
+    token_usertype = user_row.get("token_usertype_ref_id")
+    token_hospital = user_row.get("token_hospital_ref_id")
+
+    ws = sp_repository.get_user_workspace(
+        user_ref_id=user_ref_id,
+        hospital_ref_id=token_hospital,
+        usertype_ref_id=token_usertype,
+        role_code=token_role
+    )
     if not ws:
+        default_role = token_role or user_row.get("role", "STAFF")
         return success_response(data={
             "user_id": user_ref_id,
-            "role": user_row.get("role", "STAFF"),
-            "default_route": "/hospital" if user_row.get("role") == "HOSPITAL_ADMIN" else ("/super-admin" if user_row.get("role") == "SUPER_ADMIN" else "/doctor"),
+            "role": default_role,
+            "default_route": "/hospital" if default_role == "HOSPITAL_ADMIN" else ("/super-admin" if default_role == "SUPER_ADMIN" else "/doctor"),
             "permissions": user_row.get("permissions") or []
         })
 

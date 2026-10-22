@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi import APIRouter, HTTPException, status, Query, Depends, Header
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
 from backend.app.schemas.models import DoctorCreate, DoctorResponse
@@ -127,10 +127,12 @@ def search_other_doctors(
 @router.get("/", response_model=List[DoctorResponse], include_in_schema=False)
 def list_doctors(
     hospital_id: Optional[str] = Query(None),
-    department_id: Optional[str] = Query(None)
+    department_id: Optional[str] = Query(None),
+    x_hospital_ref_id: Optional[str] = Header(None, alias="X-Hospital-Ref-Id"),
 ):
+    target_hospital = hospital_id or x_hospital_ref_id
     try:
-        docs = sp_repository.list_doctors(hospital_id=hospital_id, department_id=department_id)
+        docs = sp_repository.list_doctors(hospital_id=target_hospital, department_id=department_id)
         return docs
     except Exception as e:
         logger.error("Failed to fetch doctors list: %s", e, exc_info=True)

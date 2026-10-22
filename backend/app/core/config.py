@@ -17,8 +17,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 # 24 hours
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
+    # Cross-Hospital Sharing Governance - Disabled by default for single-facility isolation
+    ENABLE_CROSS_HOSPITAL_SHARING: bool = os.getenv("ENABLE_CROSS_HOSPITAL_SHARING", "false").lower() in ("true", "1", "yes")
+    
     # CORS - Explicit origin allowlist (Strictly forbids '*' wildcard with credentials)
     CORS_ORIGINS: List[str] = [
+        "https://ohid.online",
+        "http://ohid.online",
+        "https://www.ohid.online",
+        "http://www.ohid.online",
+        "http://localhost:3040",
+        "http://127.0.0.1:3040",
         "http://localhost:3050",
         "http://127.0.0.1:3050",
         "http://localhost:8050",
@@ -40,3 +49,8 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+# Enforce non-default cryptographic secret key in production
+if settings.ENVIRONMENT == "production":
+    if not settings.SECRET_KEY or "default-secret" in settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
+        raise RuntimeError("FATAL SECURITY MISCONFIGURATION: SECRET_KEY must be explicitly set to a cryptographically secure random value in production.")

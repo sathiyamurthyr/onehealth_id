@@ -4,9 +4,13 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
   test("Desktop Viewport (1440x900): Full sidebar, multi-column dashboard, zero horizontal overflow", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="text"]').fill("9840000000");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
+    const continueBtn = page.getByRole("button", { name: "Continue" }).first();
+    if (await continueBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await continueBtn.click();
+    }
     await page.waitForURL(/.*(admin|dashboard)/);
 
     // Sidebar should be visible on desktop
@@ -23,9 +27,13 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
   test("Tablet Viewport (768x1024): Adaptive layout without content clipping", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("hospadmin");
+    await page.locator('input[type="text"]').fill("9840000001");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
+    const continueBtn = page.getByRole("button", { name: "Continue" }).first();
+    if (await continueBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await continueBtn.click();
+    }
     await page.waitForURL(/.*(admin|dashboard|hospital)/);
 
     // Verify no horizontal overflow
@@ -38,9 +46,13 @@ test.describe("OneHealth ID - Responsive Design & Device Strategy", () => {
   test("Mobile Viewport (390x844): Sticky bottom navigation, cards stack vertically, touch targets >= 44px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("dr.senthil");
+    await page.locator('input[type="text"]').fill("9840000002");
     await page.locator('input[type="password"]').fill("doctor123");
     await page.locator('button[type="submit"]').click();
+    const continueBtn = page.getByRole("button", { name: "Continue" }).first();
+    if (await continueBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await continueBtn.click();
+    }
     await page.waitForURL(/.*(admin|dashboard|hospital|doctor)/);
 
     // Desktop sidebar should be hidden

@@ -74,7 +74,7 @@ test.describe("OneHealth ID (OH-ID) — My Prescriptions Module E2E", () => {
     await page.goto("/patient/prescriptions/RX-20261003-00124");
 
     // Document header
-    await expect(page.getByText("OH-ID Digital Prescription").first()).toBeVisible();
+    await expect(page.getByText("DIGITAL PRESCRIPTION").first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Kedar Hospital" })).toBeVisible();
 
     // Status: Currently Valid
@@ -95,15 +95,12 @@ test.describe("OneHealth ID (OH-ID) — My Prescriptions Module E2E", () => {
     await expect(page.getByText("Hypertension Stage 1 & Mild Dyslipidemia").first()).toBeVisible();
     await expect(page.getByText("Adopt low-sodium DASH diet").first()).toBeVisible();
 
-    // Prescribed Medicines Table
+    // Prescribed Medicines Table (7 columns)
     await expect(page.getByText("Telmisartan").first()).toBeVisible();
     await expect(page.getByText("Atorvastatin").first()).toBeVisible();
     await expect(page.getByText("Amlodipine").first()).toBeVisible();
-
-    // Medication Schedule Matrix
-    await expect(page.getByRole("heading", { name: /Medication Schedule Matrix/i })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Morning" })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Night" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /Route & Frequency/i })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /Instructions/i })).toBeVisible();
 
     // Follow-up Section
     await expect(page.getByText("RECOMMENDED FOLLOW-UP").first()).toBeVisible();
@@ -171,6 +168,61 @@ test.describe("OneHealth ID (OH-ID) — My Prescriptions Module E2E", () => {
 
     // Share should now be revoked
     await expect(page.getByText("Revoked / Expired").first()).toBeVisible();
+  });
+
+  test("8. Prescription Header renders Hospital Name first from Database as primary identity", async ({ page }) => {
+    await page.goto("/patient/prescriptions/RX-20261003-00124");
+
+    // Header has H1 with Kedar Hospital
+    const hospitalHeading = page.locator("h1", { hasText: "Kedar Hospital" });
+    await expect(hospitalHeading).toBeVisible();
+
+    // Document stamp DIGITAL PRESCRIPTION is adjacent/below
+    await expect(page.getByText("DIGITAL PRESCRIPTION")).toBeVisible();
+  });
+
+  test("9. Scannable QR Code Canvas is rendered dynamically via qrcode.react", async ({ page }) => {
+    await page.goto("/patient/prescriptions/RX-20261003-00124");
+
+    // Real canvas element inside verification box
+    const canvasElement = page.locator("canvas");
+    await expect(canvasElement.first()).toBeVisible();
+
+    // Token text
+    await expect(page.getByText("Token: vtok-rx-20261003-00124")).toBeVisible();
+  });
+
+  test("10. Clinical Data Integrity: No fake hardcoded fallback strings appear", async ({ page }) => {
+    await page.goto("/patient/prescriptions/RX-20261003-00124");
+
+    // Fake phone number must not appear
+    await expect(page.getByText("+91 44 2252 1100")).toHaveCount(0);
+
+    // Hardcoded registration number TN-MCI-2024-88912 must not appear
+    await expect(page.getByText("TN-MCI-2024-88912")).toHaveCount(0);
+  });
+
+  test("11. Prescription Validity Period displays exact prescriber dates", async ({ page }) => {
+    await page.goto("/patient/prescriptions/RX-20261003-00124");
+
+    // Validity strip labels
+    await expect(page.getByText("Valid From:").first()).toBeVisible();
+    await expect(page.getByText("Valid Until:").first()).toBeVisible();
+    await expect(page.getByText("Validity Source:").first()).toBeVisible();
+  });
+
+  test("12. Print / PDF action is present and enabled", async ({ page }) => {
+    await page.goto("/patient/prescriptions/RX-20261003-00124");
+
+    // Print button exists
+    const printBtn = page.getByRole("button", { name: /^Print$/i });
+    await expect(printBtn).toBeVisible();
+    await expect(printBtn).toBeEnabled();
+
+    // Download PDF button exists
+    const pdfBtn = page.getByRole("button", { name: /Download PDF/i });
+    await expect(pdfBtn).toBeVisible();
+    await expect(pdfBtn).toBeEnabled();
   });
 });
 

@@ -33,7 +33,8 @@ import {
   Building,
   GraduationCap,
   Layers,
-  Check
+  Check,
+  Trash2
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { HospitalUser, AccessReviewSummary } from "@/lib/types";
@@ -65,6 +66,23 @@ export default function HospitalUsersPage() {
   const [statusReason, setStatusReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Password Modal State
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<HospitalUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Quick Contact Edit Modal State
+  const [selectedUserForContact, setSelectedUserForContact] = useState<HospitalUser | null>(null);
+  const [contactForm, setContactForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    mobile: "",
+  });
+
+  // Delete User Modal State
+  const [selectedUserForDelete, setSelectedUserForDelete] = useState<HospitalUser | null>(null);
 
   const loadData = async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -126,7 +144,7 @@ export default function HospitalUsersPage() {
         statusReason || `Updated by Administrator to ${statusAction}`,
         activeHospitalId
       );
-      showToast(`User ${selectedUserForStatus.full_name} status updated to ${statusAction}`);
+      showToast(`User ${selectedUserForStatus.full_name || selectedUserForStatus.username || "staff"} status updated to ${statusAction}`);
       setSelectedUserForStatus(null);
       setStatusReason("");
       loadData(true);
@@ -141,10 +159,72 @@ export default function HospitalUsersPage() {
   const handleQuickSecurityAction = async (user: HospitalUser, action: string) => {
     try {
       await api.hospital.manageUserSecurity(user.user_id, action, activeHospitalId);
-      showToast(`Security action ${action} applied for ${user.full_name}`);
+      showToast(`Security action ${action} applied for ${user.full_name || user.username || "staff"}`);
       loadData(true);
     } catch (err: any) {
       alert(err?.message || `Failed to execute security action`);
+    }
+  };
+
+  // Password Update Handler
+  const handlePasswordSubmit = async () => {
+    if (!selectedUserForPassword) return;
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+    setActionLoading(true);
+    setPasswordError(null);
+    try {
+      await api.hospital.setUserPassword(selectedUserForPassword.user_id, newPassword, activeHospitalId);
+      showToast(`Password successfully updated for ${selectedUserForPassword.full_name || selectedUserForPassword.username || "staff"}`);
+      setSelectedUserForPassword(null);
+      setNewPassword("");
+    } catch (err: any) {
+      setPasswordError(err?.message || "Failed to update password.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Contact Details Update Handler (Mobile & Email)
+  const handleContactSubmit = async () => {
+    if (!selectedUserForContact) return;
+    setActionLoading(true);
+    try {
+      await api.hospital.updateUser(
+        selectedUserForContact.user_id,
+        {
+          first_name: contactForm.first_name,
+          last_name: contactForm.last_name,
+          email: contactForm.email,
+          mobile: contactForm.mobile,
+        },
+        activeHospitalId
+      );
+      showToast(`Contact information updated for ${contactForm.first_name || selectedUserForContact.full_name || "staff"}`);
+      setSelectedUserForContact(null);
+      loadData(true);
+    } catch (err: any) {
+      alert(err?.message || "Failed to update contact details");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete / Remove User Handler
+  const handleDeleteSubmit = async () => {
+    if (!selectedUserForDelete) return;
+    setActionLoading(true);
+    try {
+      await api.hospital.deleteUser(selectedUserForDelete.user_id, activeHospitalId);
+      showToast(`User ${selectedUserForDelete.full_name || selectedUserForDelete.username || "staff"} has been removed from active staff.`);
+      setSelectedUserForDelete(null);
+      loadData(true);
+    } catch (err: any) {
+      alert(err?.message || "Failed to remove user");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -557,36 +637,45 @@ export default function HospitalUsersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {users.map((u) => (
-                    <tr key={u.user_id} className="hover:bg-slate-50/60 transition group">
-                      {/* Name & Contact */}
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 shrink-0 text-sm overflow-hidden">
-                            {u.photo_url ? (
-                              <img src={u.photo_url} alt={u.full_name} className="w-full h-full object-cover" />
-                            ) : (
-                              u.full_name.charAt(0)
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <Link
-                              href={`/hospital/users/${u.user_id}`}
-                              className="font-bold text-slate-900 hover:text-blue-600 transition truncate block group-hover:underline"
-                            >
-                              {u.full_name}
-                            </Link>
-                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                              <span className="truncate">{u.email}</span>
-                              {u.employee_id && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                                  {u.employee_id}
-                                </span>
+                  {users.map((u, idx) => {
+                    const displayName =
+                      u.full_name ||
+                      `${u.first_name || ""} ${u.last_name || ""}`.trim() ||
+                      u.username ||
+                      u.email ||
+                      "Staff Member";
+                    const initial = (displayName || "S").charAt(0).toUpperCase();
+
+                    return (
+                      <tr key={u.membership_id || `${u.user_id}-${u.role_code || idx}`} className="hover:bg-slate-50/60 transition group">
+                        {/* Name & Contact */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 shrink-0 text-sm overflow-hidden">
+                              {u.photo_url ? (
+                                <img src={u.photo_url} alt={displayName} className="w-full h-full object-cover" />
+                              ) : (
+                                initial
                               )}
                             </div>
+                            <div className="min-w-0">
+                              <Link
+                                href={`/hospital/users/${u.user_id}`}
+                                className="font-bold text-slate-900 hover:text-blue-600 transition truncate block group-hover:underline"
+                              >
+                                {displayName}
+                              </Link>
+                              <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                <span className="truncate">{u.email}</span>
+                                {u.employee_id && (
+                                  <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                    {u.employee_id}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
                       {/* Role & Designation */}
                       <td className="px-4 py-4">
@@ -665,6 +754,38 @@ export default function HospitalUsersPage() {
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Quick Edit Contact Info (Mobile, Email, Name) */}
+                          <button
+                            onClick={() => {
+                              setSelectedUserForContact(u);
+                              const parts = (u.full_name || "").trim().split(" ");
+                              setContactForm({
+                                first_name: u.first_name || parts[0] || "",
+                                last_name: u.last_name || parts.slice(1).join(" ") || "",
+                                email: u.email || "",
+                                mobile: u.mobile || "",
+                              });
+                            }}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition"
+                            title="Edit Contact Info (Phone / Email)"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+
+                          {/* Update / Reset Password */}
+                          <button
+                            onClick={() => {
+                              setSelectedUserForPassword(u);
+                              setNewPassword("");
+                              setPasswordError(null);
+                            }}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-amber-50 text-slate-600 hover:text-amber-700 transition"
+                            title="Update Password"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+
+                          {/* View Full Profile */}
                           <Link
                             href={`/hospital/users/${u.user_id}`}
                             className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition"
@@ -697,10 +818,20 @@ export default function HospitalUsersPage() {
                           >
                             <UserX className="w-4 h-4" />
                           </button>
+
+                          {/* Remove User from Hospital */}
+                          <button
+                            onClick={() => setSelectedUserForDelete(u)}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition"
+                            title="Remove User from Hospital"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -717,7 +848,7 @@ export default function HospitalUsersPage() {
                     Update Account Status
                   </h3>
                   <p className="text-sm text-slate-500">
-                    Non-destructive status management for <strong>{selectedUserForStatus.full_name}</strong>.
+                    Non-destructive status management for <strong>{selectedUserForStatus.full_name || selectedUserForStatus.username || selectedUserForStatus.email || "Staff Member"}</strong>.
                   </p>
                 </div>
                 <button
@@ -783,6 +914,244 @@ export default function HospitalUsersPage() {
                   className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50"
                 >
                   {actionLoading ? "Updating..." : "Confirm Status Change"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Change / Update Password Modal */}
+        {selectedUserForPassword && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Update User Password</h3>
+                    <p className="text-xs text-slate-500">
+                      Set a new password for <strong>{selectedUserForPassword.full_name || selectedUserForPassword.username || selectedUserForPassword.email || "Staff Member"}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedUserForPassword(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {passwordError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{passwordError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    New Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter at least 6 characters..."
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    The user will be able to log in immediately with this new password.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForPassword(null)}
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePasswordSubmit}
+                  disabled={actionLoading || !newPassword}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                  {actionLoading ? "Updating..." : "Set Password"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Edit Contact Details Modal */}
+        {selectedUserForContact && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center">
+                    <Edit className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Edit Contact Details</h3>
+                    <p className="text-xs text-slate-500">
+                      Update contact and profile details for <strong>{selectedUserForContact.full_name || selectedUserForContact.username || selectedUserForContact.email || "Staff Member"}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedUserForContact(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      value={contactForm.first_name}
+                      onChange={(e) => setContactForm({ ...contactForm, first_name: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={contactForm.last_name}
+                      onChange={(e) => setContactForm({ ...contactForm, last_name: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Email Address *
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      value={contactForm.email}
+                      onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                      className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Mobile Phone *
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      value={contactForm.mobile}
+                      onChange={(e) => setContactForm({ ...contactForm, mobile: e.target.value })}
+                      placeholder="+91 98401 23456"
+                      className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Synchronized across user login profile, doctor register, and nursing staff databases.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForContact(null)}
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContactSubmit}
+                  disabled={actionLoading}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {actionLoading ? "Saving..." : "Save Contact Info"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove / Delete User Confirmation Modal */}
+        {selectedUserForDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Remove Staff Member</h3>
+                    <p className="text-xs text-slate-500">
+                      Remove from hospital active roster
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedUserForDelete(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-xl bg-rose-50/70 border border-rose-200 text-xs text-rose-900 space-y-2">
+                <p className="font-semibold text-sm">
+                  Are you sure you want to remove <strong>{selectedUserForDelete.full_name || selectedUserForDelete.username || selectedUserForDelete.email || "Staff Member"}</strong>?
+                </p>
+                <p>
+                  This will terminate their hospital membership, disable single-portal login, and mark their roster availability as inactive.
+                </p>
+                <p className="text-[11px] text-rose-700 font-medium">
+                  Past clinical documents, consultations, and prescriptions authored by this user remain preserved for regulatory compliance.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForDelete(null)}
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSubmit}
+                  disabled={actionLoading}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {actionLoading ? "Removing..." : "Confirm Removal"}
                 </button>
               </div>
             </div>

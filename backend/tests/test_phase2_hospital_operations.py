@@ -224,7 +224,7 @@ def test_appointment_double_booking_conflict_prevention(receptionist_auth_header
         headers=receptionist_auth_headers
     )
     assert b2.status_code == 400
-    assert "conflict" in b2.text.lower() or "existing appointment" in b2.text.lower() or "already has an" in b2.text.lower()
+    assert any(phrase in b2.text.lower() for phrase in ("conflict", "existing appointment", "already has an", "already booked"))
 
 
 def test_checkin_creates_visit_token_and_queue(receptionist_auth_headers):

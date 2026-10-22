@@ -1305,7 +1305,7 @@ export default function CreateHospitalUserPage() {
               <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-lg shrink-0">
-                    {formData.first_name.charAt(0)}
+                    {(formData.first_name || "U").charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <h4 className="text-lg font-bold text-slate-900">

@@ -156,40 +156,232 @@ class SPViewsRepository(
         is_demo_data: bool = False
     ) -> Dict[str, Any]:
         with get_db_cursor() as cur:
-            try:
+            # Defensive check & resolution of branch_id
+            resolved_branch_id = None
+            if branch_id:
                 cur.execute(
-                    """
-                    CALL oh_id.sp_register_patient_v2(
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL
-                    );
-                    """,
-                    (
-                        patient_id, name, age, gender, phone, email,
-                        address, emergency_contact, blood_group, diagnosis,
-                        identity_type, identity_number, hospital_id, branch_id, tenant_id,
-                        created_by, is_demo_data
-                    )
+                    "SELECT id FROM oh_id.hospital_branches WHERE (id = %s OR code = %s) AND (hospital_id = %s OR %s IS NULL) LIMIT 1;",
+                    (branch_id, branch_id, hospital_id, hospital_id)
                 )
-                res = cur.fetchone()
-                new_id = res['o_patient_id']
-            except Exception:
-                # Fallback to standard registration
+                b_row = cur.fetchone()
+                if b_row:
+                    resolved_branch_id = b_row["id"]
+            if not resolved_branch_id and hospital_id:
                 cur.execute(
-                    """
-                    CALL oh_id.sp_register_patient(
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL
-                    );
-                    """,
-                    (
-                        patient_id, name, age, gender, phone, email,
-                        address, emergency_contact, blood_group, diagnosis,
-                        hospital_id, created_by
-                    )
+                    "SELECT id FROM oh_id.hospital_branches WHERE hospital_id = %s ORDER BY is_main_branch DESC, created_at ASC LIMIT 1;",
+                    (hospital_id,)
                 )
-                res = cur.fetchone()
-                new_id = res['o_patient_id']
+                b_row = cur.fetchone()
+                if b_row:
+                    resolved_branch_id = b_row["id"]
+
+            cur.execute(
+                """
+                CALL oh_id.sp_register_patient_v2(
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL
+                );
+                """,
+                (
+                    patient_id, name, age, gender, phone, email,
+                    address, emergency_contact, blood_group, diagnosis,
+                    identity_type, identity_number, hospital_id, resolved_branch_id, tenant_id,
+                    created_by, is_demo_data
+                )
+            )
+            res = cur.fetchone()
+            new_id = res['o_patient_id']
 
         return self.get_patient_by_id(new_id)
+
+    def register_citizen_patient(
+        self,
+        name: str,
+        phone: str,
+        password: str,
+        age: int,
+        gender: str = "Unspecified",
+        email: Optional[str] = None,
+        blood_group: Optional[str] = None,
+        emergency_contact: Optional[str] = None,
+        address: Optional[str] = None,
+        consent_given: bool = True,
+        hospital_id: str = "hosp-kedar"
+    ) -> Dict[str, Any]:
+        """
+        Public/Citizen self-registration method persisting to existing database tables:
+        oh_id.patients, oh_id.users, oh_id.user_roles, and oh_id.audit_logs.
+        Strictly enforces PATIENT role (ignores client-supplied role).
+        """
+        import secrets
+        from backend.app.core.security import get_password_hash
+
+        clean_digits = "".join(filter(str.isdigit, (phone or "").strip()))
+        clean_phone = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+        if len(clean_phone) != 10:
+            raise ValueError("Please enter a valid 10-digit registered mobile number.")
+
+        clean_name = (name or "").strip()
+        if len(clean_name) < 2:
+            raise ValueError("Full name must be at least 2 characters.")
+
+        if not password or len(password) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+
+        if age is None or age < 0 or age > 125:
+            raise ValueError("Please enter a valid age between 0 and 125.")
+
+        if not consent_given:
+            raise ValueError("Patient consent to establish an OH-ID digital health identity is mandatory.")
+
+        clean_email = (email or "").strip() or None
+        if clean_email and ("@" not in clean_email or "." not in clean_email):
+            raise ValueError("Please enter a valid email address.")
+
+        pw_hash = get_password_hash(password)
+        v_hosp = hospital_id or "hosp-kedar"
+
+        with get_db_cursor() as cur:
+            # 1. Check if an active registered user already exists for this mobile
+            cur.execute("""
+                SELECT id, username, is_active, password_hash
+                FROM oh_id.users
+                WHERE phone = %s
+                   OR username = %s
+                   OR RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g'), 10) = %s
+                LIMIT 1;
+            """, (clean_phone, clean_phone, clean_phone))
+            existing_user = cur.fetchone()
+            if existing_user and existing_user.get("password_hash") and "uninitialized" not in existing_user.get("password_hash", ""):
+                raise ValueError("An account with this mobile number is already registered. Please sign in.")
+
+            # 2. Check if a patient record already exists for this phone number in oh_id.patients
+            cur.execute("""
+                SELECT id, onehealth_id, qr_token, user_id
+                FROM oh_id.patients
+                WHERE RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g'), 10) = %s
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """, (clean_phone,))
+            existing_patient = cur.fetchone()
+
+            if existing_patient:
+                v_patient_id = existing_patient["id"]
+                v_ohid = existing_patient["onehealth_id"]
+                v_qr = existing_patient["qr_token"]
+            else:
+                # Register new patient
+                v_patient_id = "p-" + secrets.token_hex(4)
+                v_rand = secrets.token_hex(3).upper()
+                v_ohid = f"OHID-KEDAR-2026-{v_rand}"
+                v_qr = f"QR-OHID-SECURE-{secrets.token_hex(16)}"
+
+                cur.execute("""
+                    INSERT INTO oh_id.patients (
+                        id, onehealth_id, qr_token, name, age, gender, phone, email,
+                        address, emergency_contact, blood_group, diagnosis,
+                        identity_type, identity_number, hospital_id, branch_id, tenant_id,
+                        status, is_demo_data
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, 'Self-Registered Citizen',
+                        'NATIONAL_ID', NULL, %s, 'branch-kedar-01', 'ten-001',
+                        'ACTIVE', FALSE
+                    );
+                """, (
+                    v_patient_id, v_ohid, v_qr, clean_name, age, gender or "Unspecified",
+                    clean_phone, clean_email, address, emergency_contact, blood_group,
+                    v_hosp
+                ))
+
+            # 3. Create or update user account in oh_id.users
+            v_user_id = existing_user["id"] if existing_user else ("usr-" + secrets.token_hex(4))
+            user_email = clean_email or f"{clean_phone}@citizen.ohid.online"
+
+            if existing_user:
+                cur.execute("""
+                    UPDATE oh_id.users
+                    SET password_hash = %s,
+                        full_name = %s,
+                        role = 'PATIENT',
+                        usertype_ref_id = 'role-patient',
+                        phone = %s,
+                        email = COALESCE(%s, email),
+                        is_active = TRUE,
+                        is_verified = TRUE
+                    WHERE id = %s;
+                """, (pw_hash, clean_name, clean_phone, clean_email, v_user_id))
+            else:
+                cur.execute("""
+                    INSERT INTO oh_id.users (
+                        id, user_ref_id, username, phone, email, full_name, role,
+                        usertype_ref_id, hospital_id, hospital_ref_id, tenant_id,
+                        password_hash, is_active, is_verified
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, 'PATIENT',
+                        'role-patient', %s, %s, 'ten-001',
+                        %s, TRUE, TRUE
+                    );
+                """, (
+                    v_user_id, v_user_id, clean_phone, clean_phone, user_email,
+                    clean_name, v_hosp, v_hosp, pw_hash
+                ))
+
+            # 4. Map user role in oh_id.user_roles if not already present
+            cur.execute("""
+                SELECT id FROM oh_id.user_roles 
+                WHERE (user_id = %s OR user_ref_id = %s) 
+                  AND (role_id = 'role-patient' OR usertype_ref_id = 'role-patient');
+            """, (v_user_id, v_user_id))
+            if not cur.fetchone():
+                v_ur_id = "ur-" + secrets.token_hex(4)
+                cur.execute("""
+                    INSERT INTO oh_id.user_roles (
+                        id, user_id, user_ref_id, role_id, usertype_ref_id,
+                        hospital_id, hospital_ref_id, is_primary, is_active
+                    ) VALUES (
+                        %s, %s, %s, 'role-patient', 'role-patient',
+                        %s, %s, TRUE, TRUE
+                    );
+                """, (v_ur_id, v_user_id, v_user_id, v_hosp, v_hosp))
+
+            # 5. Link patient record(s) to this user
+            cur.execute("""
+                UPDATE oh_id.patients
+                SET user_id = %s,
+                    phone = COALESCE(phone, %s)
+                WHERE id = %s
+                   OR RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g'), 10) = %s;
+            """, (v_user_id, clean_phone, v_patient_id, clean_phone))
+
+            # 6. Audit log entry
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, hospital_id, tenant_id,
+                    action, resource_type, resource_id, details
+                ) VALUES (
+                    %s, %s, 'Citizen Self-Service', %s, 'ten-001',
+                    'CITIZEN_REGISTRATION', 'PATIENT', %s, %s::jsonb
+                );
+            """, (
+                'aud-' + secrets.token_hex(4),
+                v_user_id,
+                v_hosp,
+                v_patient_id,
+                json.dumps({
+                    "onehealth_id": v_ohid,
+                    "name": clean_name,
+                    "phone": clean_phone,
+                    "method": "SELF_REGISTRATION"
+                })
+            ))
+
+        user_row = self.get_user_by_username(clean_phone)
+        return {
+            "user_id": v_user_id,
+            "patient_id": v_patient_id,
+            "onehealth_id": v_ohid,
+            "user_row": user_row,
+        }
 
     def update_patient(
         self,
@@ -252,7 +444,7 @@ class SPViewsRepository(
 
     def list_doctors(self, hospital_id: Optional[str] = None, department_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
-            clauses = []
+            clauses = ["LEFT(id, 9) != 'test-doc-'"]
             params = []
             if hospital_id:
                 clauses.append("hospital_id = %s")
@@ -260,7 +452,7 @@ class SPViewsRepository(
             if department_id:
                 clauses.append("department_id = %s")
                 params.append(department_id)
-            where_str = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            where_str = f"WHERE {' AND '.join(clauses)}"
             cur.execute(f"SELECT * FROM oh_id.vw_doctors {where_str} ORDER BY rating DESC, name ASC;", tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
@@ -508,21 +700,29 @@ class SPViewsRepository(
             # 2. Insert or update FHIR Prescription & Prescription Items
             if prescription and prescription.get("items"):
                 rx_id = prescription.get("id") or f"rx-{uuid.uuid4().hex[:10]}"
+                val_from = prescription.get("valid_from")
+                val_until = prescription.get("valid_until")
+                val_unspec = prescription.get("validity_period_not_specified")
+                if val_unspec is None:
+                    val_unspec = (val_from is None and val_until is None)
+
                 cur.execute(
                     """
                     INSERT INTO oh_id.prescriptions (
                         id, consultation_id, patient_id, doctor_id, diagnosis, instructions,
-                        status, valid_from, valid_until, signed_by, signed_at,
+                        status, valid_from, valid_until, validity_period_not_specified, signed_by, signed_at,
                         digital_signature_hash, created_by, created_at, version
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
                         %s, %s, CURRENT_TIMESTAMP, 1
                     ) ON CONFLICT (id) DO UPDATE SET
                         diagnosis = EXCLUDED.diagnosis,
                         instructions = EXCLUDED.instructions,
                         status = EXCLUDED.status,
+                        valid_from = EXCLUDED.valid_from,
                         valid_until = EXCLUDED.valid_until,
+                        validity_period_not_specified = EXCLUDED.validity_period_not_specified,
                         signed_by = EXCLUDED.signed_by,
                         signed_at = EXCLUDED.signed_at,
                         digital_signature_hash = EXCLUDED.digital_signature_hash;
@@ -531,8 +731,9 @@ class SPViewsRepository(
                         rx_id, new_cid, patient_id, doctor_id, diagnosis,
                         prescription.get("instructions"),
                         prescription.get("status") or "ACTIVE",
-                        prescription.get("valid_from") or date.today(),
-                        prescription.get("valid_until") or (date.today() + timedelta(days=30)),
+                        val_from,
+                        val_until,
+                        val_unspec,
                         prescription.get("signed_by"),
                         datetime.now() if prescription.get("signed_by") else None,
                         prescription.get("digital_signature_hash"),
@@ -1226,11 +1427,43 @@ class SPViewsRepository(
     # ENTERPRISE WORKSPACES & RBAC RESOLUTION (Reads from vw_user_workspaces, vw_user_hospitals)
     # --------------------------------------------------------------------------
 
+    def _get_workspace_category_title(self, role_code: Optional[str], ws_type: Optional[str] = "") -> str:
+        role = (role_code or ws_type or "").upper()
+        if role in ["HOSPITAL_ADMIN", "ADMIN", "MEDICAL_DIRECTOR", "COO", "CEO"]:
+            return "🏥 Hospital Administration"
+        elif role in ["DOCTOR", "CONSULTANT", "SURGEON", "PHYSICIAN"]:
+            return "🩺 Clinical Workspace"
+        elif role in ["NURSE", "HEAD_NURSE", "STAFF_NURSE"]:
+            return "👩‍⚕️ Nursing Station"
+        elif role in ["DEPARTMENT_COORDINATOR", "DEPT_HEAD", "COORDINATOR"]:
+            return "📋 Department Operations"
+        elif role in ["PHARMACIST", "PHARMACY_STAFF"]:
+            return "💊 Pharmacy & Dispensing"
+        elif role in ["LAB_TECH", "RADIOLOGIST", "PATHOLOGIST"]:
+            return "🧪 Diagnostic Laboratory"
+        elif role in ["RECEPTIONIST", "FRONT_DESK", "REGISTRATION"]:
+            return "🛎️ Front Desk & Reception"
+        elif role in ["SUPER_ADMIN", "SYSTEM_ADMIN"]:
+            return "🛡️ Platform Governance"
+        elif role in ["PATIENT"]:
+            return "👤 Personal Health"
+        else:
+            return "📋 Healthcare Operations"
+
+    def _enrich_workspace_dict(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not row:
+            return None
+        d = dict(row)
+        if not d.get("category_title"):
+            d["category_title"] = self._get_workspace_category_title(d.get("role_code"), d.get("workspace_type"))
+        return d
+
     def get_user_workspace(
         self,
         user_ref_id: str,
         hospital_ref_id: Optional[str] = None,
-        usertype_ref_id: Optional[str] = None
+        usertype_ref_id: Optional[str] = None,
+        role_code: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
             clauses = ["user_ref_id = %s"]
@@ -1239,24 +1472,33 @@ class SPViewsRepository(
             if hospital_ref_id:
                 clauses.append("hospital_ref_id = %s")
                 params.append(hospital_ref_id)
-            if usertype_ref_id:
-                clauses.append("usertype_ref_id = %s")
-                params.append(usertype_ref_id)
+            if role_code and usertype_ref_id:
+                clauses.append("((role_code = %s OR workspace_type = %s) AND (usertype_ref_id = %s OR role_code = %s))")
+                params.extend([role_code, role_code, usertype_ref_id, usertype_ref_id])
+            elif role_code:
+                clauses.append("(role_code = %s OR workspace_type = %s)")
+                params.extend([role_code, role_code])
+            elif usertype_ref_id:
+                clauses.append("(usertype_ref_id = %s OR role_code = %s)")
+                params.extend([usertype_ref_id, usertype_ref_id])
 
             where_str = f"WHERE {' AND '.join(clauses)}"
             sql = f"SELECT * FROM oh_id.vw_user_workspaces {where_str} ORDER BY is_primary DESC LIMIT 1;"
             cur.execute(sql, tuple(params))
             row = cur.fetchone()
             if row:
-                return dict(row)
+                return self._enrich_workspace_dict(dict(row))
 
-            # Fallback if specific context not found
-            cur.execute(
-                "SELECT * FROM oh_id.vw_user_workspaces WHERE user_ref_id = %s ORDER BY is_primary DESC LIMIT 1;",
-                (user_ref_id,)
-            )
-            row = cur.fetchone()
-            return dict(row) if row else None
+            # Only fallback to primary workspace if NO specific role or usertype was requested
+            if not role_code and not usertype_ref_id:
+                cur.execute(
+                    "SELECT * FROM oh_id.vw_user_workspaces WHERE user_ref_id = %s ORDER BY is_primary DESC LIMIT 1;",
+                    (user_ref_id,)
+                )
+                row = cur.fetchone()
+                return self._enrich_workspace_dict(dict(row)) if row else None
+
+            return None
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
@@ -1316,7 +1558,16 @@ class SPViewsRepository(
                 "SELECT * FROM oh_id.vw_user_workspaces WHERE user_ref_id = %s ORDER BY is_primary DESC, role_name ASC;",
                 (user_ref_id,)
             )
-            return [dict(r) for r in cur.fetchall()]
+            raw = [dict(r) for r in cur.fetchall()]
+            seen = set()
+            deduped = []
+            for r in raw:
+                enriched = self._enrich_workspace_dict(r)
+                key = (enriched.get("hospital_ref_id"), enriched.get("role_code"), enriched.get("department_id"))
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(enriched)
+            return deduped
 
     def list_user_hospitals(self, user_ref_id: str) -> List[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
@@ -1445,7 +1696,11 @@ class SPViewsRepository(
         status: str = "SIGNED",
         visit_id: Optional[str] = None,
         items: Optional[List[Dict[str, Any]]] = None,
-        actor_id: str = "doctor"
+        actor_id: str = "doctor",
+        valid_from: Optional[str] = None,
+        valid_until: Optional[str] = None,
+        validity_type: Optional[str] = "CALENDAR_DAYS",
+        validity_period_not_specified: Optional[bool] = None
     ) -> Dict[str, Any]:
         """Creates an immutable prescription with medications, signature hash, and verification token."""
         import uuid
@@ -1457,26 +1712,32 @@ class SPViewsRepository(
         sig_hash = digital_signature_hash or f"SHA256:{hashlib.sha256(f'{rx_id}-{patient_id}-{doctor_id}-{datetime.datetime.now()}'.encode()).hexdigest()}"
         ver_token = verification_token or f"vtok_{uuid.uuid4().hex[:16]}"
 
+        if validity_period_not_specified is None:
+            validity_period_not_specified = (valid_from is None and valid_until is None)
+
         with get_db_cursor() as cur:
             # 1. Insert into oh_id.prescriptions
             cur.execute(
                 """
                 INSERT INTO oh_id.prescriptions (
-                    id, consultation_id, visit_id, encounter_id, patient_id, doctor_id, diagnosis,
+                    id, consultation_id, visit_id, encounter_id, patient_id, doctor_id, hospital_id, diagnosis,
                     instructions, doctor_notes, follow_up_days, follow_up_date, requires_pin,
-                    status, valid_from, valid_until, signed_by, signed_at, digital_signature_hash,
+                    status, valid_from, valid_until, validity_type, validity_period_not_specified,
+                    signed_by, signed_at, digital_signature_hash,
                     verification_token, created_by, version, created_at, updated_at
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
-                    %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', %s, CURRENT_TIMESTAMP, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, CURRENT_TIMESTAMP, %s,
                     %s, %s, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 );
                 """,
                 (
-                    rx_id, None, vis_id, None, patient_id, doctor_id, diagnosis,
+                    rx_id, None, vis_id, None, patient_id, doctor_id, hospital_id, diagnosis,
                     doctor_notes, doctor_notes, follow_up_days, follow_up_date, requires_pin,
-                    status, actor_id, sig_hash,
+                    status, valid_from, valid_until, validity_type or "CALENDAR_DAYS", validity_period_not_specified,
+                    actor_id, sig_hash,
                     ver_token, actor_id
                 )
             )
@@ -1499,17 +1760,17 @@ class SPViewsRepository(
                         """,
                         (
                             item_id, rx_id, it.get("medicine_name", "Medicine"),
-                            it.get("dosage") or it.get("dose", "1 tab"),
-                            it.get("dose", "1"),
-                            it.get("strength", "500 mg"),
-                            it.get("dosage_form", "Tablet"),
-                            it.get("route", "Oral"),
-                            it.get("frequency", "Twice daily (1-0-1)"),
-                            int(it.get("duration_days") or 5),
-                            int(it.get("duration_days") or 5),
-                            int(it.get("quantity") or 10),
-                            it.get("food_instruction", "After food"),
-                            it.get("specific_instructions") or it.get("instructions", "As directed by physician")
+                            it.get("dosage") or it.get("dose") or "As prescribed",
+                            it.get("dose"),
+                            it.get("strength"),
+                            it.get("dosage_form") or "Tablet",
+                            it.get("route") or "Oral",
+                            it.get("frequency") or "Twice daily (1-0-1)",
+                            int(it["duration_days"]) if it.get("duration_days") is not None else (int(it["duration_value"]) if it.get("duration_value") is not None else None),
+                            int(it["duration_value"]) if it.get("duration_value") is not None else (int(it["duration_days"]) if it.get("duration_days") is not None else None),
+                            int(it["quantity"]) if it.get("quantity") is not None else None,
+                            it.get("food_instruction"),
+                            it.get("specific_instructions") or it.get("instructions")
                         )
                     )
 
@@ -1522,7 +1783,44 @@ class SPViewsRepository(
         with get_readonly_cursor() as cur:
             cur.execute("SELECT * FROM oh_id.vw_prescriptions_full WHERE id = %s;", (prescription_id,))
             row = cur.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            rx = dict(row)
+
+            # Parse items
+            items = rx.get("items")
+            if isinstance(items, str):
+                try:
+                    items = json.loads(items)
+                except Exception:
+                    items = []
+            rx["items"] = items or []
+
+            # Parse vitals snapshot
+            val_vitals = rx.get("vitals_snapshot")
+            if isinstance(val_vitals, str):
+                try:
+                    rx["vitals_snapshot"] = json.loads(val_vitals)
+                except Exception:
+                    rx["vitals_snapshot"] = {}
+            elif val_vitals is None:
+                rx["vitals_snapshot"] = {}
+
+            # Parse allergies snapshot: preserve None vs []
+            val_allergies = rx.get("allergies_snapshot")
+            if isinstance(val_allergies, str):
+                try:
+                    rx["allergies_snapshot"] = json.loads(val_allergies)
+                except Exception:
+                    rx["allergies_snapshot"] = None
+            elif val_allergies is None:
+                rx["allergies_snapshot"] = None
+
+            # Calculate dynamic status
+            status_meta = self.calculate_prescription_computed_status(rx)
+            rx.update(status_meta)
+
+            return rx
 
     def list_prescriptions(
         self,
@@ -4538,6 +4836,20 @@ class SPViewsRepository(
                     "validity_narrative": f"Prescription validity ended on follow-up date ({fup_date.strftime('%d %b %Y')})."
                 }
 
+        if rx.get("validity_period_not_specified") and not valid_until:
+            return {
+                "computed_status": "ACTIVE",
+                "status_display": "✓ Active (No Validity Period Defined)",
+                "badge_color": "emerald",
+                "is_valid": True,
+                "is_expired": False,
+                "watermark_text": None,
+                "validity_narrative": (
+                    "No explicit validity period was recorded for this prescription. "
+                    "Contact the prescribing physician for guidance on validity."
+                )
+            }
+
         return {
             "computed_status": "ACTIVE",
             "status_display": "✓ Currently Valid",
@@ -4717,15 +5029,23 @@ class SPViewsRepository(
             rx["items"] = items or []
 
             # Parse vitals and allergies snapshots
-            for field in ["vitals_snapshot", "allergies_snapshot"]:
-                val = rx.get(field)
-                if isinstance(val, str):
-                    try:
-                        rx[field] = json.loads(val)
-                    except Exception:
-                        rx[field] = {}
-                elif val is None:
-                    rx[field] = {}
+            val_vitals = rx.get("vitals_snapshot")
+            if isinstance(val_vitals, str):
+                try:
+                    rx["vitals_snapshot"] = json.loads(val_vitals)
+                except Exception:
+                    rx["vitals_snapshot"] = {}
+            elif val_vitals is None:
+                rx["vitals_snapshot"] = {}
+
+            val_allergies = rx.get("allergies_snapshot")
+            if isinstance(val_allergies, str):
+                try:
+                    rx["allergies_snapshot"] = json.loads(val_allergies)
+                except Exception:
+                    rx["allergies_snapshot"] = None
+            elif val_allergies is None:
+                rx["allergies_snapshot"] = None
 
             # Calculate dynamic status
             status_meta = self.calculate_prescription_computed_status(rx)
@@ -4965,7 +5285,7 @@ class SPViewsRepository(
                 "name": rx.get("doctor_name"),
                 "specialty": rx.get("doctor_specialty"),
                 "registration_number": rx.get("doctor_registration"),
-                "registration_authority": rx.get("doctor_registration_authority") or "State Medical Council"
+                "registration_authority": rx.get("doctor_registration_authority") or "Not recorded"
             },
             "hospital": {
                 "name": rx.get("hospital_name"),
@@ -6151,14 +6471,15 @@ class SPViewsRepository(
     def list_hospital_nurses_admin(self, hospital_id: str = "hosp-kedar") -> List[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
             cur.execute("""
-                SELECT r.id, r.staff_id, r.staff_name AS name, r.department_id, r.department_name,
-                       r.shift, r.shift_timings, r.room_number AS ward, r.on_duty_status,
-                       u.email, u.phone, 'TN-NUR-2025-REG' AS registration_number,
-                       'Hospital Verified' AS verification_status, r.created_at
-                FROM oh_id.hospital_staff_rosters r
-                LEFT JOIN oh_id.users u ON r.staff_id = u.id OR u.role = 'NURSE'
-                WHERE r.hospital_id = %s AND r.staff_type = 'NURSE'
-                ORDER BY r.staff_name ASC;
+                SELECT n.id, n.user_id, n.hospital_id, n.name, n.email, n.phone,
+                       n.qualification, n.registration_number, n.ward, n.shift, n.status,
+                       n.department_id, d.name AS department_name,
+                       CASE WHEN n.status = 'ACTIVE' THEN 'ON_DUTY' ELSE 'OFF_DUTY' END AS on_duty_status,
+                       n.created_at
+                FROM oh_id.nurses n
+                LEFT JOIN oh_id.departments d ON n.department_id = d.id
+                WHERE n.hospital_id = %s
+                ORDER BY n.name ASC;
             """, (hospital_id,))
             rows = cur.fetchall()
             return [dict(r) for r in rows]
@@ -6773,9 +7094,22 @@ class SPViewsRepository(
             # 1. Update user account
             cur.execute("""
                 UPDATE oh_id.users
-                SET full_name = %s, email = %s, role = %s, is_active = %s
+                SET full_name = %s, email = %s, role = %s, is_active = %s, phone = %s, mobile = %s
                 WHERE id = %s;
-            """, (full_name, email, role_code, login_enabled, user_id))
+            """, (full_name, email, role_code, login_enabled, mobile, mobile, user_id))
+
+            # Sync to doctor / nurse domain tables if applicable
+            cur.execute("""
+                UPDATE oh_id.doctors
+                SET name = %s, email = %s, phone = %s, department_id = COALESCE(%s, department_id)
+                WHERE user_id = %s;
+            """, (full_name, email, mobile, department_id, user_id))
+
+            cur.execute("""
+                UPDATE oh_id.nurses
+                SET name = %s, email = %s, phone = %s, department_id = COALESCE(%s, department_id)
+                WHERE user_id = %s;
+            """, (full_name, email, mobile, department_id, user_id))
 
             # 2. Update staff membership
             cur.execute("""
@@ -6929,6 +7263,80 @@ class SPViewsRepository(
             "status": "SUCCESS",
             "details": new_state,
             "user": self.get_hospital_user_detail(user_id, hospital_id)
+        }
+
+    def set_hospital_user_password_admin(self, user_id: str, hospital_id: str, new_password: str, actor_id: str = "hospadmin") -> Dict[str, Any]:
+        prev = self.get_hospital_user_detail(user_id, hospital_id)
+        if not prev:
+            raise ValueError("Target user profile not found for this hospital.")
+        from backend.app.core.security import get_password_hash
+        pwd_hash = get_password_hash(new_password)
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.users
+                SET password_hash = %s, must_change_password = FALSE, password_changed_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (pwd_hash, user_id))
+            target_name = prev.get("full_name") or prev.get("name") or prev.get("username") or user_id
+            audit_id = f"aud-{uuid.uuid4().hex[:8]}"
+            cur.execute("""
+                INSERT INTO oh_id.user_access_audit_logs (
+                    id, hospital_id, target_user_id, target_user_name, actor_id,
+                    actor_name, actor_role, action_type, previous_state, new_state, reason, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'HOSPITAL_ADMIN', 'PASSWORD_RESET', %s::jsonb, %s::jsonb, %s, CURRENT_TIMESTAMP);
+            """, (
+                audit_id, hospital_id, user_id, target_name, actor_id,
+                f"{actor_id} (Hospital Admin)",
+                json.dumps({"password_reset": True}),
+                json.dumps({"password_changed": True, "method": "ADMIN_OVERRIDE"}),
+                "Password updated directly by Hospital Administrator"
+            ))
+        return {
+            "user_id": user_id,
+            "status": "SUCCESS",
+            "message": "User password has been successfully updated."
+        }
+
+    def delete_hospital_user_admin(self, user_id: str, hospital_id: str, actor_id: str = "hospadmin") -> Dict[str, Any]:
+        prev = self.get_hospital_user_detail(user_id, hospital_id)
+        if not prev:
+            raise ValueError("Target user profile not found for this hospital.")
+        with get_db_cursor() as cur:
+            # Mark membership as TERMINATED and login disabled
+            cur.execute("""
+                UPDATE oh_id.hospital_staff_memberships
+                SET employment_status = 'TERMINATED', login_enabled = FALSE,
+                    status_reason = 'Removed by Hospital Administrator', updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s AND hospital_id = %s;
+            """, (user_id, hospital_id))
+            # Also deactivate user account
+            cur.execute("""
+                UPDATE oh_id.users
+                SET is_active = FALSE
+                WHERE id = %s;
+            """, (user_id,))
+            # Mark doctor / nurse records as unavailable or inactive if present
+            cur.execute("UPDATE oh_id.doctors SET is_available = FALSE WHERE user_id = %s AND hospital_id = %s;", (user_id, hospital_id))
+            cur.execute("UPDATE oh_id.nurses SET status = 'INACTIVE' WHERE user_id = %s AND hospital_id = %s;", (user_id, hospital_id))
+            
+            target_name = prev.get("full_name") or prev.get("name") or prev.get("username") or user_id
+            audit_id = f"aud-{uuid.uuid4().hex[:8]}"
+            cur.execute("""
+                INSERT INTO oh_id.user_access_audit_logs (
+                    id, hospital_id, target_user_id, target_user_name, actor_id,
+                    actor_name, actor_role, action_type, previous_state, new_state, reason, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'HOSPITAL_ADMIN', 'USER_TERMINATED', %s::jsonb, %s::jsonb, %s, CURRENT_TIMESTAMP);
+            """, (
+                audit_id, hospital_id, user_id, target_name, actor_id,
+                f"{actor_id} (Hospital Admin)",
+                json.dumps({"employment_status": prev.get("employment_status"), "is_active": prev.get("user_account_active")}),
+                json.dumps({"employment_status": "TERMINATED", "is_active": False}),
+                "User account removed from active hospital roster by Hospital Administrator"
+            ))
+        return {
+            "user_id": user_id,
+            "status": "TERMINATED",
+            "message": "User has been successfully removed from active hospital staff."
         }
 
     def get_hospital_access_review(self, hospital_id: str = "hosp-kedar") -> Dict[str, Any]:
@@ -8623,9 +9031,9 @@ class SPViewsRepository(
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
         return enterprise_iam_repo.list_hospital_facilities(hospital_id)
 
-    def list_hospital_user_audit_trail(self, hospital_id: str, target_user_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_hospital_user_audit_trail(self, hospital_id: str, target_user_id: Optional[str] = None, action_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
-        return enterprise_iam_repo.list_hospital_user_audit_trail(hospital_id, target_user_id, limit)
+        return enterprise_iam_repo.list_hospital_user_audit_trail(hospital_id, target_user_id, action_type, limit)
 
     # --------------------------------------------------------------------------
     # PHASE 1: OH-ID CORE IDENTITY & DIGITAL HEALTH RECORD FOUNDATION
@@ -9293,16 +9701,17 @@ class SPViewsRepository(
         start_time: Optional[str] = None,
         appointment_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        exclude_appt_id: Optional[str] = None
+        exclude_appt_id: Optional[str] = None,
+        patient_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Validates appointment against doctor schedule and double-booking conflicts.
+        Supports up to 5 patient tokens per OPD slot window while preventing duplicate bookings for the same patient.
         """
         target_date = appt_date or appointment_date or datetime.now().strftime("%Y-%m-%d")
         target_time = start_time or appointment_time or "10:00 AM"
 
         with get_readonly_cursor() as cur:
-            # 1. Check double-booking for the doctor at that date & slot
             clauses = [
                 "doctor_id = %s",
                 "hospital_id = %s",
@@ -9317,16 +9726,29 @@ class SPViewsRepository(
                 clauses.append("id != %s")
                 params.append(exclude_appt_id)
 
-            cur.execute(f"SELECT id, patient_id, appointment_time, slot FROM oh_id.appointments WHERE {' AND '.join(clauses)} LIMIT 1;", tuple(params))
-            conflict = cur.fetchone()
-            if conflict:
+            # 1. Check if the exact same patient is already booked for this doctor at this slot
+            if patient_id:
+                cur.execute(f"SELECT id, appointment_time, slot FROM oh_id.appointments WHERE {' AND '.join(clauses)} AND patient_id = %s LIMIT 1;", tuple(params + [patient_id]))
+                same_patient_conflict = cur.fetchone()
+                if same_patient_conflict:
+                    return {
+                        "is_valid": False,
+                        "reason": f"This patient is already booked with this doctor at {target_time} (Appointment ID: {same_patient_conflict['id']})",
+                        "message": f"This patient is already booked with this doctor at {target_time} (Appointment ID: {same_patient_conflict['id']})"
+                    }
+
+            # 2. Check slot capacity (allow up to 5 OPD patients per appointment time slot)
+            cur.execute(f"SELECT COUNT(*) AS slot_count FROM oh_id.appointments WHERE {' AND '.join(clauses)};", tuple(params))
+            slot_res = cur.fetchone()
+            current_slot_count = slot_res['slot_count'] if slot_res else 0
+            if current_slot_count >= 5:
                 return {
                     "is_valid": False,
-                    "reason": f"Doctor already has an existing appointment at {target_time} (Appointment ID: {conflict['id']})",
-                    "message": f"Doctor already has an existing appointment at {target_time} (Appointment ID: {conflict['id']})"
+                    "reason": f"Doctor has reached maximum slot capacity at {target_time} (5/5 appointments booked). Please select an alternate time slot.",
+                    "message": f"Doctor has reached maximum slot capacity at {target_time} (5/5 appointments booked). Please select an alternate time slot."
                 }
 
-            # 2. Check doctor roster availability if roster exists
+            # 3. Check doctor roster availability if roster exists
             cur.execute("""
                 SELECT * FROM oh_id.doctor_rosters 
                 WHERE doctor_id = %s AND hospital_id = %s AND roster_date = %s;

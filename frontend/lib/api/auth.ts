@@ -14,6 +14,37 @@ export const authApi = {
     return res;
   },
 
+  register: async (payload: {
+    name: string;
+    phone: string;
+    password: string;
+    age: number;
+    gender?: string;
+    email?: string;
+    blood_group?: string;
+    emergency_contact?: string;
+    address?: string;
+    consent_given: boolean;
+  }) => {
+    const res = await fetchJSON<{
+      message: string;
+      user_id: string;
+      patient_id: string;
+      onehealth_id: string;
+      access_token: string;
+      token_type: string;
+      user: UserProfile;
+    }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (typeof window !== "undefined" && res.access_token) {
+      localStorage.setItem("oh_access_token", res.access_token);
+      localStorage.setItem("oh_user", JSON.stringify(res.user));
+    }
+    return res;
+  },
+
   logout: () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("oh_access_token");

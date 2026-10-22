@@ -7,6 +7,7 @@ test.describe("OH-ID Doctor Patient Consultation Workspace E2E", () => {
     await page.locator('input[type="text"]').fill("dr.senthil");
     await page.locator('input[type="password"]').fill("doctor123");
     await page.locator('button[type="submit"]').click();
+    await page.getByRole("button", { name: "Continue" }).first().click();
     await expect(page).toHaveURL(/.*doctor/);
   });
 

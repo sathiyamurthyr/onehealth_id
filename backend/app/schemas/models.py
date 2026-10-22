@@ -33,6 +33,7 @@ class NavigationItem(BaseModel):
 class WorkspaceDefinition(BaseModel):
     id: str
     workspace_type: str  # SUPER_ADMIN, HOSPITAL_ADMIN, DOCTOR, NURSE, EMPLOYEE, PATIENT, OTHER
+    category_title: Optional[str] = None
     role_code: str
     role_name: str
     default_route: str
@@ -41,6 +42,8 @@ class WorkspaceDefinition(BaseModel):
     hospital_code: Optional[str] = None
     branch_ref_id: Optional[str] = None
     branch_name: Optional[str] = None
+    department_id: Optional[str] = None
+    department_name: Optional[str] = None
     tenant_id: Optional[str] = None
     tenant_name: Optional[str] = None
     is_primary: Optional[bool] = True
@@ -61,6 +64,8 @@ class WorkspaceResponse(BaseModel):
 class SwitchContextRequest(BaseModel):
     hospital_ref_id: Optional[str] = None
     usertype_ref_id: Optional[str] = None
+    role_code: Optional[str] = None
+    department_id: Optional[str] = None
 
 class SwitchContextResponse(BaseModel):
     access_token: str
@@ -72,6 +77,28 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     user: UserProfile
     workspace: Optional[WorkspaceResponse] = None
+
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    phone: str = Field(..., min_length=10, max_length=30)
+    password: str = Field(..., min_length=8, max_length=128)
+    age: int = Field(..., ge=0, le=125)
+    gender: Optional[str] = Field("Unspecified", max_length=50)
+    email: Optional[str] = Field(None, max_length=150)
+    address: Optional[str] = Field(None, max_length=500)
+    emergency_contact: Optional[str] = Field(None, max_length=150)
+    blood_group: Optional[str] = Field(None, max_length=20)
+    consent_given: bool = Field(True)
+
+class RegisterResponse(BaseModel):
+    message: str
+    user_id: str
+    patient_id: str
+    onehealth_id: str
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfile
+
 
 # --- Patient Schemas ---
 class PatientBase(BaseModel):

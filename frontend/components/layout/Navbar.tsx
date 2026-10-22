@@ -14,7 +14,14 @@ import {
   X,
   User,
   Shield,
-  QrCode
+  QrCode,
+  Sparkles,
+  ChevronRight,
+  ChevronDown,
+  Loader2,
+  Stethoscope,
+  HeartPulse,
+  Users
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
@@ -28,12 +35,16 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOpen }) => {
   const router = useRouter();
-  const { workspace } = useWorkspace();
+  const { workspace, availableWorkspaces, switchContext } = useWorkspace();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrInput, setQrInput] = useState("");
   const [qrVerifying, setQrVerifying] = useState(false);
   const [qrError, setQrError] = useState("");
+
+  // In-session Workspace Switching State
+  const [showSwitchModal, setShowSwitchModal] = useState(false);
+  const [switchingIdx, setSwitchingIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const currentUser = api.auth.getCurrentUser();
@@ -63,14 +74,35 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
     }
   };
 
+  const handleSwitchWorkspace = async (ws: any, idx: number) => {
+    setSwitchingIdx(idx);
+    try {
+      const success = await switchContext({
+        hospital_ref_id: ws.hospital_ref_id,
+        usertype_ref_id: ws.usertype_ref_id,
+        role_code: ws.role_code,
+        department_id: ws.department_id,
+      });
+      if (success) {
+        setShowSwitchModal(false);
+        const targetRoute = ws.default_route || "/dashboard";
+        router.push(targetRoute);
+      }
+    } catch (err) {
+      console.error("Failed to switch workspace context:", err);
+    } finally {
+      setSwitchingIdx(null);
+    }
+  };
+
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/90 px-3 sm:px-6 backdrop-blur  ">
+      <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/90 px-3 sm:px-6 backdrop-blur">
         {/* Brand & Hospital Badge */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={onOpenMobileMenu}
-            className="p-2 rounded-xl text-slate-600 hover:bg-slate-100   lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+            className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
             aria-label="Toggle Navigation Drawer"
           >
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -101,23 +133,48 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
             </div>
           </Link>
 
-          <div className="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-slate-200  text-xs text-slate-500">
-            <Building2 className="w-4 h-4 text-blue-600" />
-            <span className="font-semibold text-slate-700 ">
+          {/* Active Facility Context & In-Session Switcher */}
+          <div className="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 text-xs text-slate-500">
+            <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="font-semibold text-slate-700 truncate max-w-[180px]">
               {workspace?.hospital_name || user?.hospital_name || "Healthcare Facility"}
             </span>
             <Badge variant="primary" className="text-[10px] py-0 px-2">
               {workspace?.branch_name || "Main Campus"}
             </Badge>
+
+            {/* In-Session Multi-Role Switcher Pill */}
+            {availableWorkspaces && availableWorkspaces.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setShowSwitchModal(true)}
+                className="ml-2 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-[11px] transition shadow-2xs cursor-pointer"
+                title="Switch Workspace Context"
+              >
+                <span>Switch Workspace</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Center / Right Controls */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          {/* Mobile Switch Workspace button if multiple workspaces */}
+          {availableWorkspaces && availableWorkspaces.length > 1 && (
+            <button
+              onClick={() => setShowSwitchModal(true)}
+              className="md:hidden flex items-center justify-center p-2 text-xs font-semibold rounded-xl bg-blue-50 text-blue-700 border border-blue-200 min-h-[44px] min-w-[44px]"
+              title="Switch Workspace"
+            >
+              <Users className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Scan OneHealth QR Button */}
           <button
             onClick={() => setShowQRModal(true)}
-            className="flex items-center justify-center p-2 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100    border border-indigo-200  transition-colors min-h-[44px] min-w-[44px]"
+            className="flex items-center justify-center p-2 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors min-h-[44px] min-w-[44px]"
             title="Scan or Verify OneHealth ID QR Token"
             aria-label="Scan OneHealth ID"
           >
@@ -129,11 +186,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
           {user ? (
             <div className="flex items-center gap-1 sm:gap-3 pl-1 sm:pl-2">
               <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-bold text-slate-800 ">
+                <span className="text-xs font-bold text-slate-800">
                   {user.name}
                 </span>
-                <span className="text-[10px] font-medium text-blue-600  uppercase tracking-wide">
-                  {user.role}
+                <span className="text-[10px] font-medium text-blue-600 uppercase tracking-wide">
+                  {workspace?.role_name || user.role}
                 </span>
               </div>
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm shrink-0">
@@ -141,7 +198,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
               </div>
               <button
                 onClick={handleLogout}
-                className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50  rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+                className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
                 title="Sign Out"
                 aria-label="Logout"
               >
@@ -159,6 +216,93 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
           )}
         </div>
       </header>
+
+      {/* ── In-Session "Select Your Workspace" Modal ── */}
+      {showSwitchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-lg w-full p-6 sm:p-7 relative overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Switch Workspace Context
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Choose which authorized workspace to enter for this session.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSwitchModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 overflow-y-auto pr-1 flex-1 py-1">
+              {availableWorkspaces.map((ws, idx) => {
+                const isCurrent =
+                  ws.hospital_ref_id === workspace?.hospital_ref_id &&
+                  (ws.role_code === workspace?.role_code || ws.usertype_ref_id === workspace?.role_code);
+                const isSwitching = switchingIdx === idx;
+
+                return (
+                  <div
+                    key={`${ws.hospital_ref_id}-${ws.role_code}-${idx}`}
+                    className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                      isCurrent
+                        ? "bg-blue-50/70 border-blue-300 ring-1 ring-blue-400"
+                        : "bg-white hover:bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[11px] font-semibold text-slate-500 block">
+                        {ws.category_title || "Healthcare Workspace"}
+                      </span>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                        {ws.role_name || ws.role_code}
+                      </h4>
+                      <p className="text-xs text-slate-600 truncate mt-0.5">
+                        <strong className="font-semibold text-slate-800">{ws.hospital_name}</strong>
+                        {ws.department_name && <span> • {ws.department_name}</span>}
+                        {ws.branch_name && !ws.department_name && <span> • {ws.branch_name}</span>}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0">
+                      {isCurrent ? (
+                        <span className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-2xs">
+                          Active
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={switchingIdx !== null}
+                          onClick={() => handleSwitchWorkspace(ws, idx)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        >
+                          {isSwitching ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <>
+                              <span>Switch</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* OneHealth QR Scanner / Lookup Modal */}
       {showQRModal && (

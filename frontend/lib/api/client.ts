@@ -16,6 +16,23 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  if (typeof window !== "undefined") {
+    try {
+      const wsStr = localStorage.getItem("oh_workspace");
+      if (wsStr) {
+        const ws = JSON.parse(wsStr);
+        if (ws?.hospital_ref_id && !headers["X-Hospital-Ref-Id"]) {
+          headers["X-Hospital-Ref-Id"] = ws.hospital_ref_id;
+        }
+        if (ws?.usertype_ref_id && !headers["X-Usertype-Ref-Id"]) {
+          headers["X-Usertype-Ref-Id"] = ws.usertype_ref_id;
+        }
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+
   const cleanEndpoint = endpoint.startsWith("/api/v1")
     ? endpoint.replace(/^\/api\/v1/, "")
     : endpoint;

@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("OneHealth ID - Unified Healthcare Design System E2E", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.locator('input[type="text"]').fill("admin");
+    await page.locator('input[type="text"]').fill("9840000000");
     await page.locator('input[type="password"]').fill("admin123");
     await page.locator('button[type="submit"]').click();
     await expect(page).toHaveURL(/.*(admin|dashboard)/);

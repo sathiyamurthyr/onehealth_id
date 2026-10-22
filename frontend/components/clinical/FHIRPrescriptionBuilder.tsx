@@ -770,6 +770,46 @@ export function FHIRPrescriptionBuilder({
             className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
         </div>
+
+        {/* Prescription Clinical Validity Period */}
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/90 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-purple-600" />
+              Prescription Validity Period
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Optional · Leave blank if validity period is not explicitly defined
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                Valid From
+              </label>
+              <input
+                type="date"
+                value={validFrom || ""}
+                onChange={(e) => onValidFromChange?.(e.target.value)}
+                className="w-full p-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                Valid Until <span className="text-slate-400 font-normal">(leave blank if not defined)</span>
+              </label>
+              <input
+                type="date"
+                value={validUntil || ""}
+                onChange={(e) => onValidUntilChange?.(e.target.value)}
+                className="w-full p-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-amber-700 font-medium">
+            Note: If "Valid Until" is left blank, the prescription will be issued without an arbitrary system expiration date.
+          </p>
+        </div>
       </div>
     </div>
   );

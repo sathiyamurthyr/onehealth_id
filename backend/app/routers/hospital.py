@@ -198,6 +198,9 @@ class SetUserStatusRequest(BaseModel):
 class UserSecurityActionRequest(BaseModel):
     action: str = Field(..., max_length=64) # TOGGLE_LOGIN, UNLOCK, RESET_PASSWORD, REVOKE_SESSIONS
 
+class SetUserPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=128)
+
 class HospitalOnboardingSetupRequest(BaseModel):
     hospital_id: str
     profile: Optional[Dict[str, Any]] = None
@@ -849,6 +852,7 @@ def get_hospital_audit_logs(
 @router.get("/users", response_model=Dict[str, Any])
 def list_hospital_users(
     role: Optional[str] = Query(None),
+    role_code: Optional[str] = Query(None),
     department_id: Optional[str] = Query(None),
     branch_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -865,9 +869,10 @@ def list_hospital_users(
     target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
     validate_hospital_tenant_scope(user, target_hosp)
     
+    effective_role = role or role_code
     users_list = sp_repository.list_hospital_users_admin(
         hospital_id=target_hosp,
-        role=role,
+        role=effective_role,
         department_id=department_id,
         branch_id=branch_id,
         status=status,
@@ -877,18 +882,43 @@ def list_hospital_users(
     )
     total = sp_repository.count_hospital_users_admin(
         hospital_id=target_hosp,
-        role=role,
+        role=effective_role,
         department_id=department_id,
         branch_id=branch_id,
         status=status,
         search=search
     )
+
+    # Compute summary metrics and role categories
+    all_hospital_users = sp_repository.list_hospital_users_admin(hospital_id=target_hosp, limit=500, offset=0)
+    metrics = {
+        "total_users": len(all_hospital_users),
+        "active_users": sum(1 for u in all_hospital_users if u.get("employment_status") == "ACTIVE"),
+        "inactive_users": sum(1 for u in all_hospital_users if u.get("employment_status") == "INACTIVE"),
+        "suspended_users": sum(1 for u in all_hospital_users if u.get("employment_status") == "SUSPENDED"),
+        "locked_users": sum(1 for u in all_hospital_users if u.get("employment_status") == "LOCKED"),
+        "invited_users": sum(1 for u in all_hospital_users if u.get("employment_status") == "INVITED"),
+        "pending_verification_count": sum(1 for u in all_hospital_users if u.get("verification_status") == "PENDING"),
+    }
+    categories = {
+        "doctors_count": sum(1 for u in all_hospital_users if u.get("role_code") == "DOCTOR"),
+        "nurses_count": sum(1 for u in all_hospital_users if u.get("role_code") == "NURSE"),
+        "trainees_count": sum(1 for u in all_hospital_users if u.get("role_code") == "TRAINEE"),
+        "receptionists_count": sum(1 for u in all_hospital_users if u.get("role_code") == "RECEPTIONIST"),
+        "diagnostic_staff_count": sum(1 for u in all_hospital_users if u.get("role_code") in ("LAB_TECH", "LAB_ADMIN", "RADIOLOGY_TECH")),
+        "admin_staff_count": sum(1 for u in all_hospital_users if u.get("role_code") in ("HOSPITAL_ADMIN", "HOSPITAL_MANAGER", "STAFF", "ACCOUNTS")),
+    }
+
     return {
+        "users": users_list,
         "items": users_list,
         "total": total,
+        "total_count": total,
         "limit": limit,
         "offset": offset,
-        "hospital_id": target_hosp
+        "hospital_id": target_hosp,
+        "metrics": metrics,
+        "categories": categories,
     }
 
 @router.post("/users", response_model=Dict[str, Any])
@@ -935,7 +965,7 @@ def get_hospital_access_review_summary(
     validate_hospital_tenant_scope(user, target_hosp)
     return sp_repository.get_hospital_access_review(hospital_id=target_hosp)
 
-@router.get("/users/roles-catalog", response_model=List[Dict[str, Any]])
+@router.get("/users/roles-catalog", response_model=Dict[str, Any])
 def get_hospital_roles_catalog(
     hospital_id: Optional[str] = Query("hosp-kedar"),
     user: Dict[str, Any] = Depends(require_any_permission("hospital.read", "user.read", "system.manage")),
@@ -945,11 +975,18 @@ def get_hospital_roles_catalog(
     """
     target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
     validate_hospital_tenant_scope(user, target_hosp)
-    return sp_repository.list_hospital_roles_catalog(hospital_id=target_hosp)
+    roles = sp_repository.list_hospital_roles_catalog(hospital_id=target_hosp)
+    return {
+        "roles": roles,
+        "items": roles,
+        "count": len(roles),
+        "total_count": len(roles),
+    }
 
-@router.get("/users/audit", response_model=List[Dict[str, Any]])
+@router.get("/users/audit", response_model=Dict[str, Any])
 def list_hospital_user_audit_logs(
     target_user_id: Optional[str] = Query(None),
+    action_type: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     hospital_id: Optional[str] = Query("hosp-kedar"),
     user: Dict[str, Any] = Depends(require_any_permission("audit.read", "user.read", "system.manage")),
@@ -959,7 +996,18 @@ def list_hospital_user_audit_logs(
     """
     target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
     validate_hospital_tenant_scope(user, target_hosp)
-    return sp_repository.list_hospital_user_audit_trail(hospital_id=target_hosp, target_user_id=target_user_id, limit=limit)
+    logs = sp_repository.list_hospital_user_audit_trail(
+        hospital_id=target_hosp,
+        target_user_id=target_user_id,
+        action_type=action_type,
+        limit=limit
+    )
+    return {
+        "audit_logs": logs,
+        "items": logs,
+        "total_count": len(logs),
+        "count": len(logs),
+    }
 
 @router.post("/users/invitations/{invitation_id}/resend", response_model=Dict[str, Any])
 def resend_user_invitation(
@@ -994,6 +1042,22 @@ def cancel_user_invitation(
         )
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+
+@router.get("/users/invitations", response_model=Dict[str, Any])
+def list_staff_invitations_endpoint(
+    status: Optional[str] = Query(None),
+    hospital_id: Optional[str] = Query("hosp-kedar"),
+    user: Dict[str, Any] = Depends(require_any_permission("hospital.read", "user.read", "system.manage")),
+):
+    """
+    Returns pending staff invitations for the hospital.
+    """
+    target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(user, target_hosp)
+    invites = sp_repository.list_staff_invitations(hospital_id=target_hosp)
+    if status and status.upper() != "ALL":
+        invites = [i for i in invites if (i.get("status") or "").upper() == status.upper()]
+    return {"invitations": invites, "count": len(invites)}
 
 @router.get("/users/{user_id}", response_model=Dict[str, Any])
 def get_hospital_user_profile(
@@ -1085,6 +1149,52 @@ def manage_hospital_user_security(
         )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+
+@router.post("/users/{user_id}/password", response_model=Dict[str, Any])
+def update_hospital_user_password(
+    user_id: str = Path(...),
+    payload: SetUserPasswordRequest = Body(...),
+    hospital_id: Optional[str] = Query("hosp-kedar"),
+    user: Dict[str, Any] = Depends(require_any_permission("hospital.update", "user.manage", "system.manage")),
+):
+    """
+    Directly sets a new password for the specified user and records an audit log.
+    """
+    target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(user, target_hosp)
+    try:
+        return sp_repository.set_hospital_user_password_admin(
+            user_id=user_id,
+            hospital_id=target_hosp,
+            new_password=payload.new_password,
+            actor_id=user.get("username", "hospadmin")
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update password: {str(e)}")
+
+@router.delete("/users/{user_id}", response_model=Dict[str, Any])
+def delete_hospital_user(
+    user_id: str = Path(...),
+    hospital_id: Optional[str] = Query("hosp-kedar"),
+    user: Dict[str, Any] = Depends(require_any_permission("hospital.update", "user.manage", "system.manage")),
+):
+    """
+    Removes user from active hospital staff (terminates membership and deactivates account).
+    """
+    target_hosp = hospital_id or user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(user, target_hosp)
+    try:
+        return sp_repository.delete_hospital_user_admin(
+            user_id=user_id,
+            hospital_id=target_hosp,
+            actor_id=user.get("username", "hospadmin")
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove user: {str(e)}")
 
 # =============================================================================
 # 10. ENTERPRISE WORKFORCE WIZARD & CUSTOM ROLES

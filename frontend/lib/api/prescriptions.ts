@@ -42,6 +42,9 @@ export interface CreatePrescriptionPayload {
   doctor_notes?: string;
   follow_up_days?: number;
   follow_up_date?: string;
+  valid_from?: string;
+  valid_until?: string;
+  validity_type?: string;
   requires_pin?: boolean;
   verification_pin?: string;
   items: PrescriptionItemPayload[];
@@ -62,6 +65,7 @@ export interface PrescriptionRecord {
   patient_dob?: string;
   patient_phone?: string;
   patient_blood_group?: string;
+  patient_mrn?: string;
   doctor_id: string;
   doctor_name: string;
   doctor_specialty?: string;
@@ -78,10 +82,12 @@ export interface PrescriptionRecord {
   hospital_website?: string;
   hospital_logo?: string;
   diagnosis: string;
+  diagnosis_code?: string;
   chief_complaint?: string;
   clinical_advice?: string;
   instructions?: string;
   doctor_notes?: string;
+  investigations_advised?: string;
   vitals_snapshot?: {
     bp?: string;
     pulse?: string;
@@ -89,6 +95,7 @@ export interface PrescriptionRecord {
     height_cm?: number;
     bmi?: number;
     temperature_f?: string;
+    temp?: string;
     spo2?: string;
   };
   allergies_snapshot?: string[];
@@ -107,6 +114,8 @@ export interface PrescriptionRecord {
   valid_until?: string;
   validity_type?: string;
   validity_source?: string;
+  validity_period_not_specified?: boolean;
+  finalized_at?: string;
   status: string;
   computed_status: "ACTIVE" | "EXPIRED" | "SUPERSEDED" | "COMPLETED" | "CANCELLED" | string;
   status_display: string;

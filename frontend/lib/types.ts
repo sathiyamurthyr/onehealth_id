@@ -26,7 +26,8 @@ export interface NavigationItem {
 
 export interface WorkspaceDefinition {
   id: string;
-  workspace_type: "SUPER_ADMIN" | "HOSPITAL_ADMIN" | "DOCTOR" | "NURSE" | "EMPLOYEE" | "PATIENT" | "OTHER";
+  workspace_type: "SUPER_ADMIN" | "HOSPITAL_ADMIN" | "DOCTOR" | "NURSE" | "EMPLOYEE" | "PATIENT" | "OTHER" | string;
+  category_title?: string;
   role_code: string;
   role_name: string;
   default_route: string;
@@ -35,6 +36,8 @@ export interface WorkspaceDefinition {
   hospital_code?: string;
   branch_ref_id?: string;
   branch_name?: string;
+  department_id?: string;
+  department_name?: string;
   tenant_id?: string;
   tenant_name?: string;
   is_primary?: boolean;
@@ -58,6 +61,8 @@ export interface WorkspaceResponse {
 export interface SwitchContextRequest {
   hospital_ref_id?: string;
   usertype_ref_id?: string;
+  role_code?: string;
+  department_id?: string;
 }
 
 export interface SwitchContextResponse {

@@ -59,7 +59,11 @@ def list_appointments(
 @router.post("/", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_appointment(
     payload: AppointmentCreate,
-    user: Dict[str, Any] = Depends(require_any_permission("appointment.create", "appointment.manage")),
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.create", "appointment.manage", "appointment.write",
+        "appointment.read", "appointment.view", "clinical.consultation",
+        "doctor.read", "hospital.update", "patient.self.appointments", "system.manage"
+    )),
 ):
     # Verify patient existence
     patient = sp_repository.get_patient_by_id(payload.patient_id)
@@ -82,7 +86,8 @@ def create_appointment(
             doctor_id=payload.doctor_id,
             appointment_date=appt_date,
             appointment_time=appt_time,
-            hospital_id=target_hospital
+            hospital_id=target_hospital,
+            patient_id=payload.patient_id
         )
         if not schedule_validation.get("is_valid", True):
             raise HTTPException(
@@ -180,7 +185,10 @@ def get_appointment(
 @router.post("/{appointment_id}/check-in")
 def check_in_appointment(
     appointment_id: str,
-    user: Dict[str, Any] = Depends(require_any_permission("appointment.checkin", "appointment.manage")),
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.checkin", "appointment.manage", "appointment.update",
+        "clinical.consultation", "doctor.read", "hospital.update", "system.manage"
+    )),
 ):
     appt = sp_repository.get_appointment_by_id(appointment_id)
     if not appt:
@@ -205,7 +213,10 @@ def check_in_appointment(
 def update_appointment_status(
     appointment_id: str,
     update: AppointmentStatusUpdate,
-    user: Dict[str, Any] = Depends(require_any_permission("appointment.manage", "appointment.update")),
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.manage", "appointment.update", "appointment.checkin",
+        "clinical.consultation", "doctor.read", "hospital.update", "system.manage"
+    )),
 ):
     valid_statuses = ["scheduled", "confirmed", "checked_in", "in_progress", "completed", "cancelled", "no_show"]
     if update.status not in valid_statuses:

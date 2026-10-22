@@ -177,6 +177,8 @@ export default function DoctorConsultationWorkspace() {
   const [prescriptionInstructions, setPrescriptionInstructions] = useState(
     "Avoid spicy and oily food. Maintain regular meal timings and adequate hydration."
   );
+  const [rxValidFrom, setRxValidFrom] = useState<string>("");
+  const [rxValidUntil, setRxValidUntil] = useState<string>("");
 
   // Form State: 5. Follow-up
   const [followUpRequired, setFollowUpRequired] = useState(true);
@@ -340,6 +342,8 @@ export default function DoctorConsultationWorkspace() {
         prescription: {
           diagnosis: primaryDiag,
           instructions: prescriptionInstructions,
+          valid_from: rxValidFrom || undefined,
+          valid_until: rxValidUntil || undefined,
           items: prescriptionItems.map((item) => ({
             medicine_name: item.medicine_name,
             generic_name: item.generic_name,
@@ -718,6 +722,10 @@ export default function DoctorConsultationWorkspace() {
               <FHIRPrescriptionBuilder
                 items={prescriptionItems}
                 instructions={prescriptionInstructions}
+                validFrom={rxValidFrom}
+                onValidFromChange={setRxValidFrom}
+                validUntil={rxValidUntil}
+                onValidUntilChange={setRxValidUntil}
                 onItemsChange={setPrescriptionItems}
                 onInstructionsChange={setPrescriptionInstructions}
               />

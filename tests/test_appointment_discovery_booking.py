@@ -12,12 +12,22 @@ def cleanup_test_appointments():
     # Clean up test dates before and after
     with get_db_cursor() as cur:
         cur.execute("""
+            DELETE FROM oh_id.queue_entries 
+            WHERE appointment_id IN (
+                SELECT id FROM oh_id.appointments 
+                WHERE appointment_date IN ('2026-10-20', '2026-10-22', '2026-11-05', '2026-11-10', '2026-11-12')
+            );
             DELETE FROM oh_id.appointments 
             WHERE appointment_date IN ('2026-10-20', '2026-10-22', '2026-11-05', '2026-11-10', '2026-11-12');
         """)
     yield
     with get_db_cursor() as cur:
         cur.execute("""
+            DELETE FROM oh_id.queue_entries 
+            WHERE appointment_id IN (
+                SELECT id FROM oh_id.appointments 
+                WHERE appointment_date IN ('2026-10-20', '2026-10-22', '2026-11-05', '2026-11-10', '2026-11-12')
+            );
             DELETE FROM oh_id.appointments 
             WHERE appointment_date IN ('2026-10-20', '2026-10-22', '2026-11-05', '2026-11-10', '2026-11-12');
         """)

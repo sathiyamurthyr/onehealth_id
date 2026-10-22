@@ -26,11 +26,20 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Appointment, Doctor, Patient } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/components/ui/Card";
 import { LoadingState, EmptyState, ErrorState } from "@/components/ui/FeedbackStates";
 
 export default function AppointmentsPage() {
+  const { workspace } = useWorkspace();
+  const activeHospitalId =
+    workspace?.hospital_ref_id ||
+    (typeof window !== "undefined"
+      ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id
+      : "") ||
+    "";
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -77,18 +86,26 @@ export default function AppointmentsPage() {
     setError("");
     try {
       const [appts, docs, pats] = await Promise.all([
-        api.appointments.list(),
-        api.doctors.list(),
+        api.appointments.list(activeHospitalId ? { hospital_id: activeHospitalId } : undefined),
+        api.doctors.list(activeHospitalId || undefined),
         api.patients.list(),
       ]);
-      setAppointments(appts);
-      setDoctors(docs);
-      setPatients(pats);
-      if (pats.length > 0 && !newAppt.patient_id) {
+      setAppointments(appts || []);
+      setDoctors(docs || []);
+      setPatients(pats || []);
+      if (pats && pats.length > 0 && !newAppt.patient_id) {
         setNewAppt((prev) => ({ ...prev, patient_id: pats[0].id }));
       }
-      if (docs.length > 0 && !newAppt.doctor_id) {
-        setNewAppt((prev) => ({ ...prev, doctor_id: docs[0].id }));
+      if (docs && docs.length > 0) {
+        setNewAppt((prev) => ({
+          ...prev,
+          doctor_id: docs.some((d) => d.id === prev.doctor_id) ? prev.doctor_id : docs[0].id,
+        }));
+      } else {
+        setNewAppt((prev) => ({
+          ...prev,
+          doctor_id: "",
+        }));
       }
     } catch (err: any) {
       setError(err.message || "Failed to load appointment schedule");
@@ -99,7 +116,7 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeHospitalId]);
 
   // Close patient dropdown when clicking outside
   useEffect(() => {
@@ -235,6 +252,7 @@ export default function AppointmentsPage() {
     try {
       const created = await api.appointments.book({
         ...newAppt,
+        hospital_id: activeHospitalId,
         slot: `${newAppt.appointment_date} ${newAppt.appointment_time}`,
       });
       setBookSuccess(`Appointment booked successfully! Token #${created.token_number || "—"}`);
@@ -791,23 +809,41 @@ export default function AppointmentsPage() {
 
                 {/* Select Doctor */}
                 <div>
-                  <label className="block font-semibold text-slate-700  mb-1">
-                    Select Attending Specialist <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-700 text-xs">
+                      Select Attending Specialist <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {doctors.length} specialist{doctors.length === 1 ? "" : "s"} available
+                    </span>
+                  </div>
                   <select
                     value={newAppt.doctor_id}
                     onChange={(e) => setNewAppt({ ...newAppt, doctor_id: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    required
                   >
-                    {doctors.map((d) => {
-                      const cleanName = d.name.replace(/^Dr\.?\s*/i, "");
-                      return (
-                        <option key={d.id} value={d.id}>
-                          Dr. {cleanName} — {d.specialty} ({d.department_name})
-                        </option>
-                      );
-                    })}
+                    {doctors.length === 0 ? (
+                      <option value="">No specialists registered in this hospital</option>
+                    ) : (
+                      doctors.map((d) => {
+                        const cleanName = d.name.replace(/^Dr\.?\s*/i, "");
+                        return (
+                          <option key={d.id} value={d.id}>
+                            Dr. {cleanName} — {d.specialty || "Specialist"} ({d.department_name || d.room_number || "OPD"})
+                          </option>
+                        );
+                      })
+                    )}
                   </select>
+                  {doctors.length === 0 && (
+                    <p className="text-[11px] text-amber-600 mt-1.5 flex items-center gap-1.5">
+                      <span>No active doctors assigned to this hospital.</span>
+                      <Link href="/hospital/doctors" className="underline font-semibold hover:text-amber-800">
+                        Manage Doctors
+                      </Link>
+                    </p>
+                  )}
                 </div>
 
                 {/* Date & Time Slot */}

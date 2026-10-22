@@ -95,16 +95,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       const res = await api.workspace.switchContext(req);
-      setWorkspace(res.workspace.workspace);
-      setUser(res.workspace.user);
+      const activeWs = res.workspace.workspace || (res.workspace as any);
+      const activeUser = res.workspace.user;
+      
+      setWorkspace(activeWs);
+      setUser(activeUser);
       setNavigation(res.workspace.navigation || []);
       setPermissions(res.workspace.permissions || []);
       setAvailableWorkspaces(res.workspace.available_workspaces || []);
       setAvailableHospitals(res.workspace.available_hospitals || []);
       
+      if (typeof window !== "undefined") {
+        localStorage.setItem("oh_workspace", JSON.stringify(activeWs));
+        if (activeUser) localStorage.setItem("oh_user", JSON.stringify(activeUser));
+      }
+
       // Navigate to the newly activated workspace's default route if needed
-      if (res.workspace.workspace?.default_route) {
-        router.push(res.workspace.workspace.default_route);
+      if (activeWs?.default_route) {
+        router.push(activeWs.default_route);
       }
       return true;
     } catch (err: any) {
@@ -119,7 +127,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     api.auth.logout();
     if (typeof window !== "undefined") {
+      localStorage.removeItem("oh_access_token");
       localStorage.removeItem("oh_workspace");
+      localStorage.removeItem("oh_user");
     }
     setWorkspace(null);
     setUser(null);

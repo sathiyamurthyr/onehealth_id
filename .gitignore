@@ -56,3 +56,7 @@ frontend/*.db
 *.cert
 *.crt
 
+# Archives & build artifacts
+*.tar.gz
+artifacts/
+

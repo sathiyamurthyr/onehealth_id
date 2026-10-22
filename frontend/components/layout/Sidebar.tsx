@@ -5,59 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  CalendarCheck,
-  Calendar,
-  ListOrdered,
-  Stethoscope,
-  BedDouble,
-  TestTube,
-  Pill,
-  Receipt,
-  ShieldCheck,
-  Settings,
-  Activity,
-  PlusCircle,
-  Building,
-  Sparkles,
-  Search,
-  UserCheck,
-  QrCode,
-  FileText,
-  FilePlus,
-  HeartPulse,
-  Hospital,
-  Clock
-} from "lucide-react";
-
-const ICON_MAP: Record<string, React.ElementType> = {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  CalendarCheck,
-  ListOrdered,
-  Stethoscope,
-  BedDouble,
-  TestTube,
-  Pill,
-  Receipt,
-  ShieldCheck,
-  Settings,
-  Activity,
-  PlusCircle,
-  Building,
-  Sparkles,
-  Search,
-  UserCheck,
-  QrCode,
-  FileText,
-  FilePlus,
-  HeartPulse,
-  Hospital,
-  Clock,
-};
+import { Building, FilePlus, HeartPulse, PlusCircle, ShieldCheck } from "lucide-react";
+import { resolveNavigationIcon } from "@/design-system/icons";
 
 export const Sidebar: React.FC<{ className?: string }> = ({ className }) => {
   const pathname = usePathname();
@@ -88,10 +37,18 @@ export const Sidebar: React.FC<{ className?: string }> = ({ className }) => {
             <HeartPulse className="w-4 h-4" />
             <span>Record Vitals & Triage</span>
           </Link>
-        ) : workspaceType === "SUPER_ADMIN" || workspaceType === "HOSPITAL_ADMIN" ? (
+        ) : workspaceType === "SUPER_ADMIN" ? (
           <Link
-            href="/admin/users"
-            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold text-xs tracking-wide shadow-sm hover:shadow transition-all active:scale-[0.98]"
+            href="/super-admin/hospitals"
+            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold text-xs tracking-wide shadow-sm hover:shadow transition-all active:scale-[0.98]"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Platform Governance</span>
+          </Link>
+        ) : workspaceType === "HOSPITAL_ADMIN" ? (
+          <Link
+            href="/hospital/users"
+            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold text-xs tracking-wide shadow-sm hover:shadow transition-all active:scale-[0.98]"
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Manage Access & Roles</span>
@@ -118,38 +75,46 @@ export const Sidebar: React.FC<{ className?: string }> = ({ className }) => {
             Loading permitted menus...
           </div>
         ) : (
-          items.map((item) => {
-            const Icon = (item.icon && ICON_MAP[item.icon]) ? ICON_MAP[item.icon] : LayoutDashboard;
+          items.map((item, idx) => {
+            const Icon = resolveNavigationIcon(item.icon);
             const isActive =
               pathname === item.href ||
-              (item.href !== "/dashboard" && item.href !== "/doctor" && pathname.startsWith(item.href));
+              (item.href !== "/dashboard" && item.href !== "/doctor" && item.href !== "/hospital" && pathname.startsWith(item.href));
+
+            const showSection = item.section && (idx === 0 || items[idx - 1]?.section !== item.section);
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors min-h-[44px]",
-                  isActive
-                    ? "bg-blue-600 text-white font-semibold shadow-sm shadow-blue-200"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              <React.Fragment key={item.href}>
+                {showSection && (
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
+                    {item.section}
+                  </div>
                 )}
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-slate-500")} />
-                  <span className="truncate">{item.title}</span>
-                </div>
-                {item.badge && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 shrink-0",
-                      isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors min-h-[44px]",
+                    isActive
+                      ? "bg-blue-600 text-white font-semibold shadow-sm shadow-blue-200"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  )}
+                >
+                  <div className="flex items-center gap-3 truncate">
+                    <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-slate-500")} />
+                    <span className="truncate">{item.title}</span>
+                  </div>
+                  {item.badge && (
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 shrink-0",
+                        isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                      )}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              </React.Fragment>
             );
           })
         )}

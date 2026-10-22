@@ -2,11 +2,12 @@ import { fetchJSON } from "./client";
 import { Appointment } from "../types";
 
 export const appointmentsApi = {
-  list: (params?: { patient_id?: string; doctor_id?: string; status?: string }) => {
+  list: (params?: { patient_id?: string; doctor_id?: string; status?: string; hospital_id?: string }) => {
     const query = new URLSearchParams();
     if (params?.patient_id) query.set("patient_id", params.patient_id);
     if (params?.doctor_id) query.set("doctor_id", params.doctor_id);
     if (params?.status) query.set("status", params.status);
+    if (params?.hospital_id) query.set("hospital_id", params.hospital_id);
     const qs = query.toString();
     return fetchJSON<Appointment[]>(`/appointments${qs ? `?${qs}` : ""}`);
   },

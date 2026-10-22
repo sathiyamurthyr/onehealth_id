@@ -39,6 +39,35 @@ class BreakGlassRequest(BaseModel):
     patient_id: str
     break_glass_reason: str # Mandatory emergency justification
 
+def resolve_patient_identity(current_user: Dict[str, Any]) -> str:
+    """
+    Authoritative Centralized Patient Identity Resolution for Consent Operations.
+    Resolves the canonical patient ID (e.g., pat-...) from the authenticated user context.
+    1. Checks direct 'patient_id' in context if present.
+    2. Uses repository's authoritative get_patient_by_user_ref(user_ref_id, email)
+    3. Uses get_patient_by_id(user_ref_id)
+    4. Fallback to user_ref_id or id.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication credentials were not provided.")
+
+    if current_user.get("patient_id"):
+        return current_user["patient_id"]
+
+    user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
+    email = current_user.get("email")
+
+    if user_ref_id:
+        patient = repo.get_patient_by_user_ref(user_ref_id, email=email)
+        if patient and patient.get("id"):
+            return patient["id"]
+        patient = repo.get_patient_by_id(user_ref_id)
+        if patient and patient.get("id"):
+            return patient["id"]
+        return user_ref_id
+
+    raise HTTPException(status_code=401, detail="Unable to resolve authoritative patient identity.")
+
 # =============================================================================
 # 1. PATIENT-FACING ENDPOINTS (/api/v1/me/...)
 # =============================================================================
@@ -48,7 +77,7 @@ def get_patient_data_shares(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Returns all active, pending, and past consent requests for the logged-in patient."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     return repo.list_patient_data_shares(patient_id=patient_id)
 
 @router.post("/me/data-sharing/{id}/approve", response_model=Dict[str, Any])
@@ -58,7 +87,7 @@ def approve_data_sharing_consent(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Patient grants consent to share specific scoped records with requesting provider."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     try:
         return repo.grant_data_sharing_consent(
             consent_id=id,
@@ -67,7 +96,12 @@ def approve_data_sharing_consent(
             expires_hours=payload.expires_hours
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        detail_msg = str(e)
+        if "not found" in detail_msg.lower():
+            raise HTTPException(status_code=404, detail=detail_msg)
+        elif "mismatch" in detail_msg.lower() or "unauthorized" in detail_msg.lower():
+            raise HTTPException(status_code=403, detail=detail_msg)
+        raise HTTPException(status_code=400, detail=detail_msg)
 
 @router.post("/me/data-sharing/{id}/deny", response_model=Dict[str, Any])
 def deny_data_sharing_consent(
@@ -75,7 +109,7 @@ def deny_data_sharing_consent(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Patient explicitly denies a consent request."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     success = repo.revoke_data_sharing_consent(
         consent_id=id,
         patient_id=patient_id,
@@ -92,7 +126,7 @@ def revoke_data_sharing_consent(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Patient revokes an active data sharing consent."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     success = repo.revoke_data_sharing_consent(
         consent_id=id,
         patient_id=patient_id,
@@ -109,7 +143,7 @@ def get_patient_access_history(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Health Data Access History: Shows who accessed patient records, purpose, and timestamp."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     return repo.list_patient_access_history(patient_id=patient_id, limit=limit, offset=offset)
 
 @router.get("/me/external-records", response_model=List[Dict[str, Any]])
@@ -120,7 +154,7 @@ def get_patient_external_records(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Returns all external clinical records imported from connected network providers."""
-    patient_id = current_user.get("patient_id") or current_user.get("user_id")
+    patient_id = resolve_patient_identity(current_user)
     return repo.list_external_health_records(patient_id=patient_id, record_type=record_type, limit=limit, offset=offset)
 
 # =============================================================================

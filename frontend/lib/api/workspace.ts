@@ -16,8 +16,8 @@ export const workspaceApi = {
     });
     if (typeof window !== "undefined") {
       localStorage.setItem("oh_access_token", res.access_token);
-      localStorage.setItem("oh_workspace", JSON.stringify(res.workspace));
-      localStorage.setItem("oh_user", JSON.stringify(res.workspace.user));
+      localStorage.setItem("oh_workspace", JSON.stringify(res.workspace?.workspace || res.workspace));
+      localStorage.setItem("oh_user", JSON.stringify(res.workspace?.user || res.workspace));
     }
     return res;
   },

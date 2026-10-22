@@ -2,32 +2,174 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShieldCheck, Lock, ArrowRight, Sparkles,
   Eye, EyeOff, ShieldAlert, Hospital, Cpu,
-  Phone, HelpCircle, X, KeyRound
+  Phone, HelpCircle, X, KeyRound,
+  Stethoscope, Building2, HeartPulse, User, Users, CheckCircle2, ChevronRight, Loader2
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ContactSathusSection } from "@/components/login/ContactSathusSection";
+import { getSathusContactConfig } from "@/lib/config/contactConfig";
 
 export default function LoginPage() {
   const router = useRouter();
+  const contactConfig = getSathusContactConfig();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successBanner, setSuccessBanner] = useState("");
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const isRegistered = params.get("registered");
+        const mobileParam = params.get("mobile");
+        if (mobileParam) {
+          setUsername(mobileParam);
+        }
+        if (isRegistered === "true") {
+          setSuccessBanner("Registration successful! Your OneHealth ID account is ready. Please sign in below.");
+        }
+      } catch (err) {
+        // Non-blocking query param reading
+      }
+    }
+  }, []);
+
+  // Multi-Role Selection State
+  const [multiRoleWorkspaces, setMultiRoleWorkspaces] = useState<any[]>([]);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState(false);
+  const [selectedRoleIdx, setSelectedRoleIdx] = useState<number | null>(null);
+  const [activeUser, setActiveUser] = useState<any>(null);
+
+  const getRoleTheme = (roleCode: string) => {
+    switch (roleCode?.toUpperCase()) {
+      case "DOCTOR":
+        return {
+          icon: Stethoscope,
+          bg: "bg-blue-50/70 hover:bg-blue-50 border-blue-200 hover:border-blue-400 hover:shadow-blue-500/10",
+          iconBg: "bg-blue-600 text-white shadow-blue-500/30",
+          tagBg: "bg-blue-100/80 text-blue-800 border-blue-200",
+          tag: "CLINICAL CARE",
+          badge: "Doctor OPD & IPD"
+        };
+      case "HOSPITAL_ADMIN":
+      case "ADMIN":
+        return {
+          icon: Building2,
+          bg: "bg-emerald-50/70 hover:bg-emerald-50 border-emerald-200 hover:border-emerald-400 hover:shadow-emerald-500/10",
+          iconBg: "bg-emerald-600 text-white shadow-emerald-500/30",
+          tagBg: "bg-emerald-100/80 text-emerald-800 border-emerald-200",
+          tag: "EXECUTIVE CONSOLE",
+          badge: "Hospital Administration"
+        };
+      case "SUPER_ADMIN":
+        return {
+          icon: ShieldCheck,
+          bg: "bg-purple-50/70 hover:bg-purple-50 border-purple-200 hover:border-purple-400 hover:shadow-purple-500/10",
+          iconBg: "bg-purple-600 text-white shadow-purple-500/30",
+          tagBg: "bg-purple-100/80 text-purple-800 border-purple-200",
+          tag: "PLATFORM GOVERNANCE",
+          badge: "Super Administrator"
+        };
+      case "NURSE":
+        return {
+          icon: HeartPulse,
+          bg: "bg-rose-50/70 hover:bg-rose-50 border-rose-200 hover:border-rose-400 hover:shadow-rose-500/10",
+          iconBg: "bg-rose-600 text-white shadow-rose-500/30",
+          tagBg: "bg-rose-100/80 text-rose-800 border-rose-200",
+          tag: "NURSING & WARD",
+          badge: "Staff Nurse Station"
+        };
+      case "PATIENT":
+        return {
+          icon: User,
+          bg: "bg-sky-50/70 hover:bg-sky-50 border-sky-200 hover:border-sky-400 hover:shadow-sky-500/10",
+          iconBg: "bg-sky-600 text-white shadow-sky-500/30",
+          tagBg: "bg-sky-100/80 text-sky-800 border-sky-200",
+          tag: "PERSONAL HEALTH",
+          badge: "Patient Citizen"
+        };
+      default:
+        return {
+          icon: Users,
+          bg: "bg-amber-50/70 hover:bg-amber-50 border-amber-200 hover:border-amber-400 hover:shadow-amber-500/10",
+          iconBg: "bg-amber-600 text-white shadow-amber-500/30",
+          tagBg: "bg-amber-100/80 text-amber-800 border-amber-200",
+          tag: "STAFF DESK",
+          badge: roleCode || "Staff Desk"
+        };
+    }
+  };
+
+  const getExplicitRedirect = () => {
+    if (typeof window !== "undefined") {
+      try {
+        const red = new URLSearchParams(window.location.search).get("redirect");
+        if (red && red.startsWith("/") && !red.startsWith("//")) {
+          return red;
+        }
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const handleSelectWorkspace = async (ws: any, index: number) => {
+    setSelectedRoleIdx(index);
+    setSwitchingRole(true);
+    try {
+      const res = await api.workspace.switchContext({
+        hospital_ref_id: ws.hospital_ref_id,
+        usertype_ref_id: ws.usertype_ref_id,
+        role_code: ws.role_code,
+        department_id: ws.department_id,
+      });
+
+      const explicitRedirect = getExplicitRedirect();
+      const targetRoute = explicitRedirect || res.workspace?.workspace?.default_route || ws.default_route || "/dashboard";
+      if (typeof window !== "undefined") {
+        localStorage.setItem("oh_workspace", JSON.stringify(res.workspace?.workspace || ws));
+        window.location.href = targetRoute;
+      } else {
+        router.push(targetRoute);
+      }
+    } catch (err: any) {
+      console.error("Failed to switch workspace context:", err);
+      // Fallback direct navigate
+      const explicitRedirect = getExplicitRedirect();
+      const targetRoute = explicitRedirect || ws.default_route || "/dashboard";
+      if (typeof window !== "undefined") {
+        localStorage.setItem("oh_workspace", JSON.stringify(ws));
+        window.location.href = targetRoute;
+      } else {
+        router.push(targetRoute);
+      }
+    } finally {
+      setSwitchingRole(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanMobile = username.replace(/[\s\-\+\(\)]/g, "");
     
-    if (!cleanMobile) {
+    if (!cleanMobile && !username.trim()) {
       setError("Mobile number is required.");
       return;
     }
-    if (!/^\d{10}$/.test(cleanMobile)) {
+    const isMobile = /^\d{10}$/.test(cleanMobile);
+    const isUsername = /^[a-zA-Z][a-zA-Z0-9._-]*$/.test(username.trim());
+    if (!isMobile && !isUsername) {
       setError("Enter a valid 10-digit registered mobile number.");
       return;
     }
@@ -40,12 +182,23 @@ export default function LoginPage() {
     setError("");
 
     try {
-      await api.auth.login(cleanMobile, password);
+      const loginIdentifier = isMobile ? cleanMobile : username.trim();
+      await api.auth.login(loginIdentifier, password);
 
-      // Auto-detect workspace — dynamic routing driven strictly by backend RBAC
+      // Auto-detect workspace — check if user has multiple roles
       let targetRoute = "/dashboard";
       try {
         const wsRes = await api.workspace.getMyWorkspace();
+        
+        if (wsRes?.available_workspaces && wsRes.available_workspaces.length > 1) {
+          // Multiple roles detected! Pause and show role selection modal
+          setMultiRoleWorkspaces(wsRes.available_workspaces);
+          setActiveUser(wsRes.user || { name: wsRes.workspace?.role_name || "Practitioner" });
+          setShowRoleModal(true);
+          setLoading(false);
+          return;
+        }
+
         if (wsRes?.workspace) {
           if (typeof window !== "undefined") {
             localStorage.setItem("oh_workspace", JSON.stringify(wsRes.workspace));
@@ -58,10 +211,13 @@ export default function LoginPage() {
         console.warn("Could not resolve workspace route, falling back to default", wsErr);
       }
 
+      const explicitRedirect = getExplicitRedirect();
+      const finalDestination = explicitRedirect || targetRoute;
+
       if (typeof window !== "undefined") {
-        window.location.href = targetRoute;
+        window.location.href = finalDestination;
       } else {
-        router.push(targetRoute);
+        router.push(finalDestination);
       }
     } catch (err: any) {
       const status = err?.status || err?.response?.status;
@@ -203,8 +359,8 @@ export default function LoginPage() {
         {/* ════════════════════════════════════════════════════════════
             RIGHT INTERACTIVE SIGN-IN PANEL (CLEAN ENTERPRISE UI)
            ════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-7 2xl:col-span-7 p-6 sm:p-8 2xl:p-12 flex flex-col justify-between bg-white h-full overflow-hidden">
-          <div className="max-w-md 2xl:max-w-lg mx-auto w-full my-auto">
+        <div className="lg:col-span-7 2xl:col-span-7 p-4 sm:p-6 2xl:p-10 flex flex-col justify-between bg-white h-full overflow-y-auto">
+          <div className="max-w-md 2xl:max-w-lg mx-auto w-full my-auto py-1">
 
             {/* Mobile Header (Shown on < lg screens) */}
             <div className="lg:hidden flex items-center gap-2.5 mb-5">
@@ -243,6 +399,14 @@ export default function LoginPage() {
                 Enter your registered mobile number and password. Your authorized workspace and access are determined automatically.
               </p>
             </div>
+
+            {/* Success Banner from Registration */}
+            {successBanner && (
+              <div className="p-3 mb-4 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                <span className="font-semibold leading-normal">{successBanner}</span>
+              </div>
+            )}
 
             {/* Error Banner */}
             {error && (
@@ -330,12 +494,20 @@ export default function LoginPage() {
                 )}
               </button>
 
-              {/* Forgot Password Action */}
-              <div className="text-center pt-2">
+              {/* Register & Forgot Password Actions */}
+              <div className="flex items-center justify-between pt-2 text-xs">
+                <Link
+                  href="/register"
+                  className="text-blue-600 hover:text-blue-800 font-bold transition hover:underline inline-flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span>New to OH-ID? Register</span>
+                </Link>
+
                 <button
                   type="button"
                   onClick={() => setForgotModalOpen(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className="text-slate-500 hover:text-slate-800 font-medium transition hover:underline cursor-pointer inline-flex items-center gap-1"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
                   <span>Forgot Password?</span>
@@ -343,7 +515,10 @@ export default function LoginPage() {
               </div>
             </form>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 text-center">
+            {/* ── Contact Sathus Technology Section ── */}
+            <ContactSathusSection />
+
+            <div className="mt-4 pt-3 border-t border-slate-100 text-center">
               <p className="text-[11px] text-slate-400 leading-relaxed">
                 Hospital clinicians and administrative staff are authenticated using their registered primary mobile number. All access scopes and workspace roles are enforced server-side.
               </p>
@@ -352,9 +527,31 @@ export default function LoginPage() {
           </div>
 
           {/* Footer note */}
-          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500">
-            <span>OneHealth Network © 2026 • <strong className="text-slate-700">Powered by Sathus Technology Pvt Ltd</strong></span>
-            <span className="text-slate-400">OneHealth OS v1.0</span>
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+            <div>
+              <span>OneHealth Network © 2026 • <strong className="text-slate-700">Powered by Sathus Technology Pvt Ltd</strong></span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-500">
+              {contactConfig.privacyPolicyUrl && (
+                <Link
+                  href={contactConfig.privacyPolicyUrl}
+                  className="hover:text-blue-600 transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              )}
+              {contactConfig.privacyPolicyUrl && contactConfig.termsOfServiceUrl && <span>•</span>}
+              {contactConfig.termsOfServiceUrl && (
+                <Link
+                  href={contactConfig.termsOfServiceUrl}
+                  className="hover:text-blue-600 transition-colors"
+                >
+                  Terms of Service
+                </Link>
+              )}
+              <span>•</span>
+              <span className="text-slate-400">OneHealth OS v1.0</span>
+            </div>
           </div>
         </div>
 
@@ -390,6 +587,158 @@ export default function LoginPage() {
             >
               Got It
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Multi-Role Pre-Dashboard Workspace Selection Modal ("Select Your Workspace") ── */}
+      {showRoleModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-xl w-full p-6 sm:p-8 relative overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Top Glowing Accent */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 via-emerald-500 to-indigo-600" />
+            
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+                    Select Your Workspace
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Your account has multiple authorized roles. Choose where you want to continue.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  api.auth.logout();
+                  setShowRoleModal(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+                title="Sign out & switch number"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* User Greeting Pill */}
+            <div className="mb-4 py-2 px-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs">
+              <span className="text-slate-600">
+                Authenticated User: <strong className="text-slate-800 font-semibold">{activeUser?.name || "Practitioner"}</strong>
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">
+                {multiRoleWorkspaces.length} authorized workspaces
+              </span>
+            </div>
+
+            {/* Workspace Cards List */}
+            <div className="space-y-3 overflow-y-auto pr-1 flex-1 py-1">
+              {multiRoleWorkspaces.map((ws, idx) => {
+                const theme = getRoleTheme(ws.role_code || ws.workspace_type);
+                const IconComponent = theme.icon;
+                const isLaunchingThis = switchingRole && selectedRoleIdx === idx;
+                const categoryTitle = ws.category_title || theme.tag;
+
+                return (
+                  <div
+                    key={`${ws.hospital_ref_id}-${ws.usertype_ref_id}-${ws.role_code}-${idx}`}
+                    className={`w-full p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs ${
+                      theme.bg
+                    } ${
+                      selectedRoleIdx === idx ? "ring-2 ring-blue-600 border-transparent shadow-md" : ""
+                    } ${switchingRole && selectedRoleIdx !== idx ? "opacity-50 pointer-events-none" : ""}`}
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-transform ${theme.iconBg}`}>
+                        <IconComponent className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        {/* Category Title Header */}
+                        <div className="text-xs font-semibold text-slate-500 mb-0.5 flex items-center gap-1.5">
+                          <span>{categoryTitle}</span>
+                        </div>
+
+                        {/* Role Name */}
+                        <h4 className="text-base font-bold text-slate-900 leading-snug">
+                          {ws.role_name || ws.role_code}
+                        </h4>
+
+                        {/* Hospital / Department Context */}
+                        <p className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="font-semibold text-slate-800">
+                            {ws.hospital_name || "OneHealth Healthcare Facility"}
+                          </span>
+                          {ws.department_name && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-blue-700 font-medium">{ws.department_name}</span>
+                            </>
+                          )}
+                          {ws.branch_name && !ws.department_name && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-500">{ws.branch_name}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Button: Continue */}
+                    <div className="shrink-0 flex items-center justify-end sm:pl-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/50">
+                      <button
+                        type="button"
+                        disabled={switchingRole}
+                        onClick={() => handleSelectWorkspace(ws, idx)}
+                        className={`w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                          isLaunchingThis
+                            ? "bg-blue-600 text-white"
+                            : "bg-blue-600 hover:bg-blue-700 text-white hover:shadow-md hover:shadow-blue-500/20 active:scale-95"
+                        }`}
+                      >
+                        {isLaunchingThis ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Loading Workspace...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Continue</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Zero-trust isolated healthcare workspace context</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  api.auth.logout();
+                  setShowRoleModal(false);
+                }}
+                className="text-xs font-semibold text-slate-500 hover:text-rose-600 transition cursor-pointer"
+              >
+                Sign out
+              </button>
+            </div>
+
           </div>
         </div>
       )}

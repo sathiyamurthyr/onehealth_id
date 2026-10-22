@@ -44,10 +44,10 @@ export default function NursesPage() {
     name: "",
     email: "",
     phone: "",
-    qualification: "B.Sc. Nursing, RN",
+    qualification: "",
     registration_number: "",
     department_id: "",
-    ward: "Ward 3B - Step Down ICU",
+    ward: "",
     shift: "MORNING",
     hospital_id: activeHospitalId,
   });
@@ -87,10 +87,10 @@ export default function NursesPage() {
         name: "",
         email: "",
         phone: "",
-        qualification: "B.Sc. Nursing, RN",
+        qualification: "",
         registration_number: "",
         department_id: departments[0]?.id || "",
-        ward: "Ward 3B - Step Down ICU",
+        ward: "",
         shift: "MORNING",
         hospital_id: activeHospitalId,
       });
@@ -292,8 +292,8 @@ export default function NursesPage() {
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900 text-base leading-tight">{nurse.name}</h3>
-                        <p className="text-xs font-semibold text-rose-700 mt-0.5">{nurse.qualification || "B.Sc. Nursing"}</p>
-                        <p className="text-[11px] text-slate-500 font-mono">{nurse.registration_number || "TNC-RN-3921"}</p>
+                        <p className="text-xs font-semibold text-rose-700 mt-0.5">{nurse.qualification || "—"}</p>
+                        <p className="text-[11px] text-slate-500 font-mono">{nurse.registration_number || "—"}</p>
                       </div>
                     </div>
 
@@ -313,14 +313,14 @@ export default function NursesPage() {
                       <span className="text-slate-500 flex items-center gap-1">
                         <Building className="w-3.5 h-3.5 text-slate-400" /> Department:
                       </span>
-                      <span className="font-semibold text-slate-800">{nurse.department_name || "General Medicine"}</span>
+                      <span className="font-semibold text-slate-800">{nurse.department_name || "—"}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500 flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-slate-400" /> Assigned Ward:
                       </span>
-                      <span className="font-semibold text-slate-800">{nurse.ward || "Ward 3B - Step Down"}</span>
+                      <span className="font-semibold text-slate-800">{nurse.ward || "—"}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -333,10 +333,12 @@ export default function NursesPage() {
                             ? "bg-amber-100 text-amber-800"
                             : nurse.shift === "EVENING"
                             ? "bg-indigo-100 text-indigo-800"
-                            : "bg-purple-100 text-purple-800"
+                            : nurse.shift === "NIGHT"
+                            ? "bg-purple-100 text-purple-800"
+                            : "bg-slate-100 text-slate-700"
                         }`}
                       >
-                        {nurse.shift || "MORNING"}
+                        {nurse.shift || "—"}
                       </span>
                     </div>
                   </div>

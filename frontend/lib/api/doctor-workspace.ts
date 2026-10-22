@@ -55,6 +55,9 @@ export interface ConsultationSavePayload {
   prescription?: {
     diagnosis?: string;
     instructions?: string;
+    valid_from?: string;
+    valid_until?: string;
+    validity_type?: string;
     items: Array<{
       medicine_name: string;
       generic_name?: string;

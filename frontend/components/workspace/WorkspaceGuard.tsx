@@ -7,7 +7,7 @@ import { ShieldAlert, ArrowLeft, Building2 } from "lucide-react";
 
 interface WorkspaceGuardProps {
   children: ReactNode;
-  allowedWorkspaceTypes?: Array<"SUPER_ADMIN" | "HOSPITAL_ADMIN" | "DOCTOR" | "NURSE" | "EMPLOYEE" | "PATIENT" | "OTHER">;
+  allowedWorkspaceTypes?: Array<"SUPER_ADMIN" | "HOSPITAL_ADMIN" | "DOCTOR" | "NURSE" | "EMPLOYEE" | "PATIENT" | "OTHER" | string>;
   requiredPermission?: string;
   requiredAnyPermission?: string[];
 }

@@ -16,6 +16,7 @@ import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 from backend.app.database.session import get_db_cursor, get_readonly_cursor
+from backend.app.core.config import settings
 
 logger = logging.getLogger("ohid.phase4_repository")
 
@@ -573,11 +574,17 @@ class Phase4RepositoryMixin:
         with get_db_cursor() as cur:
             cur.execute("""
                 SELECT * FROM oh_id.abdm_consent_artifacts
-                WHERE consent_id = %s AND patient_id = %s;
-            """, (consent_id, patient_id))
+                WHERE consent_id = %s;
+            """, (consent_id,))
             consent = cur.fetchone()
             if not consent:
+                raise ValueError("Consent request not found.")
+            if consent["patient_id"] != patient_id:
                 raise ValueError("Consent request not found or patient mismatch.")
+            if consent.get("consent_status") == "REVOKED":
+                raise ValueError("Cannot approve a revoked consent request.")
+            if consent.get("consent_status") == "EXPIRED" or (consent.get("expires_at") and consent["expires_at"] < datetime.now(timezone.utc)):
+                raise ValueError("Consent request has expired.")
 
             cats = allowed_categories or consent["data_categories"]
             if isinstance(cats, list):
@@ -658,6 +665,10 @@ class Phase4RepositoryMixin:
                     updated_at = CURRENT_TIMESTAMP
                 WHERE consent_id = %s AND patient_id = %s;
             """, (revocation_reason, consent_id, patient_id))
+            updated_count = cur.rowcount
+
+            if updated_count == 0:
+                return False
 
             # Deactivate linked share
             cur.execute("""
@@ -679,10 +690,10 @@ class Phase4RepositoryMixin:
                 "CONSENT_REVOKED",
                 "abdm_consent_artifacts",
                 consent_id,
-                json.dumps({"reason": revocation_reason})
+                json.dumps({"reason": revocation_reason, "outcome": "REVOKED"})
             ))
 
-            return cur.rowcount > 0
+            return True
 
     def cross_hospital_fetch_records(
         self,
@@ -749,6 +760,9 @@ class Phase4RepositoryMixin:
                 ))
             else:
                 # Validate Consent
+                if not settings.ENABLE_CROSS_HOSPITAL_SHARING:
+                    raise PermissionError("Access Denied: Cross-hospital sharing is disabled for this deployment.")
+
                 cur.execute("""
                     SELECT * FROM oh_id.abdm_consent_artifacts
                     WHERE patient_id = %s
@@ -768,6 +782,32 @@ class Phase4RepositoryMixin:
                 else:
                     allowed_categories = ["OPConsultation"]
 
+                # Audit log for authorized cross-hospital record fetch
+                try:
+                    cur.execute("""
+                        INSERT INTO oh_id.audit_logs (
+                            id, actor_id, action, resource_type, resource_id,
+                            details, ip_address, created_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, '127.0.0.1', CURRENT_TIMESTAMP);
+                    """, (
+                        f"audit-{uuid.uuid4().hex[:12]}",
+                        requesting_doctor_id or requesting_hospital_id,
+                        "CROSS_HOSPITAL_RECORD_ACCESSED",
+                        "patients",
+                        patient_id,
+                        json.dumps({
+                            "requesting_hospital_id": requesting_hospital_id,
+                            "requesting_doctor_id": requesting_doctor_id,
+                            "consent_id": active_consent["consent_id"],
+                            "authorized_scope": allowed_categories,
+                            "purpose": purpose,
+                            "outcome": "ALLOWED",
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        })
+                    ))
+                except Exception as audit_err:
+                    raise RuntimeError(f"Audit failure prevented cross-hospital disclosure: {audit_err}")
+
             # Retrieve Scoped Records
             consultations = []
             prescriptions = []
@@ -786,6 +826,7 @@ class Phase4RepositoryMixin:
                 consultations = [dict(r) for r in cur.fetchall()]
 
             if "Prescription" in allowed_categories:
+                has_consult_scope = "OPConsultation" in allowed_categories or "Consultation" in allowed_categories
                 cur.execute("""
                     SELECT pr.*, h.name AS hospital_name, d.name AS doctor_name
                     FROM oh_id.prescriptions pr
@@ -794,7 +835,14 @@ class Phase4RepositoryMixin:
                     WHERE pr.patient_id = %s
                     ORDER BY pr.created_at DESC;
                 """, (patient_id,))
-                prescriptions = [dict(r) for r in cur.fetchall()]
+                raw_rxs = [dict(r) for r in cur.fetchall()]
+                for rx in raw_rxs:
+                    if not has_consult_scope:
+                        rx["diagnosis"] = None
+                        rx["doctor_notes"] = None
+                        rx["chief_complaint"] = None
+                        rx["clinical_advice"] = None
+                prescriptions = raw_rxs
 
             if "DiagnosticReport" in allowed_categories or "LabReport" in allowed_categories:
                 cur.execute("""

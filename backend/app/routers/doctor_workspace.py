@@ -5,7 +5,8 @@ from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.rbac import (
     require_any_permission,
     get_current_user_context,
-    validate_hospital_tenant_scope
+    validate_hospital_tenant_scope,
+    verify_clinical_record_access
 )
 from backend.app.core.logging import logger, log_security_event
 import json
@@ -102,50 +103,14 @@ class AttachDocumentsPayload(BaseModel):
 # Helper for Doctor-Patient Context Authorization & Anti-IDOR Check
 # ------------------------------------------------------------------------------
 
-def verify_doctor_patient_access(patient_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
+def verify_doctor_patient_access(patient_id: str, user: Dict[str, Any], required_category: Optional[str] = None) -> Dict[str, Any]:
     """
-    Authoritative Server-Side Patient Scoping Check:
+    Authoritative Server-Side Patient Scoping & Cross-Hospital Authorization Check:
     Verifies the authenticated doctor has valid clinical authorization to access
-    the specified patient record. Blocks cross-patient data exposure.
+    the specified patient record. Enforces tenant boundaries, patient consent,
+    requesting facility verification, expiry, and revocation server-side.
     """
-    user_perms = user.get("permissions") or []
-    roles = user.get("roles") or [user.get("role")]
-    
-    # Platform / Hospital Admin have system authorization
-    if any(r in ["PLATFORM_ADMIN", "SUPER_ADMIN", "HOSPITAL_ADMIN"] for r in roles) or "system.manage" in user_perms:
-        patient = sp_repository.get_patient_by_id(patient_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient record not found")
-        return patient
-
-    # Patient self-read boundary
-    if "patient.self.read" in user_perms and "consultation.read" not in user_perms and "clinical.read" not in user_perms:
-        patient = sp_repository.get_patient_by_id(patient_id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient record not found")
-        user_ref_id = user.get("user_ref_id") or user.get("id")
-        if user_ref_id != patient.get("user_id") and user_ref_id != patient.get("id"):
-            raise HTTPException(
-                status_code=403,
-                detail="Forbidden: Patient context violation. You may only access your own clinical records."
-            )
-        return patient
-
-    # Consulting Doctor / Clinician verification
-    is_clinician = any(r in ["DOCTOR", "CHIEF_MEDICAL_OFFICER", "RESIDENT"] for r in roles) or any(
-        p in user_perms for p in ["clinical.read", "consultation.read", "consultation.create", "patient.read"]
-    )
-    if not is_clinician:
-        raise HTTPException(
-            status_code=403,
-            detail="Forbidden: Clinical access restricted to licensed medical practitioners."
-        )
-
-    patient = sp_repository.get_patient_by_id(patient_id)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient record not found")
-
-    return patient
+    return verify_clinical_record_access(patient_id, user, required_category=required_category)
 
 
 # ------------------------------------------------------------------------------
@@ -158,14 +123,44 @@ def get_patient_consultation_context(
     user: Dict[str, Any] = Depends(require_any_permission("consultation.read", "patient.read", "clinical.read", "patient.self.read", "system.manage"))
 ):
     """
-    Retrieves the complete clinical encounter context for Patient A:
+    Retrieves the complete clinical encounter context for Patient:
     Demographics, allergies, chronic conditions, active medications, recent visits,
     recent prescriptions, recent lab results, upcoming appointments, and patient intake.
+    Enforces strict category scope filtering on cross-hospital consent access.
     """
-    verify_doctor_patient_access(patient_id, user)
+    patient = verify_doctor_patient_access(patient_id, user)
     overview = sp_repository.get_patient_clinical_overview(patient_id)
     if not overview:
         raise HTTPException(status_code=404, detail="Patient clinical context could not be loaded")
+
+    # If cross-hospital access with active consent, filter overview to permitted categories
+    active_consent = patient.get("_active_consent")
+    if active_consent:
+        allowed_cats = active_consent.get("data_categories") or []
+        if isinstance(allowed_cats, str):
+            try:
+                allowed_cats = json.loads(allowed_cats)
+            except Exception:
+                allowed_cats = [allowed_cats]
+        has_consult = "OPConsultation" in allowed_cats or "Consultation" in allowed_cats
+        has_rx = "Prescription" in allowed_cats
+        has_lab = "DiagnosticReport" in allowed_cats or "LabReport" in allowed_cats
+
+        if not has_consult:
+            overview["recent_encounters"] = []
+            overview["chronic_conditions"] = []
+            for rx in overview.get("recent_prescriptions") or []:
+                rx["diagnosis"] = None
+                rx["doctor_notes"] = None
+                rx["chief_complaint"] = None
+                rx["clinical_advice"] = None
+        if not has_rx:
+            overview["recent_prescriptions"] = []
+            overview["active_medications"] = []
+        if not has_lab:
+            overview["recent_investigations"] = []
+            overview["pending_investigations_count"] = 0
+
     return overview
 
 
@@ -187,9 +182,10 @@ def get_patient_history(
     """
     Retrieves authorized longitudinal cross-hospital history with filtering:
     Visits, Prescriptions, Lab Reports, Imaging Scans, Discharge Summaries, and Referrals.
+    Enforces strict category scope filtering on cross-hospital consent access.
     """
-    verify_doctor_patient_access(patient_id, user)
-    return sp_repository.get_patient_longitudinal_history(
+    patient = verify_doctor_patient_access(patient_id, user)
+    raw_events = sp_repository.get_patient_longitudinal_history(
         patient_id=patient_id,
         hospital_id=hospital_id,
         doctor_id=doctor_id,
@@ -198,6 +194,45 @@ def get_patient_history(
         end_date=end_date,
         record_type=record_type
     )
+
+    # If cross-hospital access with active consent, filter events to permitted categories
+    active_consent = patient.get("_active_consent")
+    if active_consent:
+        allowed_cats = active_consent.get("data_categories") or []
+        if isinstance(allowed_cats, str):
+            try:
+                allowed_cats = json.loads(allowed_cats)
+            except Exception:
+                allowed_cats = [allowed_cats]
+
+        filtered_events = []
+        has_consult = "OPConsultation" in allowed_cats or "Consultation" in allowed_cats
+        has_rx = "Prescription" in allowed_cats
+        has_lab = "DiagnosticReport" in allowed_cats or "LabReport" in allowed_cats
+
+        for ev in raw_events:
+            rec_type = ev.get("record_type", "").upper()
+            if rec_type in ("VISIT", "ENCOUNTER") and has_consult:
+                filtered_events.append(ev)
+            elif rec_type == "PRESCRIPTION" and has_rx:
+                ev_copy = dict(ev)
+                if not has_consult:
+                    ev_copy["diagnosis"] = None
+                filtered_events.append(ev_copy)
+            elif rec_type in ("LAB_REPORT", "INVESTIGATION") and has_lab:
+                ev_copy = dict(ev)
+                if not has_consult:
+                    ev_copy["diagnosis"] = None
+                filtered_events.append(ev_copy)
+            elif rec_type in ("DISCHARGE", "DISCHARGE_SUMMARY") and "DischargeSummary" in allowed_cats:
+                filtered_events.append(ev)
+            elif rec_type == "REFERRAL" and ("OPConsultation" in allowed_cats or "Referral" in allowed_cats):
+                filtered_events.append(ev)
+            elif rec_type == "DOCUMENT" and ("ClinicalDocument" in allowed_cats or "DiagnosticReport" in allowed_cats):
+                filtered_events.append(ev)
+        return filtered_events
+
+    return raw_events
 
 
 # ------------------------------------------------------------------------------

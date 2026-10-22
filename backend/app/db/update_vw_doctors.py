@@ -1,8 +1,6 @@
 from backend.app.database.session import get_db_cursor
 
 SQL = """
-DROP VIEW IF EXISTS oh_id.vw_doctors CASCADE;
-
 CREATE OR REPLACE VIEW oh_id.vw_doctors AS
 SELECT 
     d.id,
@@ -10,12 +8,22 @@ SELECT
     d.name,
     d.specialty,
     d.qualification,
+    d.registration_number,
+    d.registration_authority,
     d.phone,
     d.email,
     d.room_number,
     d.opd_timings,
     d.consultation_fee,
     d.rating,
+    d.experience_years,
+    d.bio,
+    d.available_days,
+    d.slot_duration_mins,
+    d.morning_start_time,
+    d.morning_end_time,
+    d.evening_start_time,
+    d.evening_end_time,
     d.is_available,
     d.hospital_id,
     h.name AS hospital_name,
@@ -38,4 +46,4 @@ LEFT JOIN oh_id.departments dept ON d.department_id = dept.id;
 
 with get_db_cursor() as cur:
     cur.execute(SQL)
-    print("vw_doctors updated with user_id column.")
+    print("vw_doctors successfully updated with all doctor columns including registration_number.")

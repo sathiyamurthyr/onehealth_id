@@ -67,7 +67,11 @@ def setup_phase4_environment():
             ON CONFLICT (id) DO NOTHING;
         """, (pat_id, hosp_a_id, ohid_val, qr_tok))
 
-    return {
+    from backend.app.core.config import settings
+    orig_sharing = settings.ENABLE_CROSS_HOSPITAL_SHARING
+    settings.ENABLE_CROSS_HOSPITAL_SHARING = True
+
+    yield {
         "hosp_a_id": hosp_a_id,
         "hosp_b_id": hosp_b_id,
         "pat_id": pat_id,
@@ -75,6 +79,8 @@ def setup_phase4_environment():
         "doc_a_id": doc_a_id,
         "doc_b_id": doc_b_id
     }
+
+    settings.ENABLE_CROSS_HOSPITAL_SHARING = orig_sharing
 
 
 def test_integration_registry_lifecycle_and_ping(setup_phase4_environment):

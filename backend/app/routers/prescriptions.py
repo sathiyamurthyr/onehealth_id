@@ -36,6 +36,9 @@ class CreatePrescriptionRequest(BaseModel):
     doctor_notes: Optional[str] = None
     follow_up_days: Optional[int] = 0
     follow_up_date: Optional[str] = None
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    validity_type: Optional[str] = "CALENDAR_DAYS"
     requires_pin: bool = False
     verification_pin: Optional[str] = None
     items: List[PrescriptionItemPayload] = Field(default_factory=list)
@@ -94,12 +97,12 @@ def create_prescription(
     Creates an immutable prescription with medications, signature hash, and verification token.
     Enforces PIN verification ONLY if required for the clinical workflow.
     """
-    # 1. Authorize clinician
+    # 1. Authorize clinician (Only licensed medical doctors or accounts with prescription.create)
     user_perms = current_user.get("permissions") or []
     roles = current_user.get("roles") or [current_user.get("role")]
-    is_clinician = any(r in ["DOCTOR", "HOSPITAL_ADMIN", "SUPER_ADMIN"] for r in roles) or "prescription.create" in user_perms
+    is_clinician = ("DOCTOR" in roles) or ("prescription.create" in user_perms)
     if not is_clinician:
-        raise HTTPException(status_code=403, detail="Forbidden: Only authorized clinicians can create prescriptions.")
+        raise HTTPException(status_code=403, detail="Forbidden: Only authorized medical doctors can create prescriptions.")
 
     # 2. Verify patient exists
     patient = sp_repository.get_patient_by_id(payload.patient_id)
@@ -135,6 +138,10 @@ def create_prescription(
             doctor_notes=payload.doctor_notes,
             follow_up_days=payload.follow_up_days or 0,
             follow_up_date=payload.follow_up_date,
+            valid_from=payload.valid_from,
+            valid_until=payload.valid_until,
+            validity_type=payload.validity_type or "CALENDAR_DAYS",
+            validity_period_not_specified=(payload.valid_from is None and payload.valid_until is None),
             requires_pin=payload.requires_pin,
             visit_id=payload.visit_id,
             items=[item.model_dump() for item in payload.items],
@@ -222,7 +229,7 @@ def verify_prescription_token(
         "status": rx.get("status", "ACTIVE"),
         "patient_name": rx.get("patient_name"),
         "doctor_name": rx.get("doctor_name"),
-        "doctor_registration": rx.get("doctor_registration", "TN-MCI-2026-REG"),
+        "doctor_registration": rx.get("doctor_registration") or "Not recorded",
         "hospital_name": rx.get("hospital_name"),
         "created_at": rx.get("created_at"),
         "digital_signature_hash": rx.get("digital_signature_hash")
@@ -241,9 +248,9 @@ def get_prescription_print_layout(
     return {
         "layout": "A4_PORTRAIT",
         "header": {
-            "hospital_name": rx.get("hospital_name", "Kedar Hospital"),
-            "hospital_address": rx.get("hospital_address", "Mount-Poonamallee High Road, Mugalivakkam, Chennai"),
-            "hospital_phone": rx.get("hospital_phone", "+91 44 2252 1100"),
+            "hospital_name": rx.get("hospital_name"),
+            "hospital_address": rx.get("hospital_address"),
+            "hospital_phone": rx.get("hospital_phone"),
             "system_tag": "ONEHEALTH ID HEALTHCARE OPERATING SYSTEM"
         },
         "prescription": rx

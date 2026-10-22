@@ -15,9 +15,10 @@ def _build_workspace_response(user_ctx: Dict[str, Any]) -> WorkspaceResponse:
     user_ref_id = user_ctx["user_ref_id"]
     hospital_ref_id = user_ctx.get("hospital_ref_id")
     usertype_ref_id = user_ctx.get("usertype_ref_id")
+    role_code = user_ctx.get("role")
 
     # Fetch active workspace row
-    ws_row = sp_repository.get_user_workspace(user_ref_id, hospital_ref_id, usertype_ref_id)
+    ws_row = sp_repository.get_user_workspace(user_ref_id, hospital_ref_id, usertype_ref_id, role_code)
     if not ws_row:
         raise HTTPException(status_code=404, detail="Workspace configuration not found for user")
 
@@ -61,6 +62,7 @@ def _build_workspace_response(user_ctx: Dict[str, Any]) -> WorkspaceResponse:
     workspace_def = WorkspaceDefinition(
         id=f"ws-{user_ref_id}-{ws_row.get('usertype_ref_id')}",
         workspace_type=ws_row.get("workspace_type", "EMPLOYEE"),
+        category_title=ws_row.get("category_title"),
         role_code=ws_row.get("role_code", "STAFF"),
         role_name=ws_row.get("role_name", "Staff"),
         default_route=ws_row.get("default_route", "/employee"),
@@ -69,6 +71,8 @@ def _build_workspace_response(user_ctx: Dict[str, Any]) -> WorkspaceResponse:
         hospital_code=ws_row.get("hospital_code"),
         branch_ref_id=ws_row.get("branch_ref_id"),
         branch_name=ws_row.get("branch_name"),
+        department_id=ws_row.get("department_id"),
+        department_name=ws_row.get("department_name"),
         tenant_id=ws_row.get("tenant_id"),
         tenant_name=ws_row.get("tenant_name"),
         is_primary=ws_row.get("is_primary", True)
@@ -114,17 +118,25 @@ def switch_workspace_context(
     available_workspaces = sp_repository.list_user_workspaces(user_ref_id)
     target_ws = None
 
+    target_role = req.role_code or req.usertype_ref_id
+
     for ws in available_workspaces:
         hosp_match = (req.hospital_ref_id is None) or (ws.get("hospital_ref_id") == req.hospital_ref_id)
-        role_match = (req.usertype_ref_id is None) or (ws.get("usertype_ref_id") == req.usertype_ref_id or ws.get("role_code") == req.usertype_ref_id)
-        if hosp_match and role_match:
+        role_match = (target_role is None) or (
+            ws.get("usertype_ref_id") == target_role or 
+            ws.get("role_code") == target_role or 
+            ws.get("workspace_type") == target_role
+        )
+        dept_match = (req.department_id is None) or (ws.get("department_id") == req.department_id)
+        
+        if hosp_match and role_match and dept_match:
             target_ws = ws
             break
 
     if not target_ws:
         raise HTTPException(
             status_code=403,
-            detail="Forbidden: You are not authorized for the requested hospital or role context."
+            detail="Forbidden: You are not authorized for the requested workspace context."
         )
 
     # Issue updated access token with new active hospital and role context

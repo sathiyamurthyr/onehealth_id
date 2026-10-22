@@ -35,7 +35,8 @@ import {
   FileText,
   Activity,
   Copy,
-  UserCheck
+  UserCheck,
+  Trash2
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { HospitalUser, UserAuditRecord, HospitalRoleOption } from "@/lib/types";
@@ -72,6 +73,16 @@ export default function HospitalUserDetailPage() {
   const [saving, setSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
+
+  // Direct Password Update Modal State
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  // Remove User Confirmation Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const loadUser = async () => {
     if (!userId) return;
@@ -181,6 +192,41 @@ export default function HospitalUserDetailPage() {
     }
   };
 
+  // Direct Password Update Handler
+  const handlePasswordSubmit = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordError(null);
+    try {
+      await api.hospital.setUserPassword(userId, newPassword, activeHospitalId);
+      showToast("Password updated successfully!");
+      setShowPasswordModal(false);
+      setNewPassword("");
+    } catch (err: any) {
+      setPasswordError(err?.message || "Failed to update password.");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  // Remove / Delete User Handler
+  const handleDeleteUser = async () => {
+    setDeleteLoading(true);
+    try {
+      await api.hospital.deleteUser(userId, activeHospitalId);
+      showToast("User removed from active hospital staff.");
+      setTimeout(() => {
+        router.push("/hospital/users");
+      }, 1000);
+    } catch (err: any) {
+      alert(err?.message || "Failed to remove user.");
+      setDeleteLoading(false);
+    }
+  };
+
   const copyInvitationUrl = (token: string) => {
     const url = `${window.location.origin}/invite?token=${token}`;
     navigator.clipboard.writeText(url);
@@ -267,13 +313,33 @@ export default function HospitalUserDetailPage() {
 
           <div className="flex items-center gap-2">
             {!isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition shadow-sm"
-              >
-                <Edit className="w-4 h-4" />
-                Edit Staff Profile
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    setShowPasswordModal(true);
+                    setNewPassword("");
+                    setPasswordError(null);
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 text-sm font-semibold transition shadow-sm"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-700" />
+                  Update Password
+                </button>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition shadow-sm"
+                >
+                  <Edit className="w-4 h-4 text-blue-600" />
+                  Edit Staff Profile
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-sm font-semibold transition shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  Remove User
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -307,7 +373,7 @@ export default function HospitalUserDetailPage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  fullName.charAt(0)
+                  (fullName || "Staff").charAt(0).toUpperCase()
                 )}
               </div>
               <div className="space-y-1">
@@ -489,7 +555,16 @@ export default function HospitalUserDetailPage() {
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   Official Email
                 </span>
-                <p className="text-sm font-mono font-medium text-slate-800">{user.email}</p>
+                {isEditing ? (
+                  <input
+                    type="email"
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    className="p-2 border rounded-lg text-xs w-full font-mono"
+                  />
+                ) : (
+                  <p className="text-sm font-mono font-medium text-slate-800">{user.email}</p>
+                )}
               </div>
 
               <div>
@@ -835,11 +910,15 @@ export default function HospitalUserDetailPage() {
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleSecurityAction("RESET_PASSWORD")}
-                    className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-800 flex items-center justify-center gap-1.5 transition"
+                    onClick={() => {
+                      setShowPasswordModal(true);
+                      setNewPassword("");
+                      setPasswordError(null);
+                    }}
+                    className="p-2.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-xs font-semibold text-amber-900 flex items-center justify-center gap-1.5 transition"
                   >
-                    <KeyRound className="w-3.5 h-3.5 text-blue-600" />
-                    Trigger Password Reset
+                    <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+                    Set New Password
                   </button>
 
                   <button
@@ -851,11 +930,19 @@ export default function HospitalUserDetailPage() {
                   </button>
 
                   <button
+                    onClick={() => handleSecurityAction("RESET_PASSWORD")}
+                    className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-800 flex items-center justify-center gap-1.5 transition"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-blue-600" />
+                    Trigger Reset Email
+                  </button>
+
+                  <button
                     onClick={() => handleSecurityAction("REVOKE_SESSIONS")}
-                    className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 text-xs font-semibold text-rose-700 sm:col-span-2 flex items-center justify-center gap-1.5 transition"
+                    className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 text-xs font-semibold text-rose-700 flex items-center justify-center gap-1.5 transition"
                   >
                     <Lock className="w-3.5 h-3.5" />
-                    Revoke All Active Sessions
+                    Revoke Active Sessions
                   </button>
                 </div>
               </div>
@@ -923,6 +1010,137 @@ export default function HospitalUserDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Update Password Modal */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Set User Password</h3>
+                    <p className="text-xs text-slate-500">
+                      Update credentials for <strong>{fullName}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {passwordError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{passwordError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    New Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter at least 6 characters..."
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    User can log in immediately through single-portal /login with this password.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  disabled={passwordLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePasswordSubmit}
+                  disabled={passwordLoading || !newPassword}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {passwordLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                  {passwordLoading ? "Saving..." : "Set Password"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove User Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Remove Staff Member</h3>
+                    <p className="text-xs text-slate-500">
+                      Remove from hospital active roster
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-xl bg-rose-50/70 border border-rose-200 text-xs text-rose-900 space-y-2">
+                <p className="font-semibold text-sm">
+                  Are you sure you want to remove <strong>{fullName}</strong>?
+                </p>
+                <p>
+                  This will terminate their hospital membership, disable single-portal login, and mark their doctor / nursing availability as inactive.
+                </p>
+                <p className="text-[11px] text-rose-700 font-medium">
+                  Past clinical documents, consultations, and prescriptions authored by this user remain preserved for regulatory compliance.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteUser}
+                  disabled={deleteLoading}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {deleteLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleteLoading ? "Removing..." : "Confirm Removal"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

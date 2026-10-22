@@ -7,48 +7,17 @@ import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { FamilySwitcher } from "./FamilySwitcher";
 import { 
-  LayoutDashboard, Users, Calendar, ListOrdered, Stethoscope, 
-  HeartPulse, Activity, Building2, Hospital, Receipt, QrCode, 
-  FileText, Settings, ShieldCheck, UserCheck, Search, UserPlus, 
-  LogOut, ChevronDown, Building, Check, Clock, Pill, TestTube,
-  History, CreditCard, Bell, Lock, User, MoreHorizontal, X,
-  ChevronRight
+  Hospital, Building, LogOut, ChevronDown, Check, MoreHorizontal, X, ChevronRight
 } from "lucide-react";
-
-const ICON_MAP: Record<string, React.ElementType> = {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  ListOrdered,
-  Stethoscope,
-  HeartPulse,
-  Activity,
-  Building2,
-  Hospital,
-  Receipt,
-  QrCode,
-  FileText,
-  Settings,
-  ShieldCheck,
-  UserCheck,
-  Search,
-  UserPlus,
-  Building,
-  Clock,
-  Pill,
-  TestTube,
-  History,
-  CreditCard,
-  Bell,
-  Lock,
-  User,
-};
+import { resolveNavigationIcon } from "@/design-system/icons";
 
 export function DynamicNav() {
   const pathname = usePathname();
-  const { workspace, user, navigation, availableHospitals, switchContext, logout } = useWorkspace();
+  const { workspace, user, navigation, availableHospitals, availableWorkspaces, switchContext, logout } = useWorkspace();
   const [showHospDropdown, setShowHospDropdown] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
+  const [showSwitchModal, setShowSwitchModal] = useState(false);
+  const [switchingIdx, setSwitchingIdx] = useState<number | null>(null);
 
   if (!workspace || !user) return null;
 
@@ -194,29 +163,37 @@ export function DynamicNav() {
           <p className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             {isPatient ? "My Health Journey" : `${workspace.role_name} Workspace`}
           </p>
-          {navigation.map((item) => {
-            const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
-            const isActive = pathname === item.href;
+          {navigation.map((item, idx) => {
+            const Icon = resolveNavigationIcon(item.icon);
+            const isActive = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/doctor" && item.href !== "/hospital" && pathname.startsWith(item.href));
+            const showSection = item.section && (idx === 0 || navigation[idx - 1]?.section !== item.section);
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="truncate">{item.title}</span>
-                {item.badge && (
-                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full border ${
-                    isActive ? "bg-white/20 text-white border-white/30" : "bg-slate-100 text-slate-600 border-slate-200"
-                  }`}>
-                    {item.badge}
-                  </span>
+              <React.Fragment key={item.href}>
+                {showSection && (
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
+                    {item.section}
+                  </div>
                 )}
-              </Link>
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isActive
+                      ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.title}</span>
+                  {item.badge && (
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full border ${
+                      isActive ? "bg-white/20 text-white border-white/30" : "bg-slate-100 text-slate-600 border-slate-200"
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              </React.Fragment>
             );
           })}
         </div>
@@ -230,6 +207,14 @@ export function DynamicNav() {
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border}`}>
                   {workspace.role_name}
                 </span>
+                {availableWorkspaces && availableWorkspaces.length > 1 && (
+                  <button
+                    onClick={() => setShowSwitchModal(true)}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded transition"
+                  >
+                    Switch
+                  </button>
+                )}
               </div>
             </div>
             <button
@@ -256,7 +241,7 @@ export function DynamicNav() {
         {isPatient ? (
           <>
             {patientMobileTabs.slice(0, 4).map((tab) => {
-              const Icon = ICON_MAP[tab.icon] || LayoutDashboard;
+              const Icon = resolveNavigationIcon(tab.icon);
               const isActive = pathname === tab.href;
               return (
                 <Link
@@ -273,6 +258,7 @@ export function DynamicNav() {
             })}
             <button
               onClick={() => setShowMobileMore(!showMobileMore)}
+              aria-label="More navigation options"
               className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1 rounded-xl transition ${
                 showMobileMore ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
               }`}
@@ -283,7 +269,7 @@ export function DynamicNav() {
           </>
         ) : (
           navigation.slice(0, 5).map((item) => {
-            const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
+            const Icon = resolveNavigationIcon(item.icon);
             const isActive = pathname === item.href;
             return (
               <Link
@@ -324,6 +310,7 @@ export function DynamicNav() {
               </div>
               <button
                 onClick={() => setShowMobileMore(false)}
+                aria-label="Close navigation drawer"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition"
               >
                 <X className="w-5 h-5" />
@@ -333,7 +320,7 @@ export function DynamicNav() {
             {/* All 16 Navigation Options */}
             <div className="overflow-y-auto p-3 grid grid-cols-2 gap-2">
               {navigation.map((item) => {
-                const Icon = ICON_MAP[item.icon || "LayoutDashboard"] || LayoutDashboard;
+                const Icon = resolveNavigationIcon(item.icon);
                 const isActive = pathname === item.href;
                 return (
                   <Link
@@ -368,6 +355,93 @@ export function DynamicNav() {
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Log Out</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-Session Switch Workspace Modal */}
+      {showSwitchModal && availableWorkspaces && availableWorkspaces.length > 1 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <Building className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-bold text-slate-900">Switch Workspace</h3>
+              </div>
+              <button
+                onClick={() => setShowSwitchModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-4">
+              Select an authorized role and healthcare facility context for your session:
+            </p>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {availableWorkspaces.map((ws: any, idx: number) => {
+                const isCurrent =
+                  ws.role_code === workspace.role_code &&
+                  ws.hospital_ref_id === workspace.hospital_ref_id &&
+                  (!ws.department_id || ws.department_id === workspace.department_id);
+
+                return (
+                  <button
+                    key={`${ws.hospital_ref_id}-${ws.role_code}-${ws.department_id || idx}`}
+                    disabled={switchingIdx !== null}
+                    onClick={async () => {
+                      setSwitchingIdx(idx);
+                      try {
+                        const success = await switchContext({
+                          hospital_ref_id: ws.hospital_ref_id,
+                          usertype_ref_id: ws.usertype_ref_id,
+                          role_code: ws.role_code,
+                          department_id: ws.department_id,
+                        });
+                        if (success) {
+                          setShowSwitchModal(false);
+                          const targetRoute = ws.default_route || "/dashboard";
+                          window.location.href = targetRoute;
+                        }
+                      } finally {
+                        setSwitchingIdx(null);
+                      }
+                    }}
+                    className={`w-full text-left p-3 rounded-xl border transition flex items-center justify-between ${
+                      isCurrent
+                        ? "bg-blue-50 border-blue-400 text-blue-900 ring-2 ring-blue-500/20"
+                        : "bg-white hover:bg-slate-50 border-slate-200 text-slate-800"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">
+                          {ws.category_title || ws.role_name || ws.role_code}
+                        </span>
+                        {isCurrent && (
+                          <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {ws.hospital_name || "Healthcare Facility"}
+                        {ws.department_name ? ` • ${ws.department_name}` : ""}
+                      </p>
+                    </div>
+                    {switchingIdx === idx ? (
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    ) : isCurrent ? (
+                      <Check className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

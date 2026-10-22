@@ -41,6 +41,7 @@ def get_current_user_context(
     user_ref_id = payload.get("uid") or payload.get("user_ref_id") or payload.get("id")
     hospital_ref_id = x_hospital_ref_id or payload.get("hospital_ref_id") or payload.get("hospital_id")
     usertype_ref_id = x_usertype_ref_id or payload.get("usertype_ref_id") or payload.get("role_id")
+    role_code = payload.get("role")
 
     if not username and not user_ref_id:
         raise HTTPException(status_code=401, detail="Invalid authentication payload")
@@ -59,7 +60,8 @@ def get_current_user_context(
     workspace = sp_repository.get_user_workspace(
         user_ref_id=user_ref_id,
         hospital_ref_id=hospital_ref_id,
-        usertype_ref_id=usertype_ref_id
+        usertype_ref_id=usertype_ref_id,
+        role_code=role_code
     )
 
     if not workspace:
@@ -76,8 +78,8 @@ def get_current_user_context(
                     "usertype_ref_id": usertype_ref_id or f"role-{payload.get('role', 'staff').lower()}",
                     "workspace_type": payload.get("workspace_type", "EMPLOYEE"),
                     "default_route": payload.get("default_route", "/employee"),
-                    "hospital_id": hospital_ref_id,
-                    "hospital_ref_id": hospital_ref_id,
+                    "hospital_id": payload.get("hospital_ref_id") or payload.get("hospital_id") or hospital_ref_id,
+                    "hospital_ref_id": payload.get("hospital_ref_id") or payload.get("hospital_id") or hospital_ref_id,
                     "hospital_name": payload.get("hospital_name", "Kedar Hospital"),
                     "tenant_id": payload.get("tenant_id", "ten-kedar"),
                     "tenant_name": payload.get("tenant_name", "Kedar Healthcare Group"),
@@ -205,3 +207,245 @@ def validate_hospital_tenant_scope(user: Dict[str, Any], target_hospital_id: Opt
             status_code=403,
             detail="Forbidden: Cross-hospital tenant boundary violation. You do not have access to this hospital facility."
         )
+
+
+def record_audit_log(
+    actor_id: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    hospital_id: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+    actor_name: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    ip_address: str = "127.0.0.1"
+) -> None:
+    """
+    Mandatory compliance and security audit trail.
+    Persists audit records into oh_id.audit_logs and emits structured security logs.
+    Strictly scrubs secrets and credentials.
+    """
+    import uuid
+    import json
+    from backend.app.database.session import get_db_cursor
+    from backend.app.core.logging import log_security_event, logger
+
+    sanitized_details = {}
+    if details:
+        for k, v in details.items():
+            if any(secret_term in k.lower() for secret_term in ["pass", "token", "secret", "auth", "key", "cred"]):
+                sanitized_details[k] = "[REDACTED]"
+            else:
+                sanitized_details[k] = v
+
+    audit_id = f"audit-{uuid.uuid4().hex[:12]}"
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, tenant_id, hospital_id,
+                    action, resource_type, resource_id, details, ip_address, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, CURRENT_TIMESTAMP);
+            """, (
+                audit_id,
+                actor_id,
+                actor_name,
+                tenant_id,
+                hospital_id,
+                action,
+                resource_type,
+                resource_id,
+                json.dumps(sanitized_details),
+                ip_address
+            ))
+    except Exception as e:
+        logger.error("Failed to insert into oh_id.audit_logs: %s", e, exc_info=True)
+        raise
+
+    log_security_event(
+        event_type=action,
+        actor_id=actor_id,
+        resource=f"{resource_type}:{resource_id}",
+        status=sanitized_details.get("outcome", "SUCCESS"),
+        details=sanitized_details
+    )
+
+
+def verify_clinical_record_access(
+    patient_id: str,
+    user: Dict[str, Any],
+    required_category: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Unified authoritative clinical record access policy enforcement.
+    1. Authenticates clinician role or patient self-read boundary.
+    2. Validates same-hospital clinical access (preserving existing single-facility workflows).
+    3. For cross-hospital access:
+       - Checks global/tenant flag: settings.ENABLE_CROSS_HOSPITAL_SHARING.
+       - Strictly checks for an active, unexpired, GRANTED consent artifact in oh_id.abdm_consent_artifacts.
+       - Validates requested scope / category against consented categories.
+       - Logs mandatory audit event (allowed or denied) in oh_id.audit_logs.
+       - Returns safe 404 error on denial to avoid disclosing patient existence at other hospitals.
+       - Ensures audit failures fail closed to prevent silent unauthorized disclosures.
+    """
+    import json
+    from backend.app.database.session import get_readonly_cursor
+    from backend.app.core.logging import logger
+
+    user_perms = user.get("permissions") or []
+    roles = user.get("roles") or [user.get("role")]
+
+    # 1. Platform Admin / Super Admin platform-wide override
+    if any(r in ["PLATFORM_ADMIN", "SUPER_ADMIN"] for r in roles) or "system.manage" in user_perms:
+        patient = sp_repository.get_patient_by_id(patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient record not found")
+        return patient
+
+    # 2. Patient self-read boundary
+    if "patient.self.read" in user_perms and "consultation.read" not in user_perms and "clinical.read" not in user_perms:
+        patient = sp_repository.get_patient_by_id(patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient record not found")
+        user_ref_id = user.get("user_ref_id") or user.get("id")
+        if user_ref_id != patient.get("user_id") and user_ref_id != patient.get("id"):
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Patient context violation. You may only access your own clinical records."
+            )
+        return patient
+
+    # 3. Clinician verification
+    is_clinician = any(r in ["DOCTOR", "CHIEF_MEDICAL_OFFICER", "RESIDENT"] for r in roles) or any(
+        p in user_perms for p in ["clinical.read", "consultation.read", "consultation.create", "patient.read"]
+    )
+    if not is_clinician:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Clinical access restricted to licensed medical practitioners."
+        )
+
+    patient = sp_repository.get_patient_by_id(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient record not found")
+
+    user_hospital = user.get("hospital_ref_id") or user.get("hospital_id")
+    patient_hospital = patient.get("hospital_id")
+
+    # 4. Same-hospital access: normal clinical workflow preserved
+    if not patient_hospital or not user_hospital or user_hospital == patient_hospital:
+        return patient
+
+    # 5. Cross-hospital access: check consent & network sharing settings
+    actor_id = user.get("user_ref_id") or user.get("id") or user.get("username") or "unknown"
+    actor_name = user.get("name") or user.get("username")
+    tenant_id = user.get("tenant_id")
+
+    # Check pilot isolation setting
+    if not settings.ENABLE_CROSS_HOSPITAL_SHARING:
+        record_audit_log(
+            actor_id=actor_id,
+            actor_name=actor_name,
+            hospital_id=user_hospital,
+            tenant_id=tenant_id,
+            action="CROSS_HOSPITAL_ACCESS_DENIED",
+            resource_type="patients",
+            resource_id=patient_id,
+            details={
+                "requesting_hospital_id": user_hospital,
+                "provider_hospital_id": patient_hospital,
+                "reason": "Cross-hospital data sharing is disabled for this deployment.",
+                "outcome": "DENIED"
+            }
+        )
+        # Safe error: Do not disclose whether patient exists at another hospital
+        raise HTTPException(status_code=404, detail="Patient record not found")
+
+    # Query active consent artifact
+    active_consent = None
+    with get_readonly_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM oh_id.abdm_consent_artifacts
+            WHERE patient_id = %s
+              AND requester_hospital_id = %s
+              AND consent_status = 'GRANTED'
+              AND expires_at > CURRENT_TIMESTAMP;
+        """, (patient["id"], user_hospital))
+        row = cur.fetchone()
+        if row:
+            active_consent = dict(row)
+
+    if not active_consent:
+        record_audit_log(
+            actor_id=actor_id,
+            actor_name=actor_name,
+            hospital_id=user_hospital,
+            tenant_id=tenant_id,
+            action="CROSS_HOSPITAL_ACCESS_DENIED",
+            resource_type="patients",
+            resource_id=patient_id,
+            details={
+                "requesting_hospital_id": user_hospital,
+                "provider_hospital_id": patient_hospital,
+                "reason": "No active, unexpired consent granted by patient for requesting hospital.",
+                "outcome": "DENIED"
+            }
+        )
+        raise HTTPException(status_code=404, detail="Patient record not found")
+
+    cats = active_consent.get("data_categories")
+    if isinstance(cats, str):
+        try:
+            cats = json.loads(cats)
+        except Exception:
+            cats = [cats]
+    elif not isinstance(cats, list):
+        cats = []
+
+    if required_category and required_category not in cats:
+        record_audit_log(
+            actor_id=actor_id,
+            actor_name=actor_name,
+            hospital_id=user_hospital,
+            tenant_id=tenant_id,
+            action="CROSS_HOSPITAL_SCOPE_DENIED",
+            resource_type="patients",
+            resource_id=patient_id,
+            details={
+                "requesting_hospital_id": user_hospital,
+                "provider_hospital_id": patient_hospital,
+                "consent_id": active_consent.get("consent_id"),
+                "required_category": required_category,
+                "consented_categories": cats,
+                "reason": f"Category '{required_category}' not granted in active patient consent.",
+                "outcome": "DENIED"
+            }
+        )
+        raise HTTPException(status_code=404, detail="Patient record not found")
+
+    # Audit log for allowed access: Fail closed if audit insert fails
+    try:
+        record_audit_log(
+            actor_id=actor_id,
+            actor_name=actor_name,
+            hospital_id=user_hospital,
+            tenant_id=tenant_id,
+            action="CROSS_HOSPITAL_RECORD_ACCESSED",
+            resource_type="patients",
+            resource_id=patient_id,
+            details={
+                "requesting_hospital_id": user_hospital,
+                "provider_hospital_id": patient_hospital,
+                "consent_id": active_consent.get("consent_id"),
+                "purpose": active_consent.get("purpose_code", "CARETREAT"),
+                "authorized_categories": cats,
+                "outcome": "ALLOWED"
+            }
+        )
+    except Exception as audit_err:
+        logger.error("Audit logging failure prevented cross-hospital disclosure: %s", audit_err, exc_info=True)
+        raise HTTPException(status_code=500, detail="Security audit logging failure: access denied.")
+
+    patient["_active_consent"] = active_consent
+    patient["active_consent"] = active_consent
+    return patient

@@ -159,7 +159,12 @@ def get_current_me_profile(current_user: Dict[str, Any] = Depends(get_current_us
     """
     user_ref_id = current_user["user_ref_id"]
     role = current_user.get("role", "PATIENT")
-    ws = sp_repository.get_user_workspace(user_ref_id=user_ref_id, hospital_ref_id=current_user.get("hospital_ref_id"))
+    ws = sp_repository.get_user_workspace(
+        user_ref_id=user_ref_id,
+        hospital_ref_id=current_user.get("hospital_ref_id"),
+        usertype_ref_id=current_user.get("usertype_ref_id"),
+        role_code=role
+    )
 
     # If Doctor
     doctor_dict = None
