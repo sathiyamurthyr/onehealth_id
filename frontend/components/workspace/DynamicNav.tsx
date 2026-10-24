@@ -354,8 +354,19 @@ export function DynamicNav() {
           {isCollapsed ? (
             /* Collapsed State Header: Prominent Logo, Expand Toggle, Collapsed Search, Compact Identity */
             <div className="flex flex-col items-center gap-2 w-full">
-              {/* Prominent Visible Logo */}
-              <div className="w-11 h-11 rounded-xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden">
+              {/* Prominent Visible Logo (Clickable Link to Home) */}
+              <Link
+                href="/"
+                id="sidebar-brand-logo-collapsed"
+                title="Go to OneHealth ID Home"
+                aria-label="OneHealth ID Home"
+                className={cn(
+                  "w-11 h-11 rounded-xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden cursor-pointer",
+                  "hover:ring-white hover:scale-105 active:scale-95 transition-all",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2",
+                  isPatient ? "focus-visible:ring-offset-[#155EEF]" : "focus-visible:ring-offset-slate-900"
+                )}
+              >
                 <Image
                   src="/images/oh-id-logo.png"
                   alt="One Health ID"
@@ -364,7 +375,7 @@ export function DynamicNav() {
                   priority
                   className="w-full h-full object-contain filter drop-shadow-2xs"
                 />
-              </div>
+              </Link>
 
               {/* Expand Toggle Button */}
               <button
@@ -420,9 +431,21 @@ export function DynamicNav() {
             /* Expanded State Header: Full Branding, Title, Version, Subtitle, Collapse Button & Identity Card */
             <>
               <div className="flex items-center justify-between gap-2 mb-3.5">
-                <div className="flex items-center gap-3 min-w-0">
+                <Link
+                  href="/"
+                  id="sidebar-brand-link"
+                  title="Go to OneHealth ID Home"
+                  aria-label="OneHealth ID Home"
+                  className={cn(
+                    "group/brand flex items-center gap-3 min-w-0 rounded-xl p-1 -m-1 transition-all cursor-pointer",
+                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2",
+                    isPatient
+                      ? "focus-visible:ring-white focus-visible:ring-offset-[#155EEF]"
+                      : "focus-visible:ring-[#155EEF] focus-visible:ring-offset-white"
+                  )}
+                >
                   {/* Prominent High-Visibility Logo */}
-                  <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
+                  <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden group-hover/brand:scale-105 group-hover/brand:ring-white group-active/brand:scale-95 transition-all">
                     <Image
                       src="/images/oh-id-logo.png"
                       alt="One Health ID"
@@ -435,8 +458,8 @@ export function DynamicNav() {
                   <div className="truncate min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={cn(
-                        "font-extrabold text-[17px] tracking-tight truncate leading-snug",
-                        isPatient ? "text-white drop-shadow-xs" : "text-slate-900"
+                        "font-extrabold text-[17px] tracking-tight truncate leading-snug group-hover/brand:underline underline-offset-4 decoration-2",
+                        isPatient ? "text-white drop-shadow-xs decoration-white/70" : "text-slate-900 decoration-[#155EEF]/70"
                       )}>
                         OneHealth ID
                       </span>
@@ -456,7 +479,7 @@ export function DynamicNav() {
                       {isPatient ? "Personal Health Workspace" : workspace.tenant_name || workspace.hospital_name || "Healthcare Workspace"}
                     </p>
                   </div>
-                </div>
+                </Link>
 
                 {/* Collapse Toggle Button */}
                 <button
@@ -1062,8 +1085,15 @@ export function DynamicNav() {
                 ? "bg-gradient-to-b from-[#155EEF] via-[#144ecc] to-[#123B75] text-white border-[#123B75]/40"
                 : "bg-slate-900 text-white border-slate-800"
             )}>
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
+              <Link
+                href="/"
+                id="sidebar-mobile-brand-link"
+                onClick={closeMobile}
+                title="Go to OneHealth ID Home"
+                aria-label="OneHealth ID Home"
+                className="group/brand flex items-center gap-3 min-w-0 rounded-xl p-1 -m-1 transition-all cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#155EEF]"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden group-hover/brand:scale-105 group-hover/brand:ring-white group-active/brand:scale-95 transition-all">
                   <Image
                     src="/images/oh-id-logo.png"
                     alt="One Health ID"
@@ -1075,7 +1105,7 @@ export function DynamicNav() {
                 </div>
                 <div className="truncate min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-white text-[17px] tracking-tight truncate leading-snug">
+                    <span className="font-extrabold text-white text-[17px] tracking-tight truncate leading-snug group-hover/brand:underline underline-offset-4 decoration-2 decoration-white/70">
                       OneHealth ID
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/20 text-white font-bold border border-white/30 shrink-0">
@@ -1086,7 +1116,7 @@ export function DynamicNav() {
                     {isPatient ? "Personal Health Workspace" : workspace.tenant_name || "Healthcare Workspace"}
                   </p>
                 </div>
-              </div>
+              </Link>
               <button
                 type="button"
                 id="btn-mobile-nav-close"

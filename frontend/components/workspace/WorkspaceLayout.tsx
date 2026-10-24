@@ -2,6 +2,7 @@
 
 import React, { ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Menu } from "lucide-react";
 import { DynamicNav } from "./DynamicNav";
 import { WorkspaceGuard } from "./WorkspaceGuard";
@@ -50,19 +51,27 @@ function WorkspaceLayoutInner({
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
-                <Image
-                  src="/images/oh-id-logo.png"
-                  alt="One Health ID"
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-contain filter drop-shadow-2xs"
-                />
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 text-sm tracking-tight">OneHealth ID</span>
-                <p className="text-[10px] text-slate-500">Personal Health</p>
-              </div>
+              <Link
+                href="/"
+                id="header-brand-link-mobile"
+                title="Go to OneHealth ID Home"
+                aria-label="OneHealth ID Home"
+                className="flex items-center gap-2 group/brand focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#155EEF] focus-visible:ring-offset-2 rounded-xl p-1 -m-1 transition-all cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center p-1 shrink-0 overflow-hidden group-hover/brand:border-blue-300 group-hover/brand:scale-105 transition-all">
+                  <Image
+                    src="/images/oh-id-logo.png"
+                    alt="One Health ID"
+                    width={32}
+                    height={32}
+                    className="w-full h-full object-contain filter drop-shadow-2xs"
+                  />
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900 text-sm tracking-tight group-hover/brand:text-[#155EEF] transition-colors">OneHealth ID</span>
+                  <p className="text-[10px] text-slate-500">Personal Health</p>
+                </div>
+              </Link>
             </div>
             <div className="w-44 sm:w-60">
               <FamilySwitcher />
