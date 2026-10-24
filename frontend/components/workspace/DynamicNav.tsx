@@ -1,33 +1,164 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { useSidebar } from "@/lib/workspace/SidebarContext";
 import { FamilySwitcher } from "./FamilySwitcher";
 import { cn } from "@/lib/utils";
 import { 
   Hospital, Building, LogOut, ChevronDown, Check, MoreHorizontal, X, ChevronRight,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Search, Star, CornerDownLeft
 } from "lucide-react";
 import { resolveNavigationIcon } from "@/design-system/icons";
 import { useFamily } from "@/lib/patient/FamilyContext";
 
+// Root workspace landing hubs that must only match when the path is an exact match
+const ROOT_LANDING_ROUTES = new Set([
+  "/patient",
+  "/doctor",
+  "/hospital",
+  "/super-admin",
+  "/dashboard",
+]);
+
+// Explicit child-to-parent route mapping for aliases and nested screens
+const EXPLICIT_NESTED_PARENTS: Record<string, string> = {
+  "/patient/health-timeline": "/patient/timeline",
+  "/patient/id-card": "/patient/onehealth-id",
+  "/patient/receipts": "/patient/bills",
+  "/patient/data-sharing": "/patient/consent",
+  "/patient/connections": "/patient/consent",
+  "/patient/access-history": "/patient/consent",
+  "/patient/settings": "/patient/profile",
+};
+
 export function DynamicNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { workspace, user, navigation, availableHospitals, availableWorkspaces, switchContext, logout } = useWorkspace();
   const { isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen, closeMobile } = useSidebar();
   const { familyMembers, isLoading: familyLoading, error: familyError, refreshFamily } = useFamily();
 
+  // Modal / Dropdown states
   const [showHospDropdown, setShowHospDropdown] = useState(false);
   const [showSwitchModal, setShowSwitchModal] = useState(false);
   const [switchingIdx, setSwitchingIdx] = useState<number | null>(null);
 
+  // Enterprise Search & Favourites States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [isCollapsedSearchOpen, setIsCollapsedSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const collapsedSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // Favourites state with safe localStorage persistence
+  const [favourites, setFavourites] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("oh_patient_favourite_nav");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch {
+        // Storage restricted or unavailable
+      }
+    }
+    // Default helpful favourite shortcuts for patient ease of access
+    return ["/patient/appointments", "/patient/records"];
+  });
+
+  const toggleFavourite = useCallback((href: string) => {
+    setFavourites((prev) => {
+      const next = prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href];
+      try {
+        localStorage.setItem("oh_patient_favourite_nav", JSON.stringify(next));
+      } catch {
+        // Storage restricted or unavailable
+      }
+      return next;
+    });
+  }, []);
+
   if (!workspace || !user) return null;
 
   const isPatient = workspace.workspace_type === "PATIENT";
+
+  // Filter navigation items by search query (case-insensitive on title or section)
+  const filteredNavItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return navigation;
+    return navigation.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        (item.section && item.section.toLowerCase().includes(q))
+    );
+  }, [navigation, searchQuery]);
+
+  // Authorized Favourite Items (guaranteed to match current authorized navigation only)
+  const favouriteNavItems = useMemo(() => {
+    return navigation.filter((item) => favourites.includes(item.href));
+  }, [navigation, favourites]);
+
+  // Global keyboard shortcut to focus or open menu search (/ or Ctrl+K / Cmd+K)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isInput && (e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"))) {
+        e.preventDefault();
+        if (isCollapsed) {
+          setIsCollapsedSearchOpen(true);
+        } else {
+          searchInputRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [isCollapsed]);
+
+  // Auto-focus input when collapsed search modal opens
+  useEffect(() => {
+    if (isCollapsedSearchOpen) {
+      const timer = setTimeout(() => {
+        collapsedSearchInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isCollapsedSearchOpen]);
+
+  // Handle keyboard navigation inside search inputs (ArrowUp, ArrowDown, Enter, Escape)
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (filteredNavItems.length ? (prev + 1) % filteredNavItems.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        filteredNavItems.length ? (prev - 1 + filteredNavItems.length) % filteredNavItems.length : 0
+      );
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filteredNavItems.length > 0 && highlightedIndex >= 0 && highlightedIndex < filteredNavItems.length) {
+        const target = filteredNavItems[highlightedIndex];
+        router.push(target.href);
+        if (isMobileOpen) closeMobile();
+        if (isCollapsedSearchOpen) setIsCollapsedSearchOpen(false);
+        setSearchQuery("");
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setSearchQuery("");
+      if (isCollapsedSearchOpen) {
+        setIsCollapsedSearchOpen(false);
+      }
+    }
+  };
 
   // Dedicated badge resolver for navigation items with database-backed dynamic family count
   const renderNavBadge = (item: { href: string; badge?: string | null }, isActive: boolean, isTooltip: boolean = false) => {
@@ -39,7 +170,7 @@ export function DynamicNav() {
           return (
             <span 
               aria-label="Loading family count"
-              className="text-[10px] bg-slate-700 text-white px-1.5 py-0.2 rounded-full font-mono animate-pulse"
+              className="text-[10px] bg-slate-700 text-white px-2 py-0.5 rounded-full font-mono animate-pulse"
             >
               ...
             </span>
@@ -49,7 +180,7 @@ export function DynamicNav() {
           <span
             id="family-nav-badge-loading"
             aria-label="Loading family count"
-            className="ml-auto flex items-center justify-center min-w-[20px] px-1.5 py-0.5 text-[10px] rounded-full border bg-slate-100 text-slate-400 border-slate-200 font-mono animate-pulse"
+            className="ml-auto flex items-center justify-center min-w-[24px] px-2 py-0.5 text-xs rounded-full border bg-slate-100 text-slate-400 border-slate-200 font-mono animate-pulse"
           >
             ...
           </span>
@@ -61,7 +192,7 @@ export function DynamicNav() {
           return (
             <span 
               title={`Family API error: ${familyError}`}
-              className="text-[10px] bg-rose-600 text-white px-1.5 py-0.2 rounded-full font-bold"
+              className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold"
             >
               !
             </span>
@@ -77,7 +208,7 @@ export function DynamicNav() {
               e.stopPropagation();
               refreshFamily();
             }}
-            className="ml-auto cursor-pointer flex items-center justify-center min-w-[20px] px-1.5 py-0.5 text-[10px] rounded-full border bg-rose-100 text-rose-700 border-rose-300 font-bold hover:bg-rose-200 transition"
+            className="ml-auto cursor-pointer flex items-center justify-center min-w-[24px] px-2 py-0.5 text-xs rounded-full border bg-rose-100 text-rose-700 border-rose-300 font-bold hover:bg-rose-200 transition"
           >
             !
           </span>
@@ -88,7 +219,7 @@ export function DynamicNav() {
       const dynamicCount = familyMembers.length.toString();
       if (isTooltip) {
         return (
-          <span className="text-[10px] bg-[#155EEF] text-white px-1.5 py-0.2 rounded-full font-mono">
+          <span className="text-[10px] bg-[#155EEF] text-white px-2 py-0.5 rounded-full font-mono font-bold">
             {dynamicCount}
           </span>
         );
@@ -98,10 +229,10 @@ export function DynamicNav() {
           id="family-nav-badge"
           data-count={dynamicCount}
           className={cn(
-            "ml-auto text-[10px] px-1.5 py-0.5 rounded-full border font-mono font-semibold transition-colors",
+            "ml-auto text-xs px-2 py-0.5 rounded-full border font-mono font-bold transition-colors min-w-[24px] text-center",
             isActive
               ? "bg-white/20 text-white border-white/30"
-              : "bg-slate-100 text-slate-600 border-slate-200"
+              : "bg-slate-100 text-slate-700 border-slate-200"
           )}
         >
           {dynamicCount}
@@ -114,7 +245,7 @@ export function DynamicNav() {
 
     if (isTooltip) {
       return (
-        <span className="text-[10px] bg-[#155EEF] text-white px-1.5 py-0.2 rounded-full font-mono">
+        <span className="text-[10px] bg-[#155EEF] text-white px-2 py-0.5 rounded-full font-mono font-bold">
           {item.badge}
         </span>
       );
@@ -123,10 +254,10 @@ export function DynamicNav() {
     return (
       <span
         className={cn(
-          "ml-auto text-[10px] px-1.5 py-0.5 rounded-full border",
+          "ml-auto text-xs px-2 py-0.5 rounded-full border font-semibold min-w-[24px] text-center",
           isActive
             ? "bg-white/20 text-white border-white/30"
-            : "bg-slate-100 text-slate-600 border-slate-200"
+            : "bg-slate-100 text-slate-700 border-slate-200"
         )}
       >
         {item.badge}
@@ -146,6 +277,48 @@ export function DynamicNav() {
 
   const badgeStyle = roleColors[workspace.workspace_type] || roleColors.OTHER;
 
+  // Canonical active route determination: strictly guarantees exactly one active route match
+  const activeNavHref = useMemo(() => {
+    if (!pathname) return null;
+    const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+
+    // 1. Strict exact match against configured navigation items
+    const exact = navigation.find((item) => item.href.replace(/\/+$/, "") === normalizedPath);
+    if (exact) return exact.href;
+
+    // 2. Explicit nested alias / parent mapping
+    const explicitParent = EXPLICIT_NESTED_PARENTS[normalizedPath];
+    if (explicitParent && navigation.some((item) => item.href === explicitParent)) {
+      return explicitParent;
+    }
+
+    // 3. Child route matching for non-root navigation items (e.g. /patient/appointments/123 -> /patient/appointments)
+    // Root landing hubs (/patient, /doctor, /hospital, etc.) are strictly excluded to avoid broad prefix hijacking
+    const eligibleParents = navigation.filter(
+      (item) => !ROOT_LANDING_ROUTES.has(item.href.replace(/\/+$/, ""))
+    );
+
+    let bestMatch: string | null = null;
+    let longestPrefix = 0;
+
+    for (const item of eligibleParents) {
+      const cleanHref = item.href.replace(/\/+$/, "");
+      if (cleanHref && normalizedPath.startsWith(cleanHref + "/")) {
+        if (cleanHref.length > longestPrefix) {
+          longestPrefix = cleanHref.length;
+          bestMatch = item.href;
+        }
+      }
+    }
+
+    return bestMatch;
+  }, [pathname, navigation]);
+
+  // Helper to test if a route is the single active menu item
+  const isRouteActive = useCallback((href: string) => {
+    return href === activeNavHref;
+  }, [activeNavHref]);
+
   // Patient mobile bottom 4 primary tabs + More
   const patientMobileTabs = [
     { title: "Home", href: "/patient", icon: "LayoutDashboard" },
@@ -158,7 +331,7 @@ export function DynamicNav() {
   return (
     <>
       {/* =========================================================================
-          Desktop Sidebar (lg and up): Collapsible & Expandable with Persistence
+          Desktop Sidebar (lg and up): Collapsible & Expandable with Search & Favourites
           ========================================================================= */}
       <aside
         id="desktop-workspace-sidebar"
@@ -179,10 +352,10 @@ export function DynamicNav() {
           )}
         >
           {isCollapsed ? (
-            /* Collapsed State Header: Prominent Logo, Expand Toggle, Compact Identity */
+            /* Collapsed State Header: Prominent Logo, Expand Toggle, Collapsed Search, Compact Identity */
             <div className="flex flex-col items-center gap-2 w-full">
-              {/* Better Visible Logo */}
-              <div className="w-11 h-11 rounded-xl bg-white ring-2 ring-white/80 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden">
+              {/* Prominent Visible Logo */}
+              <div className="w-11 h-11 rounded-xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden">
                 <Image
                   src="/images/oh-id-logo.png"
                   alt="One Health ID"
@@ -210,7 +383,33 @@ export function DynamicNav() {
                 <PanelLeftOpen className="w-5 h-5" />
               </button>
 
-              {/* Adapted Compact Patient Identity */}
+              {/* Collapsed Search Icon Button */}
+              <button
+                type="button"
+                id="btn-collapsed-search"
+                onClick={() => {
+                  setIsCollapsedSearchOpen(true);
+                  setSearchQuery("");
+                  setHighlightedIndex(0);
+                }}
+                title="Search menu (/)"
+                aria-label="Search navigation menu"
+                className={cn(
+                  "p-1.5 rounded-lg transition-colors focus:outline-hidden focus:ring-2 shrink-0 relative group",
+                  isPatient
+                    ? "text-blue-100 hover:text-white hover:bg-white/20 focus:ring-white"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100 focus:ring-blue-500"
+                )}
+              >
+                <Search className="w-5 h-5" />
+                <div className="pointer-events-none absolute left-full ml-3 z-50 hidden group-hover:flex items-center">
+                  <div className="bg-slate-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap">
+                    Search menu (/)
+                  </div>
+                </div>
+              </button>
+
+              {/* Compact Patient Identity Switcher */}
               {isPatient && (
                 <div className="w-full flex justify-center mt-1">
                   <FamilySwitcher compact={true} variant="header" />
@@ -220,15 +419,15 @@ export function DynamicNav() {
           ) : (
             /* Expanded State Header: Full Branding, Title, Version, Subtitle, Collapse Button & Identity Card */
             <>
-              <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center justify-between gap-2 mb-3.5">
                 <div className="flex items-center gap-3 min-w-0">
-                  {/* Better Visible Logo */}
-                  <div className="w-11 h-11 rounded-xl bg-white ring-2 ring-white/80 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                  {/* Prominent High-Visibility Logo */}
+                  <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
                     <Image
                       src="/images/oh-id-logo.png"
                       alt="One Health ID"
-                      width={40}
-                      height={40}
+                      width={44}
+                      height={44}
                       priority
                       className="w-full h-full object-contain filter drop-shadow-2xs"
                     />
@@ -236,13 +435,13 @@ export function DynamicNav() {
                   <div className="truncate min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={cn(
-                        "font-bold text-base tracking-tight truncate",
+                        "font-extrabold text-[17px] tracking-tight truncate leading-snug",
                         isPatient ? "text-white drop-shadow-xs" : "text-slate-900"
                       )}>
                         OneHealth ID
                       </span>
                       <span className={cn(
-                        "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-semibold border shadow-xs shrink-0",
+                        "text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border shadow-xs shrink-0",
                         isPatient
                           ? "bg-white/20 text-white border-white/30 backdrop-blur-xs"
                           : "bg-blue-100 text-blue-700 border-blue-200"
@@ -251,7 +450,7 @@ export function DynamicNav() {
                       </span>
                     </div>
                     <p className={cn(
-                      "text-xs truncate font-medium max-w-[150px]",
+                      "text-xs truncate font-medium max-w-[150px] mt-0.5",
                       isPatient ? "text-blue-100/95" : "text-slate-500"
                     )}>
                       {isPatient ? "Personal Health Workspace" : workspace.tenant_name || workspace.hospital_name || "Healthcare Workspace"}
@@ -363,23 +562,67 @@ export function DynamicNav() {
           )}
         </div>
 
-        {/* Dynamic Navigation Items from Backend */}
+        {/* =========================================================================
+            Menu Search Bar (Expanded State)
+            ========================================================================= */}
+        {!isCollapsed && (
+          <div className="px-3 pt-3.5 pb-1">
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                id="sidebar-menu-search"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setHighlightedIndex(0);
+                }}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search menu..."
+                aria-label="Search navigation menu"
+                className="w-full pl-9 pr-9 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-900 placeholder:text-slate-400 text-sm font-medium rounded-xl border border-slate-200 focus:border-[#155EEF] focus:ring-2 focus:ring-[#155EEF]/20 focus:outline-hidden transition shadow-2xs"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  id="btn-clear-search"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setHighlightedIndex(0);
+                    searchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {searchQuery.trim() && (
+              <div className="flex items-center justify-between px-1 pt-1.5 text-[11px] text-slate-500 font-medium">
+                <span>{filteredNavItems.length} item{filteredNavItems.length !== 1 ? "s" : ""} matched</span>
+                <span className="text-[10px] text-slate-400">↑↓ to move • ↵ to open</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =========================================================================
+            Dynamic Navigation Items from Backend (Scrollable List)
+            ========================================================================= */}
         <div className={cn(
-          "flex-1 overflow-y-auto space-y-1",
-          isCollapsed ? "px-2 py-3" : "px-3 py-4"
+          "flex-1 overflow-y-auto space-y-1.5",
+          isCollapsed ? "px-2 py-3" : "px-3 py-2.5"
         )}>
-          {!isCollapsed && (
-            <p className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              {isPatient ? "My Health Journey" : `${workspace.role_name} Workspace`}
-            </p>
-          )}
+          {/* Collapsed Rail Icons */}
+          {isCollapsed ? (
+            navigation.map((item, idx) => {
+              const Icon = resolveNavigationIcon(item.icon);
+              const isActive = isRouteActive(item.href);
+              const isFavourited = favourites.includes(item.href);
+              const showSection = item.section && (idx === 0 || navigation[idx - 1]?.section !== item.section);
 
-          {navigation.map((item, idx) => {
-            const Icon = resolveNavigationIcon(item.icon);
-            const isActive = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/doctor" && item.href !== "/hospital" && pathname.startsWith(item.href));
-            const showSection = item.section && (idx === 0 || navigation[idx - 1]?.section !== item.section);
-
-            if (isCollapsed) {
               return (
                 <React.Fragment key={item.href}>
                   {showSection && (
@@ -387,15 +630,22 @@ export function DynamicNav() {
                   )}
                   <Link
                     href={item.href}
+                    id={`collapsed-nav-${item.href.replace(/\//g, "-").replace(/^-/, "")}`}
+                    aria-current={isActive ? "page" : undefined}
                     aria-label={item.title}
                     title={item.title}
                     className={cn(
                       "flex items-center justify-center w-12 h-12 mx-auto rounded-xl transition-all relative group my-1 focus:outline-hidden focus:ring-2 focus:ring-[#155EEF]",
                       isActive
-                        ? "bg-[#155EEF] text-white shadow-md shadow-blue-300/50"
+                        ? "bg-[#155EEF] text-white shadow-md shadow-blue-300/50 ring-2 ring-blue-400/40"
                         : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     )}
                   >
+                    {/* Active Left Indicator Bar in Collapsed State */}
+                    {isActive && (
+                      <span aria-hidden="true" className="absolute -left-1 top-2.5 bottom-2.5 w-1.5 bg-[#155EEF] rounded-r-md ring-2 ring-white" />
+                    )}
+
                     <Icon className="w-5 h-5 shrink-0" />
 
                     {/* Accessible Floating Tooltip */}
@@ -411,30 +661,199 @@ export function DynamicNav() {
                   </Link>
                 </React.Fragment>
               );
-            }
-
-            return (
-              <React.Fragment key={item.href}>
-                {showSection && (
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
-                    {item.section}
+            })
+          ) : (
+            /* Expanded Navigation Mode with Favourites & Readable Typography */
+            <>
+              {/* 1. Favourites Section (when not actively searching and patient has favourites) */}
+              {!searchQuery.trim() && isPatient && favouriteNavItems.length > 0 && (
+                <div id="sidebar-favourites-section" className="mb-2 pb-2 border-b border-slate-200/80">
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-800 px-3 pt-1 pb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      Favourites
+                    </span>
+                    <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full">
+                      {favouriteNavItems.length}
+                    </span>
                   </div>
-                )}
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isActive
-                      ? "bg-[#155EEF] text-white shadow-sm shadow-blue-200"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{item.title}</span>
-                  {renderNavBadge(item, isActive, false)}
-                </Link>
-              </React.Fragment>
-            );
-          })}
+                  <div className="space-y-1">
+                    {favouriteNavItems.map((favItem) => {
+                      const Icon = resolveNavigationIcon(favItem.icon);
+                      const isCurrent = favItem.href === activeNavHref;
+
+                      return (
+                        <Link
+                          key={`fav-${favItem.href}`}
+                          href={favItem.href}
+                          title={favItem.title}
+                          className={cn(
+                            "group flex items-center min-h-[46px] px-3.5 py-2.5 rounded-xl transition-all relative text-left",
+                            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#155EEF] focus-visible:ring-offset-2",
+                            isCurrent
+                              ? "bg-amber-100/70 text-amber-950 font-semibold ring-1 ring-amber-300 shadow-2xs"
+                              : "text-slate-800 hover:text-[#155EEF] hover:bg-amber-50/70 active:bg-amber-100/80 font-medium"
+                          )}
+                        >
+                          {/* Distinct Amber Left Indicator for active favourite shortcut */}
+                          {isCurrent ? (
+                            <span aria-hidden="true" className="w-1.5 h-6 rounded-full bg-amber-500 mr-2.5 shrink-0 shadow-xs" />
+                          ) : (
+                            <span aria-hidden="true" className="w-1.5 h-6 mr-2.5 shrink-0 opacity-0 pointer-events-none" />
+                          )}
+
+                          <Icon className={cn(
+                            "w-5 h-5 shrink-0 mr-3 transition-colors",
+                            isCurrent ? "text-amber-700" : "text-amber-600 group-hover:text-amber-700"
+                          )} />
+
+                          <span className={cn(
+                            "truncate text-[16px] tracking-tight flex-1",
+                            isCurrent ? "text-amber-950 font-semibold" : "text-slate-800 font-medium group-hover:text-slate-900"
+                          )}>
+                            {favItem.title}
+                          </span>
+
+                          {renderNavBadge(favItem, false, false)}
+
+                          {/* Quick Remove from Favourites Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleFavourite(favItem.href);
+                            }}
+                            aria-label={`Remove ${favItem.title} from favourites`}
+                            title={`Remove ${favItem.title} from favourites`}
+                            className="p-1.5 ml-1.5 rounded-lg text-amber-500 hover:text-amber-700 hover:scale-110 transition focus:outline-hidden focus:ring-2 focus:ring-amber-400 shrink-0"
+                          >
+                            <Star className="w-4 h-4 fill-amber-400 text-amber-500 drop-shadow-2xs" />
+                          </button>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Main Navigation Items (Filtered by Search or Grouped by Section) */}
+              {!searchQuery.trim() && (
+                <p className="px-3 pb-1 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  {isPatient ? "My Health Journey" : `${workspace.role_name} Workspace`}
+                </p>
+              )}
+
+              {/* Empty Search Results Message */}
+              {searchQuery.trim() && filteredNavItems.length === 0 && (
+                <div id="no-menu-items-found" className="px-4 py-8 text-center flex flex-col items-center justify-center">
+                  <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center mb-2.5 text-slate-400">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800">No menu items found</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-[200px]">
+                    No navigation items matched &ldquo;{searchQuery}&rdquo;.
+                  </p>
+                  <button
+                    type="button"
+                    id="btn-clear-search-empty"
+                    onClick={() => {
+                      setSearchQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                    className="mt-3 px-3 py-1.5 text-xs font-semibold text-[#155EEF] hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+                  >
+                    Clear search
+                  </button>
+                </div>
+              )}
+
+              {/* Render Navigation Links */}
+              {filteredNavItems.map((item, idx) => {
+                const Icon = resolveNavigationIcon(item.icon);
+                const isActive = isRouteActive(item.href);
+                const isFavourited = favourites.includes(item.href);
+                const isHighlighted = searchQuery.trim().length > 0 && idx === highlightedIndex;
+                const showSection = !searchQuery.trim() && item.section && (idx === 0 || filteredNavItems[idx - 1]?.section !== item.section);
+
+                return (
+                  <React.Fragment key={item.href}>
+                    {showSection && (
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
+                        {item.section}
+                      </div>
+                    )}
+                    <Link
+                      href={item.href}
+                      id={`nav-${item.href.replace(/\//g, "-").replace(/^-/, "")}`}
+                      aria-current={isActive ? "page" : undefined}
+                      title={item.title}
+                      className={cn(
+                        "group flex items-center min-h-[48px] px-3.5 py-2.5 rounded-xl transition-all relative text-left",
+                        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#155EEF] focus-visible:ring-offset-2",
+                        isActive
+                          ? "bg-[#155EEF] text-white shadow-md shadow-blue-500/25 font-semibold"
+                          : "text-slate-800 hover:text-[#155EEF] hover:bg-blue-50/80 active:bg-blue-100 font-medium",
+                        isHighlighted && "ring-2 ring-[#155EEF] bg-blue-50"
+                      )}
+                    >
+                      {/* Distinct Left Indicator Bar (Accessible Visual Marker) */}
+                      {isActive ? (
+                        <span aria-hidden="true" className="w-1.5 h-6 rounded-full bg-white mr-2.5 shrink-0 shadow-xs" />
+                      ) : (
+                        <span aria-hidden="true" className="w-1.5 h-6 mr-2.5 shrink-0 opacity-0 pointer-events-none" />
+                      )}
+
+                      {/* Clear Recognizable Icon */}
+                      <Icon className={cn(
+                        "w-5 h-5 shrink-0 mr-3 transition-colors",
+                        isActive ? "text-white" : "text-slate-500 group-hover:text-[#155EEF]"
+                      )} />
+
+                      {/* Readable Menu Label for Older Users (~16px text-base) */}
+                      <span className={cn(
+                        "truncate text-[16px] tracking-tight flex-1",
+                        isActive ? "text-white font-semibold" : "text-slate-800 font-medium group-hover:text-slate-900"
+                      )}>
+                        {item.title}
+                      </span>
+
+                      {/* Database-backed Dynamic Badge */}
+                      {renderNavBadge(item, isActive, false)}
+
+                      {/* Favourite Star Toggle Button for Patient Workspace */}
+                      {isPatient && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFavourite(item.href);
+                          }}
+                          aria-label={isFavourited ? `Remove ${item.title} from favourites` : `Add ${item.title} to favourites`}
+                          title={isFavourited ? `Remove ${item.title} from favourites` : `Add ${item.title} to favourites`}
+                          className={cn(
+                            "p-1.5 ml-1.5 rounded-lg transition-all focus:outline-hidden focus:ring-2 focus:ring-amber-400 shrink-0",
+                            isFavourited
+                              ? "text-amber-400 hover:text-amber-500 hover:scale-110"
+                              : "text-slate-400/80 hover:text-amber-500 hover:scale-110 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+                          )}
+                        >
+                          <Star
+                            className={cn(
+                              "w-4 h-4 transition-transform",
+                              isFavourited && "fill-amber-400 text-amber-400 drop-shadow-2xs",
+                              isActive && isFavourited && "fill-amber-300 text-amber-300"
+                            )}
+                          />
+                        </button>
+                      )}
+                    </Link>
+                  </React.Fragment>
+                );
+              })}
+            </>
+          )}
         </div>
 
         {/* User Card & Logout */}
@@ -507,6 +926,115 @@ export function DynamicNav() {
       </aside>
 
       {/* =========================================================================
+          Accessible Search Modal / Popover (for Collapsed Rail)
+          ========================================================================= */}
+      {isCollapsedSearchOpen && (
+        <>
+          <div
+            id="collapsed-search-backdrop"
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+            onClick={() => setIsCollapsedSearchOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            id="collapsed-search-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search navigation menu"
+            className="fixed inset-x-4 top-20 max-w-lg mx-auto bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in zoom-in-95 duration-150"
+          >
+            <div className="p-3.5 border-b border-slate-200 flex items-center gap-2.5 bg-slate-50">
+              <Search className="w-5 h-5 text-slate-400 shrink-0 ml-1" />
+              <input
+                ref={collapsedSearchInputRef}
+                type="text"
+                id="collapsed-modal-search"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setHighlightedIndex(0);
+                }}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search menu..."
+                aria-label="Search menu"
+                className="w-full bg-transparent text-slate-900 placeholder:text-slate-400 text-sm font-medium outline-hidden"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setHighlightedIndex(0);
+                    collapsedSearchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsCollapsedSearchOpen(false)}
+                aria-label="Close search"
+                className="text-xs font-semibold px-2 py-1 text-slate-500 hover:text-slate-800 bg-slate-200/70 hover:bg-slate-200 rounded-lg transition"
+              >
+                Esc
+              </button>
+            </div>
+
+            {/* Results list */}
+            <div className="p-2 max-h-80 overflow-y-auto space-y-1">
+              {filteredNavItems.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-sm font-semibold text-slate-700">No menu items found</p>
+                  <p className="text-xs text-slate-400 mt-1">No items matched &ldquo;{searchQuery}&rdquo;</p>
+                </div>
+              ) : (
+                filteredNavItems.map((item, idx) => {
+                  const Icon = resolveNavigationIcon(item.icon);
+                  const isActive = isRouteActive(item.href);
+                  const isHighlighted = idx === highlightedIndex;
+
+                  return (
+                    <button
+                      key={`modal-${item.href}`}
+                      type="button"
+                      onClick={() => {
+                        router.push(item.href);
+                        setIsCollapsedSearchOpen(false);
+                        setSearchQuery("");
+                      }}
+                      className={cn(
+                        "w-full text-left flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-all",
+                        isActive
+                          ? "bg-[#155EEF] text-white font-semibold"
+                          : isHighlighted
+                          ? "bg-blue-50 text-blue-900 font-medium"
+                          : "text-slate-700 hover:bg-slate-100"
+                      )}
+                    >
+                      <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-slate-500")} />
+                      <span className="truncate flex-1">{item.title}</span>
+                      {item.section && (
+                        <span className={cn(
+                          "text-[10px] uppercase font-bold px-1.5 py-0.5 rounded",
+                          isActive ? "bg-white/20 text-white" : "text-slate-400 bg-slate-100"
+                        )}>
+                          {item.section}
+                        </span>
+                      )}
+                      {renderNavBadge(item, isActive, false)}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* =========================================================================
           Mobile Slide-In Navigation Drawer (< lg)
           ========================================================================= */}
       {isMobileOpen && (
@@ -527,7 +1055,7 @@ export function DynamicNav() {
             aria-label="Mobile Navigation Drawer"
             className="lg:hidden fixed inset-y-0 left-0 w-80 max-w-[85vw] bg-white z-50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out motion-reduce:transition-none animate-in slide-in-from-left"
           >
-            {/* Drawer Header with Healthcare Blue */}
+            {/* Drawer Header with Healthcare Blue Branding */}
             <div className={cn(
               "p-4 flex items-center justify-between border-b shadow-xs",
               isPatient
@@ -535,26 +1063,26 @@ export function DynamicNav() {
                 : "bg-slate-900 text-white border-slate-800"
             )}>
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-11 h-11 rounded-xl bg-white ring-2 ring-white/80 shadow-md flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                <div className="w-12 h-12 rounded-2xl bg-white ring-2 ring-white/90 shadow-md flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
                   <Image
                     src="/images/oh-id-logo.png"
                     alt="One Health ID"
-                    width={40}
-                    height={40}
+                    width={44}
+                    height={44}
                     priority
                     className="w-full h-full object-contain filter drop-shadow-2xs"
                   />
                 </div>
                 <div className="truncate min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-white text-base tracking-tight truncate">
+                    <span className="font-extrabold text-white text-[17px] tracking-tight truncate leading-snug">
                       OneHealth ID
                     </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-white/20 text-white font-semibold border border-white/30 shrink-0">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/20 text-white font-bold border border-white/30 shrink-0">
                       v1.0
                     </span>
                   </div>
-                  <p className="text-xs text-blue-100 font-medium truncate">
+                  <p className="text-xs text-blue-100 font-medium truncate mt-0.5">
                     {isPatient ? "Personal Health Workspace" : workspace.tenant_name || "Healthcare Workspace"}
                   </p>
                 </div>
@@ -577,47 +1105,141 @@ export function DynamicNav() {
               </div>
             )}
 
-            {/* Scrollable Navigation Items */}
-            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-              <p className="px-3 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {isPatient ? "My Health Journey" : `${workspace.role_name} Workspace`}
-              </p>
-              {navigation.map((item, idx) => {
-                const Icon = resolveNavigationIcon(item.icon);
-                const isActive = pathname === item.href;
-                const showSection = item.section && (idx === 0 || navigation[idx - 1]?.section !== item.section);
+            {/* Mobile Search Field */}
+            <div className="p-3 bg-slate-50 border-b border-slate-200">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                <input
+                  type="text"
+                  id="mobile-menu-search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search menu..."
+                  aria-label="Search navigation menu"
+                  className="w-full pl-9 pr-9 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 text-sm font-medium rounded-xl border border-slate-200 focus:border-[#155EEF] focus:ring-2 focus:ring-[#155EEF]/20 focus:outline-hidden shadow-2xs"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
 
-                return (
-                  <React.Fragment key={item.href}>
-                    {showSection && (
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
-                        {item.section}
-                      </div>
-                    )}
-                    <Link
-                      href={item.href}
-                      onClick={closeMobile}
-                      className={cn(
-                        "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all",
-                        isActive
-                          ? "bg-[#155EEF] text-white shadow-sm shadow-blue-200"
-                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            {/* Scrollable Navigation Items */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5">
+              {/* Mobile Favourites */}
+              {!searchQuery.trim() && isPatient && favouriteNavItems.length > 0 && (
+                <div className="mb-2 pb-2 border-b border-slate-200">
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-800 px-3 pt-1 pb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      Favourites
+                    </span>
+                    <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full">
+                      {favouriteNavItems.length}
+                    </span>
+                  </div>
+                  {favouriteNavItems.map((favItem) => {
+                    const Icon = resolveNavigationIcon(favItem.icon);
+                    const isCurrent = favItem.href === activeNavHref;
+
+                    return (
+                      <Link
+                        key={`mob-fav-${favItem.href}`}
+                        href={favItem.href}
+                        onClick={closeMobile}
+                        className={cn(
+                          "flex items-center min-h-[48px] px-3.5 py-2.5 rounded-xl text-[16px] transition-all",
+                          isCurrent
+                            ? "bg-amber-100/70 text-amber-950 font-semibold ring-1 ring-amber-300"
+                            : "text-slate-800 hover:text-[#155EEF] hover:bg-amber-50 font-medium"
+                        )}
+                      >
+                        {isCurrent ? (
+                          <span aria-hidden="true" className="w-1.5 h-6 rounded-full bg-amber-500 mr-2.5 shrink-0 shadow-xs" />
+                        ) : (
+                          <span aria-hidden="true" className="w-1.5 h-6 mr-2.5 shrink-0 opacity-0 pointer-events-none" />
+                        )}
+                        <Icon className={cn("w-5 h-5 shrink-0 mr-3", isCurrent ? "text-amber-700" : "text-amber-600")} />
+                        <span className="truncate flex-1">{favItem.title}</span>
+                        {renderNavBadge(favItem, false, false)}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Empty Mobile Search State */}
+              {searchQuery.trim() && filteredNavItems.length === 0 ? (
+                <div className="px-4 py-8 text-center flex flex-col items-center justify-center">
+                  <Search className="w-8 h-8 text-slate-300 mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No menu items found</p>
+                  <p className="text-xs text-slate-500 mt-1">No items matched &ldquo;{searchQuery}&rdquo;</p>
+                </div>
+              ) : (
+                filteredNavItems.map((item, idx) => {
+                  const Icon = resolveNavigationIcon(item.icon);
+                  const isActive = isRouteActive(item.href);
+                  const isFavourited = favourites.includes(item.href);
+                  const showSection = !searchQuery.trim() && item.section && (idx === 0 || filteredNavItems[idx - 1]?.section !== item.section);
+
+                  return (
+                    <React.Fragment key={`mobile-${item.href}`}>
+                      {showSection && (
+                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 pb-1">
+                          {item.section}
+                        </div>
                       )}
-                    >
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{item.title}</span>
-                      {renderNavBadge(item, isActive, false)}
-                    </Link>
-                  </React.Fragment>
-                );
-              })}
+                      <Link
+                        href={item.href}
+                        onClick={closeMobile}
+                        className={cn(
+                          "group flex items-center min-h-[48px] px-3.5 py-2.5 rounded-xl text-[16px] transition-all",
+                          isActive
+                            ? "bg-[#155EEF] text-white shadow-md shadow-blue-500/25 font-semibold"
+                            : "text-slate-800 hover:text-[#155EEF] hover:bg-slate-100 font-medium"
+                        )}
+                      >
+                        {isActive ? (
+                          <span aria-hidden="true" className="w-1.5 h-6 rounded-full bg-white mr-2.5 shrink-0 shadow-xs" />
+                        ) : (
+                          <span aria-hidden="true" className="w-1.5 h-6 mr-2.5 shrink-0 opacity-0 pointer-events-none" />
+                        )}
+                        <Icon className={cn("w-5 h-5 shrink-0 mr-3", isActive ? "text-white" : "text-slate-500")} />
+                        <span className="truncate flex-1">{item.title}</span>
+                        {renderNavBadge(item, isActive, false)}
+                        {isPatient && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleFavourite(item.href);
+                            }}
+                            aria-label={isFavourited ? `Remove ${item.title} from favourites` : `Add ${item.title} to favourites`}
+                            className="p-1.5 ml-1 rounded-lg text-amber-500 shrink-0"
+                          >
+                            <Star className={cn("w-4 h-4", isFavourited && "fill-amber-400 text-amber-500")} />
+                          </button>
+                        )}
+                      </Link>
+                    </React.Fragment>
+                  );
+                })
+              )}
             </div>
 
             {/* Drawer Footer with User & Logout */}
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="truncate pr-2">
-                <p className="text-xs font-semibold text-slate-900 truncate">{user.name || user.username}</p>
-                <p className="text-[10px] font-mono text-slate-500">OH-ID: {user.username}</p>
+                <p className="text-sm font-semibold text-slate-900 truncate">{user.name || user.username}</p>
+                <p className="text-xs font-mono text-slate-500">OH-ID: {user.username}</p>
               </div>
               <button
                 onClick={() => {
@@ -642,7 +1264,7 @@ export function DynamicNav() {
           <>
             {patientMobileTabs.slice(0, 4).map((tab) => {
               const Icon = resolveNavigationIcon(tab.icon);
-              const isActive = pathname === tab.href;
+              const isActive = isRouteActive(tab.href);
               return (
                 <Link
                   key={tab.href}
@@ -670,7 +1292,7 @@ export function DynamicNav() {
         ) : (
           navigation.slice(0, 5).map((item) => {
             const Icon = resolveNavigationIcon(item.icon);
-            const isActive = pathname === item.href;
+            const isActive = isRouteActive(item.href);
             return (
               <Link
                 key={item.href}
