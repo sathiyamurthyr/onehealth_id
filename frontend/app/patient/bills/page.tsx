@@ -59,8 +59,8 @@ export default function PatientBillsPage() {
 
   const handlePay = async (billId: string, amount: number) => {
     try {
-      setPaying(true);
-      const res = await api.billing.pay(billId, amount, "UPI", "UPI-MOCK-TXN-2026");
+      const transactionRef = `UPI-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const res = await api.billing.pay(billId, amount, "UPI", transactionRef);
       if (res?.success) {
         setPaySuccess(`Payment of ₹${amount} completed successfully via UPI.`);
         setTimeout(() => setPaySuccess(null), 4000);

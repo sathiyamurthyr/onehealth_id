@@ -65,6 +65,19 @@ def create_appointment(
         "doctor.read", "hospital.update", "patient.self.appointments", "system.manage"
     )),
 ):
+    user_perms = user.get("permissions", [])
+    # IDOR Prevention: Patients may only book appointments for themselves
+    if "patient.self.appointments" in user_perms and "appointment.create" not in user_perms and "appointment.manage" not in user_perms and "system.manage" not in user_perms:
+        user_ref_id = user.get("user_ref_id") or user.get("id")
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if payload.patient_id != effective_patient_id and payload.patient_id != user_ref_id:
+            log_security_event("UNAUTHORIZED_APPOINTMENT_CREATION", actor_id=user.get("username"), resource=f"patient:{payload.patient_id}", status="DENIED")
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Patients may only book appointments for themselves."
+            )
+
     # Verify patient existence
     patient = sp_repository.get_patient_by_id(payload.patient_id)
     if not patient:

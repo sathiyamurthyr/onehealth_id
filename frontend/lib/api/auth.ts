@@ -45,7 +45,12 @@ export const authApi = {
     return res;
   },
 
-  logout: () => {
+  logout: async () => {
+    try {
+      await fetchJSON("/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network errors during logout
+    }
     if (typeof window !== "undefined") {
       localStorage.removeItem("oh_access_token");
       localStorage.removeItem("oh_user");
@@ -87,4 +92,54 @@ export const authApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  forgotPassword: async (email: string) => {
+    return fetchJSON<{ success: boolean; data: { message: string; status: string } }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  verifyResetOtp: async (email: string, otp: string) => {
+    return fetchJSON<{ success: boolean; data: { message: string; reset_token: string; expires_in_seconds: number } }>("/auth/verify-reset-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, otp }),
+    });
+  },
+
+  resetPassword: async (payload: {
+    email: string;
+    reset_token: string;
+    new_password: string;
+    confirm_password: string;
+  }) => {
+    return fetchJSON<{ success: boolean; data: { message: string; email?: string } }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  resendResetOtp: async (email: string) => {
+    return fetchJSON<{ success: boolean; data: { message: string; status: string } }>("/auth/resend-reset-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  requestAssistance: async (payload: {
+    email: string;
+    category?: string;
+    description?: string;
+    contact_phone?: string;
+  }) => {
+    return fetchJSON<{ success: boolean; data: { reference_number: string; status: string; message: string } }>("/auth/request-assistance", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAssistanceStatus: async (referenceNumber: string) => {
+    return fetchJSON<{ success: boolean; data: any; message?: string }>(`/auth/assistance-status/${encodeURIComponent(referenceNumber)}`);
+  },
 };
+

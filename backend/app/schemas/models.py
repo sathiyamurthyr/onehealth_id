@@ -37,8 +37,8 @@ class WorkspaceDefinition(BaseModel):
     role_code: str
     role_name: str
     default_route: str
-    hospital_ref_id: str
-    hospital_name: str
+    hospital_ref_id: Optional[str] = None
+    hospital_name: Optional[str] = None
     hospital_code: Optional[str] = None
     branch_ref_id: Optional[str] = None
     branch_name: Optional[str] = None

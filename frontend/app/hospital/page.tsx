@@ -50,7 +50,7 @@ export default function HospitalAdminDashboard() {
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [ackingAlertId, setAckingAlertId] = useState<string | null>(null);
 
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
   const hospitalName = workspace?.hospital_name || "Hospital Command Center";
   const branchName = workspace?.branch_name || "Main Facility";
 

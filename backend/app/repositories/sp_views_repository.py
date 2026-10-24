@@ -902,6 +902,12 @@ class SPViewsRepository(
             row = cur.fetchone()
             return dict(row) if row else None
 
+    def get_consultation_by_id(self, consultation_id: str) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.vw_opd_encounters WHERE id = %s;", (consultation_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     def sign_prescription(
         self,
         prescription_id: str,
@@ -3768,7 +3774,13 @@ class SPViewsRepository(
                 WHERE primary_patient_id = %s 
                 ORDER BY created_at ASC;
             """, (primary_patient_id,))
-            return [dict(row) for row in cur.fetchall()]
+            rows = []
+            for row in cur.fetchall():
+                d = dict(row)
+                if "id" not in d or not d["id"]:
+                    d["id"] = d.get("relationship_id")
+                rows.append(d)
+            return rows
 
     def get_family_relationship_by_id(self, primary_patient_id: str, relationship_id: str) -> Optional[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
@@ -8342,6 +8354,7 @@ class SPViewsRepository(
             row = cur.fetchone()
             return {
                 "success": row["p_success"] if row else True,
+                "new_status": new_status.upper(),
                 "message": row["p_message"] if row else "Status updated"
             }
 
@@ -9034,6 +9047,50 @@ class SPViewsRepository(
     def list_hospital_user_audit_trail(self, hospital_id: str, target_user_id: Optional[str] = None, action_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
         return enterprise_iam_repo.list_hospital_user_audit_trail(hospital_id, target_user_id, action_type, limit)
+
+    def register_facility_application(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.register_facility_application(data)
+
+    def get_facility_application_by_ref(self, application_ref: str) -> Optional[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.get_facility_application_by_ref(application_ref)
+
+    def update_facility_application_by_ref(self, application_ref: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.update_facility_application_by_ref(application_ref, updates)
+
+    def list_facility_applications_super_admin(self, status: Optional[str] = None, search: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.list_facility_applications_super_admin(status, search, limit, offset)
+
+    def get_facility_application_details_super_admin(self, hospital_id: str) -> Optional[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.get_facility_application_details_super_admin(hospital_id)
+
+    def review_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", notes: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.review_facility_application_super_admin(hospital_id, admin_user_id, admin_username, notes)
+
+    def approve_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", decision_notes: str = "Approved by Super Admin") -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.approve_facility_application_super_admin(hospital_id, admin_user_id, admin_username, decision_notes)
+
+    def reject_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", reason: str = "Rejected by Super Admin") -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.reject_facility_application_super_admin(hospital_id, admin_user_id, admin_username, reason)
+
+    def request_info_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", notes: str = "Additional info requested") -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.request_info_facility_application_super_admin(hospital_id, admin_user_id, admin_username, notes)
+
+    def get_hospital_approval_status(self, hospital_id: str) -> Optional[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.get_hospital_approval_status(hospital_id)
+
+    def check_staff_membership_authorization(self, user_id: str, hospital_id: str) -> Optional[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.check_staff_membership_authorization(user_id, hospital_id)
 
     # --------------------------------------------------------------------------
     # PHASE 1: OH-ID CORE IDENTITY & DIGITAL HEALTH RECORD FOUNDATION
@@ -10519,6 +10576,265 @@ class SPViewsRepository(
                 event_type, actor_id, actor_role, json.dumps(metadata or {})
             ))
             return dict(cur.fetchone())
+
+    # --------------------------------------------------------------------------
+    # PASSWORD RESET OTP & SUPER ADMIN ASSISTANCE WORKFLOW
+    # --------------------------------------------------------------------------
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        clean_email = email.strip().lower()
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.vw_user_auth
+                WHERE LOWER(email) = %s AND is_active = TRUE
+                LIMIT 1;
+            """, (clean_email,))
+            row = cur.fetchone()
+            if not row:
+                cur.execute("""
+                    SELECT * FROM oh_id.users
+                    WHERE LOWER(email) = %s AND is_active = TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1;
+                """, (clean_email,))
+                row = cur.fetchone()
+            return dict(row) if row else None
+
+    def create_password_reset_otp(
+        self,
+        user_id: str,
+        email: str,
+        otp_hash: str,
+        expires_at: datetime,
+        correlation_id: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            # Invalidate any existing unused OTPs for this user
+            cur.execute("""
+                UPDATE oh_id.password_reset_otps
+                SET is_used = TRUE
+                WHERE user_id = %s AND is_used = FALSE;
+            """, (user_id,))
+
+            otp_id = f"otp-{uuid.uuid4().hex[:12]}"
+            cur.execute("""
+                INSERT INTO oh_id.password_reset_otps (
+                    id, user_id, email, otp_hash, purpose, attempts_count, max_attempts,
+                    is_verified, is_used, expires_at, correlation_id, ip_address, user_agent, created_at
+                ) VALUES (
+                    %s, %s, %s, %s, 'PASSWORD_RESET', 0, 5,
+                    FALSE, FALSE, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                ) RETURNING *;
+            """, (
+                otp_id, user_id, email.strip().lower(), otp_hash,
+                expires_at, correlation_id, ip_address, user_agent
+            ))
+            row = cur.fetchone()
+            return dict(row)
+
+    def get_active_password_reset_otp(self, email: str) -> Optional[Dict[str, Any]]:
+        clean_email = email.strip().lower()
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.password_reset_otps
+                WHERE LOWER(email) = %s AND is_used = FALSE AND expires_at > CURRENT_TIMESTAMP
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """, (clean_email,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def increment_otp_attempts(self, otp_id: str) -> int:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.password_reset_otps
+                SET attempts_count = attempts_count + 1
+                WHERE id = %s
+                RETURNING attempts_count;
+            """, (otp_id,))
+            row = cur.fetchone()
+            return row["attempts_count"] if row else 0
+
+    def verify_password_reset_otp(self, otp_id: str, reset_token_hash: str) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.password_reset_otps
+                SET is_verified = TRUE,
+                    verified_at = CURRENT_TIMESTAMP,
+                    reset_token_hash = %s
+                WHERE id = %s
+                RETURNING *;
+            """, (reset_token_hash, otp_id))
+            row = cur.fetchone()
+            return dict(row) if row else {}
+
+    def invalidate_otp(self, otp_id: str):
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.password_reset_otps
+                SET is_used = TRUE
+                WHERE id = %s;
+            """, (otp_id,))
+
+    def validate_and_consume_reset_token(
+        self,
+        email: str,
+        reset_token_hash: str,
+        new_password_hash: str
+    ) -> Dict[str, Any]:
+        clean_email = email.strip().lower()
+        with get_db_cursor() as cur:
+            # Query verified, unused reset record within 10 minutes of verification
+            cur.execute("""
+                SELECT * FROM oh_id.password_reset_otps
+                WHERE LOWER(email) = %s
+                  AND is_verified = TRUE
+                  AND is_used = FALSE
+                  AND reset_token_hash = %s
+                  AND (verified_at + INTERVAL '10 minutes') > CURRENT_TIMESTAMP
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """, (clean_email, reset_token_hash))
+            otp_record = cur.fetchone()
+            if not otp_record:
+                raise ValueError("Invalid, expired, or previously consumed password reset session.")
+
+            user_id = otp_record["user_id"]
+
+            # Update user password in oh_id.users
+            cur.execute("""
+                UPDATE oh_id.users
+                SET password_hash = %s,
+                    password_changed_at = CURRENT_TIMESTAMP,
+                    failed_login_attempts = 0,
+                    locked_until = NULL
+                WHERE id = %s
+                RETURNING id, username, email, role;
+            """, (new_password_hash, user_id))
+            user_row = cur.fetchone()
+            if not user_row:
+                raise ValueError("User account could not be found.")
+
+            # Invalidate this OTP reset record
+            cur.execute("""
+                UPDATE oh_id.password_reset_otps
+                SET is_used = TRUE,
+                    used_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (otp_record["id"],))
+
+            # Revoke existing sessions per Requirement 2.7
+            cur.execute("""
+                UPDATE oh_id.user_sessions
+                SET is_active = FALSE
+                WHERE user_id = %s;
+            """, (user_id,))
+
+            # Audit log
+            log_id = f"pal-{uuid.uuid4().hex[:12]}"
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    reason, ip_address, created_at
+                ) VALUES (
+                    %s, %s, %s, 'PASSWORD_RESET_SUCCESS', 'USER', %s, %s,
+                    'Password reset completed successfully via verified email OTP', %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                log_id, user_id, user_row["username"], user_id,
+                user_row.get("email") or user_row["username"],
+                otp_record.get("ip_address")
+            ))
+
+            return {
+                "user_id": user_id,
+                "username": user_row["username"],
+                "email": user_row["email"],
+                "role": user_row["role"]
+            }
+
+    def create_password_assistance_ticket(
+        self,
+        email: str,
+        category: str,
+        description: Optional[str] = None,
+        contact_phone: Optional[str] = None,
+        client_ip: Optional[str] = None
+    ) -> Dict[str, Any]:
+        clean_email = email.strip().lower()
+        with get_db_cursor() as cur:
+            # Check user role and facility safely without exposing to requester
+            cur.execute("""
+                SELECT id, username, full_name, role, hospital_id
+                FROM oh_id.users
+                WHERE LOWER(email) = %s
+                ORDER BY is_active DESC
+                LIMIT 1;
+            """, (clean_email,))
+            user_info = cur.fetchone()
+
+            hospital_id = user_info["hospital_id"] if user_info else None
+            role = user_info["role"] if user_info else "CITIZEN"
+            name = user_info["full_name"] if user_info else "Registered User"
+            priority = "HIGH" if role in ("HOSPITAL_ADMIN", "SUPER_ADMIN") else "MEDIUM"
+
+            ticket_id = f"tkt-pwd-{uuid.uuid4().hex[:8]}"
+            ticket_number = f"REQ-2026-{uuid.uuid4().hex[:6].upper()}"
+            subject = f"Password Recovery Assistance: {category}"
+            desc = description or f"User reported difficulty during password recovery ({category})."
+
+            cur.execute("""
+                INSERT INTO oh_id.platform_support_tickets (
+                    id, ticket_number, hospital_id, category, request_category, priority, status,
+                    subject, description, reported_by_name, reported_by_email, reported_by_phone,
+                    client_ip, assigned_to, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, 'ACCOUNT_RECOVERY', %s, %s, 'OPEN',
+                    %s, %s, %s, %s, %s,
+                    %s, 'Unassigned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                ) RETURNING *;
+            """, (
+                ticket_id, ticket_number, hospital_id, category, priority,
+                subject, desc, name, clean_email, contact_phone, client_ip
+            ))
+            tkt_row = cur.fetchone()
+
+            # Audit log
+            log_id = f"pal-{uuid.uuid4().hex[:12]}"
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    reason, ip_address, created_at
+                ) VALUES (
+                    %s, %s, %s, 'PASSWORD_ASSISTANCE_REQUESTED', 'SUPPORT_TICKET', %s, %s,
+                    'Password recovery assistance requested', %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                log_id, user_info["id"] if user_info else None,
+                user_info["username"] if user_info else "anonymous",
+                ticket_number, subject, client_ip
+            ))
+
+            return {
+                "ticket_id": ticket_id,
+                "reference_number": ticket_number,
+                "category": category,
+                "status": "OPEN",
+                "priority": priority,
+                "user_role": role if user_info else None
+            }
+
+    def get_assistance_ticket_by_number(self, reference_number: str) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT ticket_number, category, request_category, status, created_at, updated_at, resolved_at
+                FROM oh_id.platform_support_tickets
+                WHERE ticket_number = %s;
+            """, (reference_number.strip().upper(),))
+            row = cur.fetchone()
+            return dict(row) if row else None
 
 sp_repository = SPViewsRepository()
 

@@ -25,7 +25,7 @@ import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function HospitalAIAgentsPage() {
   const { workspace } = useWorkspace();
-  const hospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const hospitalId = workspace?.hospital_ref_id || "";
 
   const [tasks, setTasks] = useState<AIAgentTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);

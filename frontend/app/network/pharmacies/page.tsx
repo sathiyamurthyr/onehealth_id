@@ -47,27 +47,16 @@ export default function NetworkPharmacyPage() {
     e.preventDefault();
     setVerificationError("");
     setVerifiedRx(null);
+    if (!prescriptionQuery.trim()) {
+      setVerificationError("Please enter a valid prescription ID or scan a OneHealth QR code.");
+      return;
+    }
     try {
-      // If user typed sample or real ID
-      const res = await networkApi.verifyPrescription(prescriptionQuery || "rx-sample-001");
+      const res = await networkApi.verifyPrescription(prescriptionQuery.trim());
       setVerifiedRx(res.prescription);
     } catch (err: any) {
-      setVerificationError("Prescription verification failed. Invalid QR or signature.");
-      // Fallback demonstration payload for testing
-      setVerifiedRx({
-        id: prescriptionQuery || "RX-2026-0881",
-        patient_name: "Kavitha Raman",
-        onehealth_id: "OHID-IND-2026-01005",
-        doctor_name: "Dr. Arun Kumar (Cardiology)",
-        hospital_name: "Unified Heart Institute",
-        medications: [
-          { name: "Atorvastatin 20mg", dosage: "1 tab daily at bedtime", duration: "30 Days", quantity: 30 },
-          { name: "Aspirin 75mg", dosage: "1 tab daily after breakfast", duration: "30 Days", quantity: 30 },
-          { name: "Metoprolol 50mg", dosage: "1 tab twice daily", duration: "15 Days", quantity: 30 }
-        ],
-        issued_at: "2026-10-06T10:30:00Z",
-        is_digitally_signed: true,
-      });
+      setVerificationError(err?.message || "Prescription verification failed. Invalid QR, ID, or signature.");
+      setVerifiedRx(null);
     }
   };
 
@@ -75,18 +64,15 @@ export default function NetworkPharmacyPage() {
     if (!verifiedRx) return;
     try {
       await networkApi.dispensePrescription({
-        prescription_id: verifiedRx.id || "rx-sample-001",
-        patient_id: "p-dccc29e4",
-        prescribing_hospital_id: verifiedRx.hospital_id || "hosp-provider",
+        prescription_id: verifiedRx.id,
+        patient_id: verifiedRx.patient_id,
+        prescribing_hospital_id: verifiedRx.hospital_id,
         dispensing_pharmacy_id: currentPharmacyId,
-        dispensed_items: verifiedRx.medications || [
-          { medicine_name: "Atorvastatin 20mg", quantity: 30, batch: batchNumber },
-          { medicine_name: "Aspirin 75mg", quantity: 30, batch: batchNumber }
-        ],
+        dispensed_items: verifiedRx.medications || verifiedRx.items || [],
         dispensing_status: "DISPENSED",
-        dispensing_pharmacist_id: "ph-user-01",
+        dispensing_pharmacist_id: "ph-user",
         dispensing_pharmacist_name: pharmacistName,
-        batch_numbers: { "Atorvastatin": batchNumber, "Aspirin": batchNumber },
+        batch_numbers: { batch: batchNumber },
         notes: dispenseNotes,
       });
       setDispenseSuccess(true);

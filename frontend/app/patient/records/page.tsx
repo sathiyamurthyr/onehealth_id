@@ -38,71 +38,45 @@ export default function PatientRecordsPage() {
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [reportsSummary, setReportsSummary] = useState<ReportsSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [followUps, setFollowUps] = useState<any[]>([]);
+  const [referrals, setReferrals] = useState<any[]>([]);
+  const [bills, setBills] = useState<any[]>([]);
 
-  // Active chronic medicines derived from FHIR prescriptions
-  const [activeMedicines, setActiveMedicines] = useState([
-    {
-      name: "Amlodipine Besylate 5mg",
-      brand: "Norvasc 5mg",
-      instructions: "Take 1 tablet in the morning after breakfast",
-      timings: ["Morning"],
-      duration: "30 Days (Active)",
-      refillsRemaining: 1,
-      prescribedBy: "Dr. Senthil Kumar, MD",
-      validUntil: "2026-11-01",
-    },
-    {
-      name: "Paracetamol 650mg",
-      brand: "Dolo 650",
-      instructions: "Take 1 tablet PRN as needed for headache (max 2/day)",
-      timings: ["As needed (PRN)"],
-      duration: "5 Days Course",
-      refillsRemaining: 0,
-      prescribedBy: "Dr. Senthil Kumar, MD",
-      validUntil: "2026-10-15",
-    },
-  ]);
-
-  // Follow-ups
-  const [followUps, setFollowUps] = useState([
-    {
-      id: "fup-01",
-      date: "2026-10-15",
-      time: "10:30 AM",
-      doctor: "Dr. Senthil Kumar",
-      department: "Cardiology / Internal Medicine",
-      reason: "Hypertension medication titration & BP review",
-      preVisitTests: ["Complete Blood Count (CBC)", "Serum Creatinine / eGFR", "Lipid Profile"],
-      instructions: "Bring home BP measurement diary for the preceding 7 days.",
-    },
-  ]);
-
-  // Referrals
-  const [referrals, setReferrals] = useState([
-    {
-      id: "ref-01",
-      date: "2026-10-01",
-      specialty: "Cardiology",
-      toDoctor: "Dr. Anitha Rangarajan, MD (Cardiologist)",
-      priority: "Routine",
-      reason: "Evaluation of border-line elevated blood pressure with parental CAD history",
-      evaluation: "Echocardiogram + Ambulatory BP monitoring",
-      status: "Queued for Appointment",
-    },
-  ]);
+  // Active chronic medicines dynamically derived from active FHIR prescriptions
+  const activeMedicines = prescriptions
+    .filter((rx) => rx.status === "ACTIVE")
+    .flatMap((rx) =>
+      (rx.items || []).map((it) => ({
+        name: it.generic_name || it.medicine_name,
+        brand: it.brand_name || it.medicine_name,
+        instructions: it.food_instruction || (it as any).instructions || "Take as prescribed",
+        timings: [it.frequency || "Once daily"],
+        duration: `${it.duration_value || it.duration_days || 30} ${it.duration_unit || "Days"}`,
+        refillsRemaining: 0,
+        prescribedBy: rx.signed_by || "Doctor",
+        validUntil: rx.valid_until || "Active",
+      }))
+    );
 
   useEffect(() => {
     async function loadPatientRecords() {
       setLoading(true);
       try {
-        const [rxList, timeline, rep] = await Promise.all([
+        const patientId = user?.user_ref_id || user?.id || "";
+        const [rxList, timeline, rep, fUps, refs, billsList] = await Promise.all([
           api.consultations.listPrescriptions().catch(() => []),
-          api.consultations.getTimeline("pat-01").catch(() => []),
-          api.consultations.getReportsSummary("pat-01").catch(() => null),
+          patientId ? api.consultations.getTimeline(patientId).catch(() => []) : Promise.resolve([]),
+          patientId ? api.consultations.getReportsSummary(patientId).catch(() => null) : Promise.resolve(null),
+          patientId ? api.consultations.listFollowUps({ patientId }).catch(() => []) : Promise.resolve([]),
+          patientId ? api.consultations.listReferrals({ patientId }).catch(() => []) : Promise.resolve([]),
+          api.billing.invoices().catch(() => []),
         ]);
         if (rxList && rxList.length > 0) setPrescriptions(rxList);
         if (timeline && timeline.length > 0) setTimelineEvents(timeline);
         if (rep) setReportsSummary(rep);
+        if (fUps && fUps.length > 0) setFollowUps(fUps);
+        if (refs && refs.length > 0) setReferrals(refs);
+        if (billsList && billsList.length > 0) setBills(billsList);
       } catch (err) {
         console.error("Failed to load patient records", err);
       } finally {
@@ -110,7 +84,7 @@ export default function PatientRecordsPage() {
       }
     }
     loadPatientRecords();
-  }, []);
+  }, [user]);
 
   return (
     <WorkspaceLayout allowedWorkspaceTypes={["PATIENT"]}>
@@ -262,36 +236,42 @@ export default function PatientRecordsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeMedicines.map((med, idx) => (
-                <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">{med.brand}</h4>
-                      <p className="text-xs text-slate-500">{med.name}</p>
-                    </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Active Course
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1.5">
-                    <div className="font-medium text-slate-800">{med.instructions}</div>
-                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                      <span>Schedule:</span>
-                      <span className="bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">
-                        {med.timings.join(", ")}
+            {activeMedicines.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeMedicines.map((med, idx) => (
+                  <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900">{med.brand}</h4>
+                        <p className="text-xs text-slate-500">{med.name}</p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Active Course
                       </span>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                    <span>Valid until: <strong className="text-slate-800">{med.validUntil}</strong></span>
-                    <span>Refills remaining: <strong className="text-indigo-600 font-mono">{med.refillsRemaining}</strong></span>
+                    <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1.5">
+                      <div className="font-medium text-slate-800">{med.instructions}</div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                        <span>Schedule:</span>
+                        <span className="bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">
+                          {med.timings.join(", ")}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                      <span>Valid until: <strong className="text-slate-800">{med.validUntil}</strong></span>
+                      <span>Refills remaining: <strong className="text-indigo-600 font-mono">{med.refillsRemaining}</strong></span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No active daily medications prescribed.
+              </div>
+            )}
           </div>
         )}
 
@@ -357,34 +337,37 @@ export default function PatientRecordsPage() {
               Outpatient Consultations & Admissions
             </h3>
 
-            <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden shadow-sm">
-              <div className="p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-xs text-slate-900">
-                    OPD Consultation — General Medicine
+            {timelineEvents.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden shadow-sm">
+                {timelineEvents.map((evt: any, idx: number) => (
+                  <div key={evt.id || idx} className="p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-xs text-slate-900">
+                        {evt.title || evt.event_type || "Clinical Encounter"}
+                      </div>
+                      <span className="text-xs font-mono text-slate-500">{evt.date || evt.timestamp || "Recent"}</span>
+                    </div>
+                    {evt.description && (
+                      <p className="text-xs text-slate-600">{evt.description}</p>
+                    )}
+                    {evt.doctor_name && (
+                      <div className="text-xs text-slate-500">
+                        Doctor: <strong className="text-slate-700">{evt.doctor_name}</strong>
+                      </div>
+                    )}
+                    {evt.diagnosis && (
+                      <div className="text-xs text-indigo-600 font-medium">
+                        Diagnosis: {evt.diagnosis}
+                      </div>
+                    )}
                   </div>
-                  <span className="text-xs font-mono text-slate-500">15-Sep-2026</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Seen by Dr. Senthil Kumar, MD for blood pressure review and routine health assessment.
-                </p>
-                <div className="text-xs text-indigo-600 font-medium">
-                  Diagnosis: Essential (primary) hypertension
-                </div>
+                ))}
               </div>
-
-              <div className="p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-xs text-slate-900">
-                    OPD Consultation — Cardiology
-                  </div>
-                  <span className="text-xs font-mono text-slate-500">20-Aug-2026</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Baseline cardiovascular review and ECG screening.
-                </p>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No outpatient consultations or admission records on file.
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -395,37 +378,49 @@ export default function PatientRecordsPage() {
               Scheduled Follow-up Visits
             </h3>
 
-            <div className="space-y-3">
-              {followUps.map((fup) => (
-                <div key={fup.id} className="p-5 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-bold text-sm text-slate-900">{fup.reason}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        Consultant: <strong className="text-slate-700">{fup.doctor}</strong> • {fup.department}
+            {followUps.length > 0 ? (
+              <div className="space-y-3">
+                {followUps.map((fup: any) => (
+                  <div key={fup.id} className="p-5 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-bold text-sm text-slate-900">{fup.reason || "Follow-up Consultation"}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Consultant: <strong className="text-slate-700">{fup.doctor_name || fup.doctor || "Physician"}</strong> • {fup.department_name || fup.department || "OPD"}
+                        </div>
                       </div>
+                      <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200">
+                        {fup.scheduled_date || fup.date} {fup.scheduled_time || fup.time ? `at ${fup.scheduled_time || fup.time}` : ""}
+                      </span>
                     </div>
-                    <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200">
-                      {fup.date} at {fup.time}
-                    </span>
-                  </div>
 
-                  <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-2">
-                    <div className="font-semibold text-slate-700">Required Before Visit:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {fup.preVisitTests.map((t, i) => (
-                        <span key={i} className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 text-[11px]">
-                          ✓ {t}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="text-[11px] text-slate-500 italic mt-1">
-                      Note: {fup.instructions}
+                    <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-2">
+                      {fup.preVisitTests && fup.preVisitTests.length > 0 && (
+                        <>
+                          <div className="font-semibold text-slate-700">Required Before Visit:</div>
+                          <div className="flex flex-wrap gap-2">
+                            {fup.preVisitTests.map((t: string, i: number) => (
+                              <span key={i} className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 text-[11px]">
+                                ✓ {t}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {fup.instructions && (
+                        <div className="text-[11px] text-slate-500 italic mt-1">
+                          Note: {fup.instructions}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No scheduled follow-up visits on file.
+              </div>
+            )}
           </div>
         )}
 
@@ -436,30 +431,36 @@ export default function PatientRecordsPage() {
               Doctor Specialist Referrals
             </h3>
 
-            <div className="space-y-3">
-              {referrals.map((ref) => (
-                <div key={ref.id} className="p-5 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-bold text-sm text-slate-900">
-                        Referral to {ref.specialty}
+            {referrals.length > 0 ? (
+              <div className="space-y-3">
+                {referrals.map((ref: any) => (
+                  <div key={ref.id} className="p-5 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-bold text-sm text-slate-900">
+                          Referral to {ref.specialty || ref.target_department || "Specialist"}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Receiving Specialist: <strong className="text-slate-700">{ref.toDoctor || ref.target_doctor_name || "Specialist"}</strong>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        Receiving Specialist: <strong className="text-slate-700">{ref.toDoctor}</strong>
-                      </div>
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {ref.status || "PENDING"}
+                      </span>
                     </div>
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {ref.status}
-                    </span>
-                  </div>
 
-                  <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1">
-                    <div className="text-slate-700"><span className="font-semibold">Reason:</span> {ref.reason}</div>
-                    <div className="text-slate-600 text-[11px]"><span className="font-semibold">Requested Evaluation:</span> {ref.evaluation}</div>
+                    <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1">
+                      {ref.reason && <div className="text-slate-700"><span className="font-semibold">Reason:</span> {ref.reason}</div>}
+                      {ref.evaluation && <div className="text-slate-600 text-[11px]"><span className="font-semibold">Requested Evaluation:</span> {ref.evaluation}</div>}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No specialist referrals on file.
+              </div>
+            )}
           </div>
         )}
 
@@ -470,20 +471,28 @@ export default function PatientRecordsPage() {
               Settled Bills & Receipts
             </h3>
 
-            <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden shadow-sm">
-              <div className="p-4 flex items-center justify-between text-xs hover:bg-slate-50">
-                <div>
-                  <div className="font-semibold text-slate-900">OPD Consultation & Triage Receipt #RCP-2026-8910</div>
-                  <div className="text-[11px] text-slate-500">Paid via UPI / Cashless • 15-Sep-2026</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono font-bold text-slate-900">₹600.00</span>
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
-                    Paid
-                  </span>
-                </div>
+            {bills.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden shadow-sm">
+                {bills.map((b: any, idx: number) => (
+                  <div key={b.id || idx} className="p-4 flex items-center justify-between text-xs hover:bg-slate-50">
+                    <div>
+                      <div className="font-semibold text-slate-900">{b.description || b.invoice_number || `Invoice #${b.id}`}</div>
+                      <div className="text-[11px] text-slate-500">{b.payment_method || "Paid"} • {b.date || b.created_at || "Recent"}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-bold text-slate-900">₹{b.total_amount || b.amount || "0.00"}</span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
+                        {b.status || "Paid"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No billing receipts or invoices on record.
+              </div>
+            )}
           </div>
         )}
       </div>

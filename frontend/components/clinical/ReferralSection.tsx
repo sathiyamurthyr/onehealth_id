@@ -42,10 +42,10 @@ export function ReferralSection({ referral, onChange }: ReferralSectionProps) {
 
   const currentRef: ReferralPayload = referral || {
     patient_id: "",
-    referring_doctor_id: "doc-k-01",
+    referring_doctor_id: "",
     referral_type: "INTERNAL",
     specialty: "Cardiology & Intensive Care",
-    receiving_doctor_name: "Dr. Sundaramoorthy (DM Cardio)",
+    receiving_doctor_name: "",
     reason: "",
     clinical_summary: "",
     priority: "ROUTINE",

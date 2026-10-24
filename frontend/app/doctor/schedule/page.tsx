@@ -33,9 +33,9 @@ export default function DoctorSchedulePage() {
 
   // Configurable Slot Duration Rules (Hospital, Department, Doctor, Service)
   const [slotConfigs, setSlotConfigs] = useState({
-    hospital: "Main Specialty Hospital",
+    hospital: "",
     department: "General Medicine / OPD Block A",
-    doctor: "Dr. Senthil Kumar, MD",
+    doctor: "",
     workingHoursStart: "09:00",
     workingHoursEnd: "17:00",
     newPatientDuration: 20, // mins
@@ -123,26 +123,25 @@ export default function DoctorSchedulePage() {
   ]);
 
   // Leave & Absence Records
-  const [leaves, setLeaves] = useState([
-    {
-      id: "lv-01",
-      start_date: "2026-10-18",
-      end_date: "2026-10-20",
-      reason: "Annual Cardiology & Internal Medicine CME Conference",
-      status: "Approved",
-    },
-  ]);
+  const [leaves, setLeaves] = useState<any[]>([]);
 
   const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   useEffect(() => {
     const cur = api.auth.getCurrentUser();
     setCurrentUser(cur);
+    if (cur) {
+      setSlotConfigs((prev) => ({
+        ...prev,
+        hospital: (cur as any).tenant_name || (cur as any).hospital_name || prev.hospital,
+        doctor: cur.name || prev.doctor,
+      }));
+    }
 
     const loadSchedule = async () => {
       setLoading(true);
       try {
-        const docId = cur?.username === "dr.anitha" ? "doc-k-02" : "doc-k-01";
+        const docId = cur?.user_ref_id || cur?.id;
         const fetched = await api.consultations.getDoctorSchedule(docId);
         if (fetched && fetched.length > 0) {
           setScheduleItems(fetched);

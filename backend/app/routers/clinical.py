@@ -24,6 +24,16 @@ from backend.app.core.logging import logger, log_security_event
 
 router = APIRouter(prefix="/clinical", tags=["Clinical Workflows"])
 
+
+def _resolve_doctor_id(user: Dict[str, Any]) -> str:
+    user_ref_id = user.get("user_ref_id") or user.get("id")
+    if user_ref_id:
+        doc = sp_repository.get_doctor_by_user_id(user_ref_id)
+        if doc and doc.get("id"):
+            return doc["id"]
+    return user_ref_id or ""
+
+
 @router.post("/consultations", response_model=ConsultationResponse, status_code=status.HTTP_201_CREATED)
 def record_consultation(
     payload: ConsultationCreate,
@@ -95,12 +105,7 @@ def get_consultation(
     user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "system.manage", "patient.self.read"))
 ):
     """Retrieves consultation details with IDOR validation."""
-    encounters = sp_repository.list_opd_encounters()
-    match = None
-    for enc in encounters:
-        if enc.get("id") == consultation_id:
-            match = enc
-            break
+    match = sp_repository.get_consultation_by_id(consultation_id)
     if not match:
         raise HTTPException(status_code=404, detail="Consultation encounter not found")
 
@@ -129,37 +134,63 @@ def list_opd_encounters(
         effective_patient_id = user.get("user_ref_id") or user.get("id")
 
     try:
-        return sp_repository.list_opd_encounters(patient_id=effective_patient_id, doctor_id=doctor_id)
+        encounters = sp_repository.list_opd_encounters(patient_id=effective_patient_id, doctor_id=doctor_id)
+        if "system.manage" not in user_perms and "organization.read" not in user_perms:
+            user_hosp = user.get("hospital_ref_id") or user.get("hospital_id")
+            if user_hosp:
+                encounters = [e for e in encounters if not e.get("hospital_id") or e.get("hospital_id") == user_hosp]
+        return encounters
     except Exception as e:
         logger.error("Failed to fetch OPD encounters: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch OPD encounters.")
 
 @router.get("/ipd/admissions", response_model=List[Dict[str, Any]])
 def list_ipd_admissions(
-    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "system.manage", "inpatient.read"))
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "clinical.consultation", "consultation.read", "patient.read", "system.manage", "inpatient.read"))
 ):
     try:
-        return sp_repository.list_ipd_admissions()
+        admissions = sp_repository.list_ipd_admissions()
+        user_perms = user.get("permissions") or []
+        if "system.manage" not in user_perms and "organization.read" not in user_perms:
+            user_hosp = user.get("hospital_ref_id") or user.get("hospital_id")
+            if user_hosp:
+                admissions = [a for a in admissions if not a.get("hospital_id") or a.get("hospital_id") == user_hosp]
+        return admissions
     except Exception as e:
         logger.error("Failed to fetch IPD admissions: %s", e, exc_info=True)
         return []
 
 @router.get("/ipd/wards-beds", response_model=List[Dict[str, Any]])
 def list_wards_and_beds(
-    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "system.manage", "inpatient.read"))
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "clinical.consultation", "consultation.read", "patient.read", "system.manage", "inpatient.read"))
 ):
     try:
-        return sp_repository.list_wards_and_beds()
+        wards = sp_repository.list_wards_and_beds()
+        user_perms = user.get("permissions") or []
+        if "system.manage" not in user_perms and "organization.read" not in user_perms:
+            user_hosp = user.get("hospital_ref_id") or user.get("hospital_id")
+            if user_hosp:
+                wards = [w for w in wards if not w.get("hospital_id") or w.get("hospital_id") == user_hosp]
+        return wards
     except Exception as e:
         logger.error("Failed to fetch wards and beds: %s", e, exc_info=True)
         return []
 
 @router.get("/laboratory/orders", response_model=List[Dict[str, Any]])
 def list_lab_orders(
-    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "system.manage", "lab.read"))
+    user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "system.manage", "lab.read", "patient.self.read"))
 ):
     try:
-        return sp_repository.list_lab_orders()
+        orders = sp_repository.list_lab_orders()
+        user_perms = user.get("permissions") or []
+        if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "system.manage" not in user_perms:
+            user_ref_id = user.get("user_ref_id") or user.get("id")
+            return [o for o in orders if o.get("patient_id") == user_ref_id]
+        if "system.manage" not in user_perms and "organization.read" not in user_perms:
+            user_hosp = user.get("hospital_ref_id") or user.get("hospital_id")
+            if user_hosp:
+                orders = [o for o in orders if not o.get("hospital_id") or o.get("hospital_id") == user_hosp]
+        return orders
     except Exception as e:
         logger.error("Failed to fetch laboratory orders: %s", e, exc_info=True)
         return []
@@ -196,8 +227,10 @@ def create_standalone_prescription_endpoint(
     if "system.manage" not in user_perms and "organization.read" not in user_perms:
         validate_hospital_tenant_scope(user, patient.get("hospital_id"))
 
-    hospital_id = user.get("hospital_ref_id") or patient.get("hospital_id") or "hosp-kedar"
-    doctor_id = payload.get("doctor_id") or "doc-k-01"
+    hospital_id = user.get("hospital_ref_id") or patient.get("hospital_id")
+    if not hospital_id:
+        raise HTTPException(status_code=400, detail="Hospital scope is required for prescription creation")
+    doctor_id = payload.get("doctor_id") or _resolve_doctor_id(user)
     diagnosis = payload.get("diagnosis") or "General Clinical Evaluation"
     doctor_notes = payload.get("instructions") or payload.get("doctor_notes")
     items = payload.get("items") or []
@@ -245,6 +278,18 @@ def get_prescription(
     rx = sp_repository.get_prescription_by_id(prescription_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
+
+    user_perms = user.get("permissions") or []
+    if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "consultation.read" not in user_perms and "system.manage" not in user_perms:
+        user_ref_id = user.get("user_ref_id") or user.get("id")
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if rx.get("patient_id") != effective_patient_id and rx.get("patient_id") != user_ref_id:
+            log_security_event("IDOR_ATTEMPT", actor_id=user.get("username"), resource=f"prescription:{prescription_id}", status="DENIED")
+            raise HTTPException(status_code=403, detail="Forbidden: You can only view your own prescriptions.")
+    else:
+        validate_hospital_tenant_scope(user, rx.get("hospital_id"))
+
     return rx
 
 @router.post("/prescriptions/{prescription_id}/sign", response_model=Dict[str, Any])
@@ -254,6 +299,11 @@ def sign_prescription_endpoint(
     user: Dict[str, Any] = Depends(require_any_permission("prescription.create", "clinical.write", "system.manage"))
 ):
     """Explicit Doctor confirmation & digital signature before activating prescription."""
+    rx = sp_repository.get_prescription_by_id(prescription_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    validate_hospital_tenant_scope(user, rx.get("hospital_id"))
+
     try:
         updated_rx = sp_repository.sign_prescription(
             prescription_id=prescription_id,
@@ -279,6 +329,11 @@ def dispense_prescription_endpoint(
     user: Dict[str, Any] = Depends(require_any_permission("clinical.write", "system.manage", "pharmacy.read"))
 ):
     """Pharmacist dispense workflow with batch, expiry, and quantity deduction."""
+    rx = sp_repository.get_prescription_by_id(prescription_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    validate_hospital_tenant_scope(user, rx.get("hospital_id"))
+
     try:
         updated_rx = sp_repository.dispense_prescription(
             prescription_id=prescription_id,
@@ -361,11 +416,12 @@ def list_follow_ups(
 
 @router.get("/doctor/schedule", response_model=List[Dict[str, Any]])
 def get_doctor_schedule_endpoint(
-    doctor_id: Optional[str] = Query("doc-k-01"),
+    doctor_id: Optional[str] = Query(None),
     user: Dict[str, Any] = Depends(require_any_permission("clinical.read", "consultation.read", "doctor.read", "appointment.read", "system.manage"))
 ):
     try:
-        return sp_repository.get_doctor_schedule(doctor_id)
+        doc_id = doctor_id or _resolve_doctor_id(user)
+        return sp_repository.get_doctor_schedule(doc_id) if doc_id else []
     except Exception as e:
         logger.error("Failed to get doctor schedule: %s", e, exc_info=True)
         return []
@@ -373,12 +429,15 @@ def get_doctor_schedule_endpoint(
 @router.post("/doctor/schedule", response_model=List[Dict[str, Any]])
 def update_doctor_schedule_endpoint(
     items: List[DoctorScheduleItem],
-    doctor_id: Optional[str] = Query("doc-k-01"),
+    doctor_id: Optional[str] = Query(None),
     user: Dict[str, Any] = Depends(require_any_permission("clinical.write", "consultation.create", "doctor.manage", "system.manage"))
 ):
     try:
+        doc_id = doctor_id or _resolve_doctor_id(user)
+        if not doc_id:
+            raise HTTPException(status_code=400, detail="Doctor context is required to update schedule")
         items_dict = [it.model_dump() for it in items]
-        return sp_repository.update_doctor_schedule(doctor_id, items_dict)
+        return sp_repository.update_doctor_schedule(doc_id, items_dict)
     except Exception as e:
         logger.error("Failed to update doctor schedule: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update doctor schedule")
@@ -414,7 +473,12 @@ def finalize_consultation_endpoint(
     Locks consultation into immutable FINALIZED state with digital signature.
     Prevents silent mutation of finalized clinical records.
     """
-    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    con = sp_repository.get_consultation_by_id(consultation_id)
+    if not con:
+        raise HTTPException(status_code=404, detail="Consultation encounter not found.")
+    validate_hospital_tenant_scope(user, con.get("hospital_id"))
+
+    doctor_id = _resolve_doctor_id(user)
     try:
         finalized = sp_repository.finalize_consultation(
             consultation_id=consultation_id,
@@ -440,7 +504,12 @@ def finalize_prescription_endpoint(
     user: Dict[str, Any] = Depends(require_any_permission("consultation.create", "clinical.write", "prescription.sign", "system.manage"))
 ):
     """Locks digital prescription into immutable FINALIZED status."""
-    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    rx = sp_repository.get_prescription_by_id(prescription_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    validate_hospital_tenant_scope(user, rx.get("hospital_id"))
+
+    doctor_id = _resolve_doctor_id(user)
     try:
         finalized = sp_repository.finalize_prescription(
             prescription_id=prescription_id,
@@ -470,7 +539,12 @@ def supersede_prescription_endpoint(
     Prescription Correction Workflow:
     Marks current prescription as SUPERSEDED and creates an audit-linked new version.
     """
-    doctor_id = user.get("user_ref_id") or user.get("id") or "doc-k-01"
+    rx = sp_repository.get_prescription_by_id(prescription_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    validate_hospital_tenant_scope(user, rx.get("hospital_id"))
+
+    doctor_id = _resolve_doctor_id(user)
     try:
         new_rx = sp_repository.supersede_prescription(
             old_prescription_id=prescription_id,

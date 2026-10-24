@@ -45,7 +45,7 @@ import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function CompliancePage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"OVERVIEW" | "LICENSES" | "ABDM" | "CONSENT" | "DPDP" | "EXPORT">("OVERVIEW");

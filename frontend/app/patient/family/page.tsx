@@ -52,7 +52,8 @@ function FamilyManagementContent() {
     activePerson, 
     switchPerson, 
     refreshFamily, 
-    isLoading: familyContextLoading 
+    isLoading: familyContextLoading,
+    error: familyContextError
   } = useFamily();
 
   const [loading, setLoading] = useState(false);
@@ -331,13 +332,13 @@ function FamilyManagementContent() {
             <div>
               <p className="text-slate-400 text-[11px]">Linked Family Members</p>
               <p className="text-lg font-bold text-white mt-0.5">
-                {familyOverview?.counts?.total_members || familyMembers.length} Person(s)
+                {familyOverview?.counts?.total_members ?? familyMembers.length} Person(s)
               </p>
             </div>
             <div>
               <p className="text-slate-400 text-[11px]">Guardianship / Minors</p>
               <p className="text-lg font-bold text-cyan-300 mt-0.5">
-                {familyOverview?.counts?.minors ?? 1} Active Minor(s)
+                {familyOverview?.counts?.minors ?? familyMembers.filter((m) => m.is_minor).length} Active Minor(s)
               </p>
             </div>
             <div>
@@ -354,15 +355,27 @@ function FamilyManagementContent() {
         </div>
 
         {/* Alerts */}
-        {error && (
+        {(error || familyContextError) && (
           <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-xs text-rose-700">
             <div className="flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{error}</span>
+              <span>{error || familyContextError}</span>
             </div>
-            <button onClick={() => setError(null)} className="p-1 text-rose-500 hover:text-rose-800">
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setError(null);
+                  refreshFamily();
+                }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 font-semibold transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </button>
+              <button onClick={() => setError(null)} className="p-1 text-rose-500 hover:text-rose-800">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -545,6 +558,34 @@ function FamilyManagementContent() {
             </div>
 
             {/* CARDS B+: Family Members */}
+            {familyMembers.length === 0 && (
+              <div 
+                id="empty-family-members-card"
+                className="p-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 flex flex-col items-center justify-center text-center space-y-3"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">No Family Members Registered</h4>
+                  <p className="text-xs text-slate-500 max-w-xs mt-1">
+                    You currently have 0 linked family members. Add children, elderly parents, or dependents to manage their healthcare records.
+                  </p>
+                </div>
+                <button
+                  id="btn-empty-add-family"
+                  onClick={() => {
+                    resetAddForm();
+                    setShowAddModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add First Family Member</span>
+                </button>
+              </div>
+            )}
+
             {familyMembers.map((member) => {
               const isSelected = activePerson?.id === member.member_patient_id;
               return (

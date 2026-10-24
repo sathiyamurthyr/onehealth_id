@@ -204,6 +204,7 @@ class TestTenantDataIsolation:
         All protected endpoints must reject requests with no token.
         No auth = no data, period.
         """
+        unauth_client = TestClient(app)
         protected_endpoints = [
             "/api/v1/me/workspace",
             "/api/v1/patients",
@@ -217,7 +218,7 @@ class TestTenantDataIsolation:
             # This is by design (Section 12: QR scan at hospital reception).
         ]
         for endpoint in protected_endpoints:
-            res = client.get(endpoint)
+            res = unauth_client.get(endpoint)
             assert res.status_code in [401, 403], (
                 f"SECURITY VIOLATION: Unauthenticated request to {endpoint} returned {res.status_code}"
             )
@@ -255,3 +256,135 @@ class TestTenantDataIsolation:
                 f"TENANT ISOLATION BREACH: Kedar nurse retrieved patient from hosp-001. "
                 f"Got {res.status_code}: {res.text[:300]}"
             )
+
+    def test_patient_cannot_access_other_patient_prescription_print_or_pdf(self):
+        """
+        BOLA/IDOR Defense: Patient A (Alice Smith, p-101) cannot access,
+        print, or download PDF of Patient B's prescription (Bob Smith, p-102).
+        Must return 403 Forbidden on all endpoints.
+        """
+        patient_token = auth("patient", "patient123")
+
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT id, patient_id FROM oh_id.prescriptions
+                WHERE patient_id != 'p-101'
+                LIMIT 1;
+            """)
+            other_rx = cur.fetchone()
+
+        if other_rx:
+            rx_id = other_rx["id"]
+            # 1. Direct prescription detail
+            res_detail = client.get(f"/api/v1/prescriptions/{rx_id}", headers=hdr(patient_token))
+            assert res_detail.status_code == 403, f"Expected 403 on detail, got {res_detail.status_code}"
+
+            # 2. Print layout
+            res_print = client.get(f"/api/v1/prescriptions/{rx_id}/print", headers=hdr(patient_token))
+            assert res_print.status_code == 403, f"Expected 403 on print layout, got {res_print.status_code}"
+
+            # 3. PDF download
+            res_pdf = client.get(f"/api/v1/prescriptions/{rx_id}/pdf", headers=hdr(patient_token))
+            assert res_pdf.status_code == 403, f"Expected 403 on PDF download, got {res_pdf.status_code}"
+
+            # 4. Clinical prescription endpoint
+            res_clinical = client.get(f"/api/v1/clinical/prescriptions/{rx_id}", headers=hdr(patient_token))
+            assert res_clinical.status_code == 403, f"Expected 403 on clinical prescription, got {res_clinical.status_code}"
+
+    def test_patient_can_access_own_prescription_print_and_pdf(self):
+        """
+        Legitimate workflow verification: Patient A (Alice Smith, p-101) can view,
+        print, and generate PDF for their own prescription.
+        """
+        patient_token = auth("patient", "patient123")
+
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT id FROM oh_id.prescriptions
+                WHERE patient_id = 'p-101'
+                LIMIT 1;
+            """)
+            own_rx = cur.fetchone()
+
+        if own_rx:
+            rx_id = own_rx["id"]
+            res_print = client.get(f"/api/v1/prescriptions/{rx_id}/print", headers=hdr(patient_token))
+            assert res_print.status_code == 200
+            assert res_print.json()["prescription"]["id"] == rx_id
+
+            res_pdf = client.get(f"/api/v1/prescriptions/{rx_id}/pdf", headers=hdr(patient_token))
+            assert res_pdf.status_code == 200
+            assert "download_url" in res_pdf.json()
+
+    def test_unauthorized_cross_patient_appointment_creation_rejected(self):
+        """
+        Authorization verification: Patient A (p-101) cannot schedule an appointment
+        for Patient B (p-102).
+        Must be rejected with 403 Forbidden.
+        """
+        patient_token = auth("patient", "patient123")
+        payload = {
+            "patient_id": "p-102",  # Different patient
+            "doctor_id": "doc-001",
+            "hospital_id": "hosp-kedar",
+            "appointment_date": "2026-11-15",
+            "appointment_time": "11:30 AM",
+            "slot": "2026-11-15 11:30 AM",
+            "department": "Cardiology",
+            "notes": "Impersonated booking attempt"
+        }
+        res = client.post("/api/v1/appointments", json=payload, headers=hdr(patient_token))
+        assert res.status_code == 403, (
+            f"SECURITY DEFECT: Patient A was allowed to book appointment for Patient B! Got {res.status_code}"
+        )
+
+    def test_doctor_clinical_opd_encounters_scoped_to_authorized_hospital(self):
+        """
+        Multi-Tenant Scoping: Clinician querying OPD encounters without patient filter
+        only receives encounters belonging to their authorized hospital context.
+        """
+        doctor_token = auth("dr.senthil", "doctor123")
+        res = client.get("/api/v1/clinical/opd/encounters", headers=hdr(doctor_token))
+        assert res.status_code == 200
+        encounters = res.json()
+        assert isinstance(encounters, list)
+        for enc in encounters:
+            h_id = enc.get("hospital_id")
+            if h_id:
+                assert h_id == "hosp-kedar", (
+                    f"TENANT BREACH: Doctor received OPD encounter from foreign hospital: {enc}"
+                )
+
+    def test_doctor_clinical_ipd_admissions_scoped_to_authorized_hospital(self):
+        """
+        Multi-Tenant Scoping: Clinician querying IPD admissions only receives
+        admissions belonging to their authorized hospital context.
+        """
+        doctor_token = auth("dr.senthil", "doctor123")
+        res = client.get("/api/v1/clinical/ipd/admissions", headers=hdr(doctor_token))
+        assert res.status_code == 200
+        admissions = res.json()
+        assert isinstance(admissions, list)
+        for adm in admissions:
+            h_id = adm.get("hospital_id")
+            if h_id:
+                assert h_id == "hosp-kedar", (
+                    f"TENANT BREACH: Doctor received IPD admission from foreign hospital: {adm}"
+                )
+
+    def test_doctor_clinical_lab_orders_scoped_to_authorized_hospital(self):
+        """
+        Multi-Tenant Scoping: Clinician querying lab orders only receives
+        orders belonging to their authorized hospital context.
+        """
+        doctor_token = auth("dr.senthil", "doctor123")
+        res = client.get("/api/v1/clinical/laboratory/orders", headers=hdr(doctor_token))
+        assert res.status_code == 200
+        orders = res.json()
+        assert isinstance(orders, list)
+        for o in orders:
+            h_id = o.get("hospital_id")
+            if h_id:
+                assert h_id == "hosp-kedar", (
+                    f"TENANT BREACH: Doctor received lab order from foreign hospital: {o}"
+                )

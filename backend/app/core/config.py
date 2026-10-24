@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     # Cross-Hospital Sharing Governance - Disabled by default for single-facility isolation
     ENABLE_CROSS_HOSPITAL_SHARING: bool = os.getenv("ENABLE_CROSS_HOSPITAL_SHARING", "false").lower() in ("true", "1", "yes")
     
+    # Email / SMTP Infrastructure Configuration
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "noreply@ohid.online")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "OneHealth ID Security")
+    SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() in ("true", "1", "yes")
+    SUPER_ADMIN_SUPPORT_EMAIL: str = os.getenv("SUPER_ADMIN_SUPPORT_EMAIL", "security-support@ohid.online")
+    TESTING_EMAIL_BACKEND: bool = os.getenv("TESTING_EMAIL_BACKEND", "true").lower() in ("true", "1", "yes")
+    
     # CORS - Explicit origin allowlist (Strictly forbids '*' wildcard with credentials)
     CORS_ORIGINS: List[str] = [
         "https://ohid.online",

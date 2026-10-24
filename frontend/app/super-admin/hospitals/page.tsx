@@ -173,6 +173,13 @@ export default function SuperAdminHospitalsPage() {
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </button>
             <Link
+              href="/super-admin/hospitals/applications"
+              className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-2 transition"
+            >
+              <ShieldCheck className="w-4 h-4 text-purple-600" />
+              Onboarding Approvals
+            </Link>
+            <Link
               href="/super-admin/hospitals/new"
               className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-md shadow-blue-500/20"
             >

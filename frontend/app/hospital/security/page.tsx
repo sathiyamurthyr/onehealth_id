@@ -27,7 +27,7 @@ import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function SecurityPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
   const [activeTab, setActiveTab] = useState<"RBAC" | "ACCESS_LOGS" | "AUDIT_TRAIL">("RBAC");
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);

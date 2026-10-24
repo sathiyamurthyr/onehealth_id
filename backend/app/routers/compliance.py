@@ -86,11 +86,11 @@ class DoctorHprSyncRequest(BaseModel):
 
 class ConsentRequestPayload(BaseModel):
     patient_id: str = Field(..., max_length=64)
-    requester_hospital_id: Optional[str] = "hosp-kedar"
-    requester_doctor_id: Optional[str] = "doc-k-01"
-    requester_name: Optional[str] = "Dr. Senthil Nathan"
-    provider_hospital_id: Optional[str] = "hosp-001"
-    provider_hospital_name: Optional[str] = "Apollo City Hospital - Chennai Central"
+    requester_hospital_id: Optional[str] = None
+    requester_doctor_id: Optional[str] = None
+    requester_name: Optional[str] = None
+    provider_hospital_id: Optional[str] = None
+    provider_hospital_name: Optional[str] = None
     purpose_code: Optional[str] = "CARETREAT"
     purpose_text: Optional[str] = "Direct patient consultation and cross-hospital medical history review"
     data_categories: Optional[List[str]] = ["OPConsultation", "Prescription", "DiagnosticReport", "DischargeSummary"]
@@ -216,9 +216,17 @@ def request_patient_consent(
     req: ConsentRequestPayload,
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
-    """Initiate a formal electronic consent request to access a patient's historical records."""
     _check_doctor_or_admin_permission(current_user)
-    return sp_repository.create_consent_request(req.model_dump(), actor_id=current_user.get("username", "doc"))
+    payload = req.model_dump()
+    if not payload.get("requester_hospital_id"):
+        payload["requester_hospital_id"] = current_user.get("hospital_ref_id") or current_user.get("hospital_id")
+    if not payload.get("requester_doctor_id"):
+        user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
+        doc = sp_repository.get_doctor_by_user_id(user_ref_id)
+        payload["requester_doctor_id"] = doc.get("id") if doc else user_ref_id
+    if not payload.get("requester_name"):
+        payload["requester_name"] = current_user.get("name") or current_user.get("username")
+    return sp_repository.create_consent_request(payload, actor_id=current_user.get("username", "doc"))
 
 @router.get("/grievances")
 def list_privacy_grievances(

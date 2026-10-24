@@ -86,12 +86,12 @@ export const consultationsApi = {
     }),
 
   // Doctor Scheduling
-  getDoctorSchedule: (doctorId: string = "doc-k-01") =>
-    fetchJSON<DoctorScheduleItem[]>(`/clinical/doctor/schedule?doctor_id=${doctorId}`),
+  getDoctorSchedule: (doctorId?: string) =>
+    fetchJSON<DoctorScheduleItem[]>(`/clinical/doctor/schedule${doctorId ? `?doctor_id=${doctorId}` : ""}`),
 
-  updateDoctorSchedule: (doctorId: string, items: DoctorScheduleItem[]) =>
-    fetchJSON<DoctorScheduleItem[]>(`/clinical/doctor/schedule?doctor_id=${doctorId}`, {
+  updateDoctorSchedule: (doctorId?: string, items?: DoctorScheduleItem[]) =>
+    fetchJSON<DoctorScheduleItem[]>(`/clinical/doctor/schedule${doctorId ? `?doctor_id=${doctorId}` : ""}`, {
       method: "POST",
-      body: JSON.stringify(items),
+      body: JSON.stringify(items || []),
     }),
 };

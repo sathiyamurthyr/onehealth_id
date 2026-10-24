@@ -59,7 +59,7 @@ export default function HospitalUserDetailPage() {
   const router = useRouter();
   const userId = params?.id as string;
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [user, setUser] = useState<HospitalUser | any | null>(null);
   const [auditLogs, setAuditLogs] = useState<UserAuditRecord[]>([]);

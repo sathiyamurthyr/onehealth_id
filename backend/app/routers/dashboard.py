@@ -65,21 +65,34 @@ def get_dashboard_widgets(
             "api_version": "v1.0.0-enterprise",
             "tenant_isolation": "Enforced (Zero Direct Base Table Queries)"
         }
+        clients = sp_repository.list_platform_clients()
+        primary_client = clients[0] if clients else {}
         widgets_data["organizations_summary"] = {
-            "total_organizations": 1,
-            "primary_org": "Kedar Healthcare Group",
-            "subscription_plan": "ENTERPRISE"
+            "total_organizations": len(clients),
+            "primary_org": primary_client.get("name", "OneHealth Enterprise"),
+            "subscription_plan": primary_client.get("client_type", "ENTERPRISE")
         }
+        hospitals = sp_repository.list_platform_hospitals()
         widgets_data["hospitals_summary"] = {
-            "total_hospitals": 2,
+            "total_hospitals": len(hospitals),
             "facilities": [
-                {"name": "Kedar Hospital - Mugalivakkam Main", "code": "KEDAR-CHE", "city": "Chennai", "status": "ONLINE"},
-                {"name": "Apollo City Hospital - Chennai Central", "code": "APOLLO-CHE-01", "city": "Chennai", "status": "ACTIVE"}
+                {
+                    "name": h.get("name"),
+                    "code": h.get("code"),
+                    "city": h.get("city"),
+                    "status": h.get("status")
+                }
+                for h in hospitals[:5]
             ]
         }
+        users = sp_repository.list_users()
+        role_breakdown = {}
+        for u in users:
+            r = u.get("role", "OTHER")
+            role_breakdown[r] = role_breakdown.get(r, 0) + 1
         widgets_data["active_users"] = {
-            "total_users": 7,
-            "breakdown": {"SUPER_ADMIN": 1, "HOSPITAL_ADMIN": 1, "DOCTOR": 2, "NURSE": 1, "EMPLOYEE": 1, "PATIENT": 1}
+            "total_users": len(users),
+            "breakdown": role_breakdown
         }
         widgets_data["platform_audit"] = {
             "recent_events": sp_repository.list_audit_logs(limit=5)
@@ -91,7 +104,7 @@ def get_dashboard_widgets(
 
         widgets_data["patient_summary"] = {
             "total_patients": summary.get("total_patients", 0),
-            "today_registered": 1,
+            "today_registered": summary.get("checked_in_count", 0),
             "active_status": "NORMAL"
         }
         widgets_data["appointment_summary"] = {
@@ -109,14 +122,14 @@ def get_dashboard_widgets(
     # 3. Doctor Specific Widgets (DOCTOR)
     if "consultation.create" in user_perms:
         doctor_row = sp_repository.get_doctor_by_user_id(user_ref_id)
-        doc_id = doctor_row.get("id") if doctor_row else "doc-k-01"
-        queue_items = sp_repository.list_queue_entries(hospital_id=target_hospital, doctor_id=doc_id)
+        doc_id = doctor_row.get("id") if doctor_row else None
+        queue_items = sp_repository.list_queue_entries(hospital_id=target_hospital, doctor_id=doc_id) if doc_id else []
         
         widgets_data["doctor_schedule"] = {
             "doctor_name": doctor_row.get("name") if doctor_row else current_user.get("name"),
-            "specialty": doctor_row.get("specialty") if doctor_row else "General Medicine",
-            "room_number": doctor_row.get("room_number", "Room 101"),
-            "opd_timings": doctor_row.get("opd_timings", "08:30 AM - 01:30 PM"),
+            "specialty": doctor_row.get("specialty") if doctor_row else "General Practice",
+            "room_number": doctor_row.get("room_number") if doctor_row else "",
+            "opd_timings": doctor_row.get("opd_timings") if doctor_row else "",
             "waiting_count": len([q for q in queue_items if q.get("status") == "WAITING"]),
             "in_consultation": len([q for q in queue_items if q.get("status") == "IN_CONSULTATION"])
         }
@@ -135,48 +148,56 @@ def get_dashboard_widgets(
             "triage_queue": queue_items[:5]
         }
         widgets_data["vitals_recorded"] = {
-            "recorded_today": 3,
-            "target_ward": "OPD Triage Wing A"
+            "recorded_today": len([q for q in queue_items if q.get("status") in ("IN_CONSULTATION", "COMPLETED")]),
+            "target_ward": "OPD Triage"
         }
 
     # 5. Front Desk & Employee Widgets (EMPLOYEE)
     if "patient.create" in user_perms:
+        queue_items = sp_repository.list_queue_entries(hospital_id=target_hospital)
         widgets_data["registration_stats"] = {
-            "recent_registrations": 2,
+            "recent_registrations": len(queue_items),
             "quick_search_ready": True
         }
 
     # 6. Patient Citizen Self-Service (PATIENT)
     if "patient.self.read" in user_perms:
         # Find patient record matching citizen
-        patients = sp_repository.list_patients(limit=1)
-        pat = patients[0] if patients else {}
+        pat = sp_repository.get_patient_by_user_id(user_ref_id) or sp_repository.get_patient_by_user_ref(user_ref_id) or {}
+        pat_id = pat.get("id")
+        
         widgets_data["my_onehealth_card"] = {
-            "onehealth_id": pat.get("onehealth_id", "OHID-KEDAR-2026-0001"),
-            "qr_token": pat.get("qr_token", "QR-OHID-SECURE-0001"),
-            "name": current_user.get("name"),
-            "blood_group": pat.get("blood_group", "O+ Positive"),
-            "emergency_contact": pat.get("emergency_contact", "+91 98401 99002")
+            "onehealth_id": pat.get("onehealth_id", ""),
+            "qr_token": pat.get("qr_token", ""),
+            "name": pat.get("name") or current_user.get("name", ""),
+            "blood_group": pat.get("blood_group", ""),
+            "emergency_contact": pat.get("emergency_contact", "")
         }
+        
+        appointments = sp_repository.list_patient_appointments(pat_id) if pat_id else []
         widgets_data["my_upcoming_appointments"] = {
             "appointments": [
                 {
-                    "doctor_name": "Dr. Senthil Nathan",
-                    "department": "General Medicine & Diabetology",
-                    "slot": "Today, 10:00 AM",
-                    "status": "CONFIRMED",
-                    "room": "Room 101"
+                    "doctor_name": a.get("doctor_name", "Doctor"),
+                    "department": a.get("department_name", "OPD"),
+                    "slot": a.get("slot") or (str(a.get("scheduled_at")) if a.get("scheduled_at") else "Scheduled"),
+                    "status": a.get("status", "CONFIRMED"),
+                    "room": a.get("room_number") or "Consultation Room"
                 }
+                for a in appointments[:5]
             ]
         }
+        
+        visits = sp_repository.list_patient_visits(pat_id) if pat_id else []
         widgets_data["my_recent_visits"] = {
             "visits": [
                 {
-                    "date": "2026-10-01",
-                    "hospital": "Kedar Hospital - Mugalivakkam",
-                    "doctor": "Dr. Senthil Nathan",
-                    "diagnosis": "Type 2 Diabetes Mellitus - Controlled"
+                    "date": str(v.get("created_at").date()) if hasattr(v.get("created_at"), "date") else str(v.get("created_at", "")),
+                    "hospital": v.get("hospital_name", "Hospital"),
+                    "doctor": v.get("doctor_name", "Doctor"),
+                    "diagnosis": v.get("diagnosis", "Consultation Note")
                 }
+                for v in visits[:5]
             ]
         }
 

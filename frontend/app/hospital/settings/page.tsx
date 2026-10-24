@@ -32,7 +32,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   // Dynamic Settings state
   const [hospitalProfile, setHospitalProfile] = useState({

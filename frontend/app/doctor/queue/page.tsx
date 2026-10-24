@@ -125,9 +125,9 @@ export default function DoctorQueuePage() {
   );
   const completedEntries = queue.filter((q) => q.status === "COMPLETED");
 
-  const doctorName = doctorProfile?.name || user?.name || "Dr. Senthil Nathan";
-  const doctorSpecialty = doctorProfile?.specialty || "General Medicine & Diabetology";
-  const doctorReg = doctorProfile?.registration_number || "TN-MCI-2026-REG";
+  const doctorName = doctorProfile?.name || user?.name || "Doctor";
+  const doctorSpecialty = doctorProfile?.specialty || "General Medicine";
+  const doctorReg = doctorProfile?.registration_number || "";
 
   const currentHospitalName = workspace?.hospital_name || "Healthcare Facility";
   const currentBranchName = workspace?.branch_name || "Main Branch";

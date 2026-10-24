@@ -41,12 +41,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const token = typeof window !== "undefined" ? localStorage.getItem("oh_access_token") : null;
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
 
       const res = await api.workspace.getMyWorkspace();
       setWorkspace(res.workspace);
@@ -55,21 +49,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setPermissions(res.permissions || []);
       setAvailableWorkspaces(res.available_workspaces || []);
       setAvailableHospitals(res.available_hospitals || []);
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem("oh_workspace", JSON.stringify(res.workspace));
-        localStorage.setItem("oh_user", JSON.stringify(res.user));
-      }
     } catch (err: any) {
-      console.error("Failed to load workspace context:", err);
+      // Unauthenticated or session expired — do not fall back to stale browser storage
+      setWorkspace(null);
+      setUser(null);
+      setNavigation([]);
+      setPermissions([]);
+      setAvailableWorkspaces([]);
+      setAvailableHospitals([]);
       setError(err?.message || "Failed to load workspace context");
-      // Fallback from localStorage if offline
-      if (typeof window !== "undefined") {
-        const cachedWs = localStorage.getItem("oh_workspace");
-        const cachedUser = localStorage.getItem("oh_user");
-        if (cachedWs) setWorkspace(JSON.parse(cachedWs));
-        if (cachedUser) setUser(JSON.parse(cachedUser));
-      }
     } finally {
       setIsLoading(false);
     }
@@ -104,11 +92,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setPermissions(res.workspace.permissions || []);
       setAvailableWorkspaces(res.workspace.available_workspaces || []);
       setAvailableHospitals(res.workspace.available_hospitals || []);
-      
-      if (typeof window !== "undefined") {
-        localStorage.setItem("oh_workspace", JSON.stringify(activeWs));
-        if (activeUser) localStorage.setItem("oh_user", JSON.stringify(activeUser));
-      }
 
       // Navigate to the newly activated workspace's default route if needed
       if (activeWs?.default_route) {
@@ -124,12 +107,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    api.auth.logout();
+  const logout = async () => {
+    await api.auth.logout();
     if (typeof window !== "undefined") {
-      localStorage.removeItem("oh_access_token");
-      localStorage.removeItem("oh_workspace");
-      localStorage.removeItem("oh_user");
+      try {
+        localStorage.removeItem("oh_access_token");
+        localStorage.removeItem("oh_workspace");
+        localStorage.removeItem("oh_user");
+        localStorage.removeItem("oh_impersonation");
+        localStorage.removeItem("sathus_impersonation_session");
+      } catch {
+        // ignore
+      }
     }
     setWorkspace(null);
     setUser(null);

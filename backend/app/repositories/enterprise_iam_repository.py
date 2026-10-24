@@ -959,6 +959,685 @@ class EnterpriseIAMRepository:
                 "message": f"Hospital status transitioned to {new_status.upper()} successfully."
             }
 
+    # =========================================================================
+    # 2.1 HOSPITAL & CLINIC PUBLIC REGISTRATION & SUPER ADMIN APPROVAL WORKFLOW
+    # =========================================================================
+
+    def register_facility_application(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Public self-registration for Hospitals and Clinics.
+        Stores application in oh_id.hospitals with SUBMITTED status and is_active=FALSE.
+        Enforces server-side validation, duplicate prevention, and strips client-supplied privileged roles.
+        """
+        name = (data.get("name") or "").strip()
+        if not name or len(name) < 2:
+            raise ValueError("Organization/Facility name must be at least 2 characters.")
+
+        facility_type = (data.get("facility_type") or "HOSPITAL").upper()
+        if facility_type not in ("HOSPITAL", "CLINIC"):
+            facility_type = "HOSPITAL"
+
+        official_email = (data.get("email") or "").strip().lower()
+        if not official_email or "@" not in official_email:
+            raise ValueError("Valid official organization email is required.")
+
+        phone = (data.get("phone") or "").strip()
+        digits = "".join(filter(str.isdigit, phone))
+        clean_phone = digits[-10:] if len(digits) >= 10 else digits
+        if len(clean_phone) != 10:
+            raise ValueError("Valid 10-digit registered phone number is required.")
+
+        reg_number = (data.get("registration_number") or "").strip()
+        if not reg_number:
+            raise ValueError("Statutory registration / license number is required.")
+
+        rep_name = (data.get("rep_name") or "").strip()
+        rep_email = (data.get("rep_email") or "").strip().lower()
+        rep_phone = (data.get("rep_phone") or "").strip()
+        if not rep_name:
+            raise ValueError("Authorized representative name is required.")
+
+        with get_db_cursor() as cur:
+            # Duplicate prevention check
+            cur.execute("""
+                SELECT id, name, code, lifecycle_status, registration_number, email
+                FROM oh_id.hospitals
+                WHERE LOWER(registration_number) = LOWER(%s)
+                   OR LOWER(email) = LOWER(%s)
+                   OR LOWER(rep_email) = LOWER(%s);
+            """, (reg_number, official_email, rep_email or official_email))
+            existing = cur.fetchone()
+            if existing:
+                raise ValueError(
+                    f"An organization application with registration number '{reg_number}' or email '{official_email}' already exists (Status: {existing['lifecycle_status']}). Duplicate applications are prevented."
+                )
+
+            hospital_id = f"hosp-{uuid.uuid4().hex[:8]}"
+            prefix = "CLN" if facility_type == "CLINIC" else "HOSP"
+            code = f"{prefix}-{uuid.uuid4().hex[:6].upper()}"
+            application_ref = f"APP-2026-{uuid.uuid4().hex[:6].upper()}"
+
+            display_name = data.get("display_name") or name
+            city = (data.get("city") or "Chennai").strip()
+            state = (data.get("state") or "Tamil Nadu").strip()
+            country = (data.get("country") or "India").strip()
+            pin_code = (data.get("pin_code") or data.get("pin") or "").strip()
+            address = (data.get("address") or "").strip()
+            reg_authority = (data.get("registration_authority") or "State Health Directorate").strip()
+            reg_date = data.get("registration_date") or None
+            reg_expiry = data.get("registration_expiry") or None
+            website = (data.get("website") or "").strip()
+            emergency_contact = (data.get("emergency_contact") or "").strip()
+            docs = data.get("supporting_documents") or []
+            if not isinstance(docs, list):
+                docs = []
+
+            # 1. Insert Hospital in non-approved SUBMITTED status
+            cur.execute("""
+                INSERT INTO oh_id.hospitals (
+                    id, name, display_name, code, hospital_type, ownership_type,
+                    registration_number, registration_authority, registration_date, registration_expiry,
+                    address, city, state, country, pin_code,
+                    phone, email, website, emergency_contact,
+                    lifecycle_status, status, is_active, is_verified, verification_status, booking_enabled,
+                    application_ref, rep_name, rep_designation, rep_email, rep_phone,
+                    supporting_documents, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    'SUBMITTED', 'PENDING_APPROVAL', FALSE, FALSE, 'PENDING', FALSE,
+                    %s, %s, %s, %s, %s,
+                    %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                ) RETURNING id;
+            """, (
+                hospital_id, name, display_name, code, facility_type, data.get("ownership_type", "PRIVATE"),
+                reg_number, reg_authority, reg_date, reg_expiry,
+                address, city, state, country, pin_code,
+                clean_phone, official_email, website, emergency_contact,
+                application_ref, rep_name, data.get("rep_designation", "Authorized Signatory"),
+                rep_email or official_email, rep_phone or clean_phone,
+                json.dumps(docs)
+            ))
+
+            # 2. Insert into hospital_verifications
+            verif_id = f"verif-{uuid.uuid4().hex[:8]}"
+            cur.execute("""
+                INSERT INTO oh_id.hospital_verifications (
+                    id, hospital_id, verification_type, license_number, issuing_authority, status,
+                    review_notes, created_at
+                ) VALUES (
+                    %s, %s, 'REGISTRATION_LICENSE', %s, %s, 'PENDING',
+                    'Public facility registration application submitted.', CURRENT_TIMESTAMP
+                );
+            """, (verif_id, hospital_id, reg_number, reg_authority))
+
+            # 3. Insert platform audit log
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    new_value, reason, created_at
+                ) VALUES (
+                    %s, NULL, 'public_applicant', 'FACILITY_APPLICATION_SUBMITTED', 'HOSPITAL', %s, %s,
+                    %s, 'Public organization registration application submitted', CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", hospital_id, name,
+                json.dumps({
+                    "application_ref": application_ref,
+                    "facility_type": facility_type,
+                    "registration_number": reg_number,
+                    "rep_email": rep_email or official_email
+                })
+            ))
+
+            return {
+                "success": True,
+                "application_ref": application_ref,
+                "hospital_id": hospital_id,
+                "name": name,
+                "facility_type": facility_type,
+                "status": "SUBMITTED",
+                "lifecycle_status": "SUBMITTED",
+                "is_active": False,
+                "is_verified": False,
+                "message": "Hospital/Clinic application submitted successfully. It is currently locked and blocked from accessing protected functionality until a Super Admin reviews and approves it."
+            }
+
+    def get_facility_application_by_ref(self, application_ref: str) -> Optional[Dict[str, Any]]:
+        """
+        Public lookup for application status and tracking.
+        Sanitizes sensitive internal administrator audit data.
+        """
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    id, name, display_name, code, hospital_type, address, city, state, country, pin_code,
+                    phone, email, registration_number, registration_authority, application_ref,
+                    rep_name, rep_designation, rep_email, rep_phone,
+                    lifecycle_status, status, is_active, review_notes, rejection_reason, reviewed_at, created_at,
+                    supporting_documents
+                FROM oh_id.hospitals
+                WHERE application_ref = %s;
+            """, (application_ref,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            if isinstance(res.get("supporting_documents"), str):
+                try:
+                    res["supporting_documents"] = json.loads(res["supporting_documents"])
+                except Exception:
+                    res["supporting_documents"] = []
+            return res
+
+    def update_facility_application_by_ref(self, application_ref: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Allows applicant to update submitted details or upload requested additional information.
+        Cannot alter approval status. If current status is NEEDS_INFORMATION, moves back to SUBMITTED.
+        """
+        with get_db_cursor() as cur:
+            cur.execute("""
+                SELECT id, name, lifecycle_status, supporting_documents
+                FROM oh_id.hospitals
+                WHERE application_ref = %s;
+            """, (application_ref,))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Application reference not found.")
+
+            current_status = hosp.get("lifecycle_status")
+            if current_status not in ("SUBMITTED", "NEEDS_INFORMATION", "UNDER_REVIEW"):
+                raise ValueError(f"Cannot update application in '{current_status}' status.")
+
+            existing_docs = hosp.get("supporting_documents") or []
+            if isinstance(existing_docs, str):
+                try:
+                    existing_docs = json.loads(existing_docs)
+                except Exception:
+                    existing_docs = []
+            new_docs = updates.get("supporting_documents") or []
+            if isinstance(new_docs, list) and new_docs:
+                existing_docs.extend(new_docs)
+
+            new_status = "SUBMITTED" if current_status == "NEEDS_INFORMATION" else current_status
+
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    address = COALESCE(%s, address),
+                    city = COALESCE(%s, city),
+                    state = COALESCE(%s, state),
+                    pin_code = COALESCE(%s, pin_code),
+                    phone = COALESCE(%s, phone),
+                    rep_name = COALESCE(%s, rep_name),
+                    rep_phone = COALESCE(%s, rep_phone),
+                    supporting_documents = %s,
+                    lifecycle_status = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE application_ref = %s;
+            """, (
+                updates.get("address"),
+                updates.get("city"),
+                updates.get("state"),
+                updates.get("pin_code"),
+                updates.get("phone"),
+                updates.get("rep_name"),
+                updates.get("rep_phone"),
+                json.dumps(existing_docs),
+                new_status,
+                application_ref
+            ))
+
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    new_value, reason, created_at
+                ) VALUES (
+                    %s, NULL, 'public_applicant', 'FACILITY_APPLICATION_UPDATED', 'HOSPITAL', %s, %s,
+                    %s, 'Applicant submitted updated information/documents', CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", hosp["id"], hosp["name"],
+                json.dumps({"application_ref": application_ref, "status": new_status})
+            ))
+
+            return {
+                "success": True,
+                "application_ref": application_ref,
+                "status": new_status,
+                "message": "Application details and documents updated successfully."
+            }
+
+    def list_facility_applications_super_admin(
+        self,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Lists facility onboarding applications for Super Admin review.
+        """
+        with get_readonly_cursor() as cur:
+            clauses = ["application_ref IS NOT NULL"]
+            params = []
+
+            if status and status.upper() != "ALL":
+                clauses.append("UPPER(lifecycle_status) = %s")
+                params.append(status.upper())
+
+            if search:
+                pattern = f"%{search}%"
+                clauses.append("(name ILIKE %s OR code ILIKE %s OR registration_number ILIKE %s OR rep_name ILIKE %s OR rep_email ILIKE %s OR application_ref ILIKE %s)")
+                params.extend([pattern, pattern, pattern, pattern, pattern, pattern])
+
+            where_str = f"WHERE {' AND '.join(clauses)}"
+            cur.execute(f"""
+                SELECT 
+                    id, name, display_name, code, hospital_type, ownership_type,
+                    registration_number, registration_authority, registration_date, registration_expiry,
+                    city, state, country, pin_code, phone, email,
+                    lifecycle_status, status, is_active, is_verified, verification_status,
+                    application_ref, rep_name, rep_designation, rep_email, rep_phone,
+                    supporting_documents, review_notes, reviewed_by, reviewed_at, rejection_reason,
+                    created_at, updated_at
+                FROM oh_id.hospitals
+                {where_str}
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s;
+            """, tuple(params + [limit, offset]))
+
+            rows = cur.fetchall()
+            result = []
+            for r in rows:
+                item = dict(r)
+                docs = item.get("supporting_documents")
+                if isinstance(docs, str):
+                    try:
+                        item["supporting_documents"] = json.loads(docs)
+                    except Exception:
+                        item["supporting_documents"] = []
+                elif not docs:
+                    item["supporting_documents"] = []
+                item["documents_count"] = len(item["supporting_documents"])
+                result.append(item)
+            return result
+
+    def get_facility_application_details_super_admin(self, hospital_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Full 360-degree review view for Super Admin.
+        """
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.hospitals WHERE id = %s OR code = %s OR application_ref = %s;
+            """, (hospital_id, hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                return None
+            res = dict(hosp)
+            docs = res.get("supporting_documents")
+            if isinstance(docs, str):
+                try:
+                    res["supporting_documents"] = json.loads(docs)
+                except Exception:
+                    res["supporting_documents"] = []
+
+            # Fetch verification records
+            cur.execute("""
+                SELECT id, license_number, issuing_authority, verification_status, verified_by, verified_at, notes, created_at
+                FROM oh_id.hospital_verifications
+                WHERE hospital_id = %s
+                ORDER BY created_at DESC;
+            """, (res["id"],))
+            res["verifications"] = [dict(v) for v in cur.fetchall()]
+
+            # Fetch platform audit logs for this hospital
+            cur.execute("""
+                SELECT id, admin_username, action, entity_type, entity_id, entity_name, previous_value, new_value, reason, created_at
+                FROM oh_id.platform_audit_logs
+                WHERE entity_id = %s
+                ORDER BY created_at DESC
+                LIMIT 50;
+            """, (res["id"],))
+            res["audit_history"] = [dict(a) for a in cur.fetchall()]
+
+            return res
+
+    def review_facility_application_super_admin(
+        self,
+        hospital_id: str,
+        admin_user_id: str = "usr-admin",
+        admin_username: str = "superadmin",
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Transitions application from SUBMITTED to UNDER_REVIEW.
+        """
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, name, lifecycle_status FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Hospital not found")
+
+            old_status = hosp.get("lifecycle_status")
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    lifecycle_status = 'UNDER_REVIEW',
+                    status = 'UNDER_REVIEW',
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_notes = COALESCE(%s, review_notes),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (admin_user_id, notes, hosp["id"]))
+
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    previous_value, new_value, reason, created_at
+                ) VALUES (
+                    %s, %s, %s, 'FACILITY_APPLICATION_REVIEW_STARTED', 'HOSPITAL', %s, %s,
+                    %s, %s, %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "UNDER_REVIEW"}),
+                notes or "Super Admin started application review"
+            ))
+
+            return {
+                "success": True,
+                "hospital_id": hosp["id"],
+                "status": "UNDER_REVIEW",
+                "lifecycle_status": "UNDER_REVIEW",
+                "message": "Application status updated to UNDER_REVIEW."
+            }
+
+    def approve_facility_application_super_admin(
+        self,
+        hospital_id: str,
+        admin_user_id: str = "usr-admin",
+        admin_username: str = "superadmin",
+        decision_notes: str = "Application approved by Super Admin after verification."
+    ) -> Dict[str, Any]:
+        """
+        Atomically approves hospital/clinic application.
+        Transitions lifecycle_status to APPROVED, is_active=TRUE, is_verified=TRUE.
+        Provisions default main branch, activates verification record, and logs audit event.
+        """
+        with get_db_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Hospital not found")
+
+            old_status = hosp.get("lifecycle_status")
+            if old_status == "APPROVED" and hosp.get("is_active"):
+                return {
+                    "success": True,
+                    "hospital_id": hosp["id"],
+                    "status": "APPROVED",
+                    "message": "Hospital is already approved and active."
+                }
+
+            # 1. Update hospital record
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    lifecycle_status = 'APPROVED',
+                    status = 'ACTIVE',
+                    is_active = TRUE,
+                    is_verified = TRUE,
+                    verification_status = 'VERIFIED',
+                    booking_enabled = TRUE,
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_notes = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (admin_user_id, decision_notes, hosp["id"]))
+
+            # 2. Provision default main branch if none exists
+            cur.execute("SELECT id FROM oh_id.hospital_branches WHERE hospital_id = %s LIMIT 1;", (hosp["id"],))
+            branch = cur.fetchone()
+            if not branch:
+                branch_id = f"br-{uuid.uuid4().hex[:8]}"
+                branch_code = f"BR-{hosp['code']}-01"
+                branch_name = f"{hosp.get('display_name') or hosp['name']} Main Campus"
+                cur.execute("""
+                    INSERT INTO oh_id.hospital_branches (
+                        id, hospital_id, code, name, address, city, state, phone, pincode,
+                        is_main_branch, is_active
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, TRUE)
+                    ON CONFLICT DO NOTHING;
+                """, (
+                    branch_id, hosp["id"], branch_code, branch_name,
+                    hosp.get("address") or hosp.get("city") or "Main Campus",
+                    hosp.get("city") or "Chennai", hosp.get("state") or "Tamil Nadu",
+                    hosp.get("phone") or "", hosp.get("pin_code") or "600001"
+                ))
+
+            # 3. Update hospital_verifications
+            cur.execute("""
+                UPDATE oh_id.hospital_verifications
+                SET 
+                    status = 'VERIFIED',
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_notes = %s
+                WHERE hospital_id = %s;
+            """, (admin_user_id, decision_notes, hosp["id"]))
+
+            # 4. Audit Log
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    previous_value, new_value, reason, created_at
+                ) VALUES (
+                    %s, %s, %s, 'FACILITY_APPLICATION_APPROVED', 'HOSPITAL', %s, %s,
+                    %s, %s, %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "APPROVED", "is_active": True}),
+                decision_notes
+            ))
+
+            return {
+                "success": True,
+                "hospital_id": hosp["id"],
+                "name": hosp["name"],
+                "status": "APPROVED",
+                "lifecycle_status": "APPROVED",
+                "is_active": True,
+                "is_verified": True,
+                "message": f"Facility '{hosp['name']}' has been officially APPROVED and activated."
+            }
+
+    def reject_facility_application_super_admin(
+        self,
+        hospital_id: str,
+        admin_user_id: str = "usr-admin",
+        admin_username: str = "superadmin",
+        reason: str = "Application does not meet platform regulatory requirements."
+    ) -> Dict[str, Any]:
+        """
+        Rejects hospital/clinic application with mandatory reason.
+        """
+        if not reason or len(reason.strip()) < 5:
+            raise ValueError("Mandatory rejection reason must be at least 5 characters.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, name, lifecycle_status FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Hospital not found")
+
+            old_status = hosp.get("lifecycle_status")
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    lifecycle_status = 'REJECTED',
+                    status = 'REJECTED',
+                    is_active = FALSE,
+                    is_verified = FALSE,
+                    rejection_reason = %s,
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (reason, admin_user_id, hosp["id"]))
+
+            cur.execute("""
+                UPDATE oh_id.hospital_verifications
+                SET 
+                    status = 'REJECTED',
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_notes = %s
+                WHERE hospital_id = %s;
+            """, (admin_user_id, reason, hosp["id"]))
+
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    previous_value, new_value, reason, created_at
+                ) VALUES (
+                    %s, %s, %s, 'FACILITY_APPLICATION_REJECTED', 'HOSPITAL', %s, %s,
+                    %s, %s, %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "REJECTED"}),
+                reason
+            ))
+
+            return {
+                "success": True,
+                "hospital_id": hosp["id"],
+                "status": "REJECTED",
+                "lifecycle_status": "REJECTED",
+                "message": f"Facility application '{hosp['name']}' has been REJECTED."
+            }
+
+    def request_info_facility_application_super_admin(
+        self,
+        hospital_id: str,
+        admin_user_id: str = "usr-admin",
+        admin_username: str = "superadmin",
+        notes: str = "Additional documentation or clarification required."
+    ) -> Dict[str, Any]:
+        """
+        Requests additional information from applicant, setting status to NEEDS_INFORMATION.
+        """
+        if not notes or len(notes.strip()) < 5:
+            raise ValueError("Information request notes must be at least 5 characters.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, name, lifecycle_status FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Hospital not found")
+
+            old_status = hosp.get("lifecycle_status")
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    lifecycle_status = 'NEEDS_INFORMATION',
+                    status = 'NEEDS_INFORMATION',
+                    review_notes = %s,
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (notes, admin_user_id, hosp["id"]))
+
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    previous_value, new_value, reason, created_at
+                ) VALUES (
+                    %s, %s, %s, 'FACILITY_APPLICATION_INFO_REQUESTED', 'HOSPITAL', %s, %s,
+                    %s, %s, %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "NEEDS_INFORMATION"}),
+                notes
+            ))
+
+            return {
+                "success": True,
+                "hospital_id": hosp["id"],
+                "status": "NEEDS_INFORMATION",
+                "lifecycle_status": "NEEDS_INFORMATION",
+                "message": "Status updated to NEEDS_INFORMATION. Applicant notified."
+            }
+
+    def get_hospital_approval_status(self, hospital_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fast lookup of hospital approval and lifecycle status for real-time RBAC enforcement.
+        """
+        if not hospital_id:
+            return None
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT id, code, name, display_name, lifecycle_status, status, is_active, is_verified, suspension_reason
+                FROM oh_id.hospitals
+                WHERE id = %s OR code = %s;
+            """, (hospital_id, hospital_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def check_staff_membership_authorization(self, user_id: str, hospital_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Verifies whether clinical staff member is linked to and actively authorized by the specified hospital.
+        Checks enterprise hospital_staff_memberships and verified doctors entities.
+        """
+        if not user_id or not hospital_id:
+            return None
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    id, user_id, hospital_id, role_code, verification_status, is_active, login_enabled, employment_status
+                FROM oh_id.hospital_staff_memberships
+                WHERE (user_id = %s OR employee_id = %s) AND (hospital_id = %s);
+            """, (user_id, user_id, hospital_id))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+
+            # Check verified clinical doctors registry for authorized staff
+            cur.execute("""
+                SELECT 
+                    id, COALESCE(user_id, id) as user_id, hospital_id, 'DOCTOR' as role_code, 
+                    'VERIFIED' as verification_status, is_available as is_active, 
+                    TRUE as login_enabled, 'ACTIVE' as employment_status
+                FROM oh_id.doctors
+                WHERE (id = %s OR user_id = %s) AND hospital_id = %s;
+            """, (user_id, user_id, hospital_id))
+            doc_row = cur.fetchone()
+            if doc_row:
+                return dict(doc_row)
+
+            # Check authorized active staff workspaces in PostgreSQL view
+            cur.execute("""
+                SELECT 
+                    user_ref_id as id, user_ref_id as user_id, hospital_ref_id as hospital_id, role_code,
+                    'VERIFIED' as verification_status, is_active,
+                    TRUE as login_enabled, 'ACTIVE' as employment_status
+                FROM oh_id.vw_user_workspaces
+                WHERE (user_ref_id = %s OR username = %s) AND hospital_ref_id = %s AND is_active = TRUE;
+            """, (user_id, user_id, hospital_id))
+            ws_row = cur.fetchone()
+            if ws_row:
+                return dict(ws_row)
+
+            return None
+
     def get_hospital_feature_entitlements(self, hospital_id: str) -> List[Dict[str, Any]]:
         with get_db_cursor() as cur:
             cur.execute("""

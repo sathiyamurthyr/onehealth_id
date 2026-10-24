@@ -1,37 +1,51 @@
-from fastapi import HTTPException, Header, Depends
+from fastapi import HTTPException, Header, Depends, Request
 from typing import Optional, List, Callable, Dict, Any
 from jose import jwt
 from backend.app.core.config import settings
 from backend.app.repositories.sp_views_repository import sp_repository
 
 def get_optional_user_context(
+    request: Request,
     authorization: Optional[str] = Header(None),
     x_hospital_ref_id: Optional[str] = Header(None, alias="X-Hospital-Ref-Id"),
     x_usertype_ref_id: Optional[str] = Header(None, alias="X-Usertype-Ref-Id")
 ) -> Optional[Dict[str, Any]]:
     """Safe optional user context resolution that does not raise HTTP 401 when unauthenticated."""
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
     try:
-        return get_current_user_context(authorization, x_hospital_ref_id, x_usertype_ref_id)
+        return get_current_user_context(request, authorization, x_hospital_ref_id, x_usertype_ref_id)
     except Exception:
         return None
 
 def get_current_user_context(
+    request: Request,
     authorization: Optional[str] = Header(None),
     x_hospital_ref_id: Optional[str] = Header(None, alias="X-Hospital-Ref-Id"),
     x_usertype_ref_id: Optional[str] = Header(None, alias="X-Usertype-Ref-Id")
 ) -> Dict[str, Any]:
     """
     Authoritative Centralized Authentication & Workspace Resolution.
-    Decodes JWT, extracts user, active hospital context, and role.
+    Decodes JWT from Authorization header or secure HttpOnly cookie, extracts user, active hospital context, and role.
     Resolves complete user workspace & permissions from PostgreSQL views (vw_user_workspaces)
     based on user_ref_id, hospital_ref_id, and usertype_ref_id.
     """
-    if not authorization or not authorization.startswith("Bearer "):
+    token = None
+    using_cookie = False
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    elif request and hasattr(request, "cookies") and request.cookies.get("oh_access_token"):
+        token = request.cookies.get("oh_access_token")
+        using_cookie = True
+
+    if not token:
         raise HTTPException(status_code=401, detail="Authentication credentials were not provided")
-    
-    token = authorization.split(" ")[1]
+
+    # Enforce CSRF protection for state-changing requests when authenticated via cookie
+    if using_cookie and request and hasattr(request, "method") and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        x_requested_with = request.headers.get("x-requested-with")
+        sec_fetch_site = request.headers.get("sec-fetch-site")
+        if not x_requested_with and sec_fetch_site == "cross-site":
+            raise HTTPException(status_code=403, detail="Cross-site request forgery protection triggered")
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except Exception as e:
@@ -69,7 +83,7 @@ def get_current_user_context(
         auth_row = sp_repository.get_user_by_id(user_ref_id)
         if not auth_row:
             if payload.get("permissions") or payload.get("role"):
-                return {
+                user_context = {
                     "id": user_ref_id,
                     "user_ref_id": user_ref_id,
                     "username": username or "user",
@@ -86,66 +100,135 @@ def get_current_user_context(
                     "permissions": payload.get("permissions") or [],
                     "roles": payload.get("roles") or [payload.get("role", "STAFF")]
                 }
-            raise HTTPException(status_code=403, detail="User account is deactivated")
-        if not auth_row.get("is_active", True):
-            raise HTTPException(status_code=403, detail="User account is deactivated")
-        raw_db_perms = auth_row.get("permissions") or []
-        if isinstance(raw_db_perms, str):
-            try:
-                raw_db_perms = json.loads(raw_db_perms)
-            except Exception:
-                raw_db_perms = []
-        jwt_perms = payload.get("permissions") or []
-        combined_perms = list(dict.fromkeys(list(raw_db_perms) + list(jwt_perms)))
+            else:
+                raise HTTPException(status_code=403, detail="User account is deactivated")
+        else:
+            if not auth_row.get("is_active", True):
+                raise HTTPException(status_code=403, detail="User account is deactivated")
+            raw_db_perms = auth_row.get("permissions") or []
+            if isinstance(raw_db_perms, str):
+                try:
+                    raw_db_perms = json.loads(raw_db_perms)
+                except Exception:
+                    raw_db_perms = []
+            jwt_perms = payload.get("permissions") or []
+            combined_perms = list(dict.fromkeys(list(raw_db_perms) + list(jwt_perms)))
 
-        return {
-            "id": auth_row["id"],
-            "user_ref_id": auth_row.get("user_ref_id") or auth_row["id"],
-            "username": auth_row["username"],
-            "name": auth_row.get("full_name", username),
-            "role": auth_row.get("role", "STAFF"),
-            "usertype_ref_id": auth_row.get("usertype_ref_id") or f"role-{auth_row.get('role', 'staff').lower()}",
-            "workspace_type": auth_row.get("workspace_type", "EMPLOYEE"),
-            "default_route": auth_row.get("default_route", "/employee"),
-            "hospital_id": auth_row.get("hospital_id"),
-            "hospital_ref_id": auth_row.get("hospital_ref_id") or auth_row.get("hospital_id"),
-            "hospital_name": auth_row.get("hospital_name", "Kedar Hospital"),
-            "tenant_id": auth_row.get("tenant_id", "ten-kedar"),
-            "tenant_name": auth_row.get("tenant_name", "Kedar Healthcare Group"),
-            "permissions": combined_perms,
-            "roles": auth_row.get("roles") or [auth_row.get("role", "STAFF")]
+            user_context = {
+                "id": auth_row["id"],
+                "user_ref_id": auth_row.get("user_ref_id") or auth_row["id"],
+                "username": auth_row["username"],
+                "name": auth_row.get("full_name", username),
+                "role": auth_row.get("role", "STAFF"),
+                "usertype_ref_id": auth_row.get("usertype_ref_id") or f"role-{auth_row.get('role', 'staff').lower()}",
+                "workspace_type": auth_row.get("workspace_type", "EMPLOYEE"),
+                "default_route": auth_row.get("default_route", "/employee"),
+                "hospital_id": auth_row.get("hospital_id"),
+                "hospital_ref_id": auth_row.get("hospital_ref_id") or auth_row.get("hospital_id"),
+                "hospital_name": auth_row.get("hospital_name", "Kedar Hospital"),
+                "tenant_id": auth_row.get("tenant_id", "ten-kedar"),
+                "tenant_name": auth_row.get("tenant_name", "Kedar Healthcare Group"),
+                "permissions": combined_perms,
+                "roles": auth_row.get("roles") or [auth_row.get("role", "STAFF")]
+            }
+    else:
+        raw_ws_perms = workspace.get("permissions") or []
+        if isinstance(raw_ws_perms, str):
+            try:
+                raw_ws_perms = json.loads(raw_ws_perms)
+            except Exception:
+                raw_ws_perms = []
+        jwt_perms = payload.get("permissions") or []
+        combined_ws_perms = list(dict.fromkeys(list(raw_ws_perms) + list(jwt_perms)))
+
+        user_context = {
+            "id": workspace["user_ref_id"],
+            "user_ref_id": workspace["user_ref_id"],
+            "username": workspace["username"],
+            "name": workspace.get("full_name", username),
+            "role": workspace.get("role_code", "STAFF"),
+            "role_name": workspace.get("role_name", "Staff"),
+            "usertype_ref_id": workspace.get("usertype_ref_id"),
+            "workspace_type": workspace.get("workspace_type", "EMPLOYEE"),
+            "default_route": workspace.get("default_route", "/employee"),
+            "hospital_id": workspace.get("hospital_ref_id"),
+            "hospital_ref_id": workspace.get("hospital_ref_id"),
+            "hospital_name": workspace.get("hospital_name", "Kedar Hospital"),
+            "hospital_code": workspace.get("hospital_code", "KEDAR-CHE"),
+            "branch_ref_id": workspace.get("branch_ref_id"),
+            "branch_name": workspace.get("branch_name"),
+            "tenant_id": workspace.get("tenant_id", "ten-kedar"),
+            "tenant_name": workspace.get("tenant_name", "Kedar Healthcare Group"),
+            "permissions": combined_ws_perms,
+            "roles": [workspace.get("role_code", "STAFF")]
         }
 
-    raw_ws_perms = workspace.get("permissions") or []
-    if isinstance(raw_ws_perms, str):
-        try:
-            raw_ws_perms = json.loads(raw_ws_perms)
-        except Exception:
-            raw_ws_perms = []
-    jwt_perms = payload.get("permissions") or []
-    combined_ws_perms = list(dict.fromkeys(list(raw_ws_perms) + list(jwt_perms)))
+    # =========================================================================
+    # ORGANIZATION APPROVAL & CLINICAL STAFF AUTHORIZATION GATE
+    # =========================================================================
+    user_roles = user_context.get("roles") or [user_context.get("role")]
+    user_perms = user_context.get("permissions") or []
 
-    return {
-        "id": workspace["user_ref_id"],
-        "user_ref_id": workspace["user_ref_id"],
-        "username": workspace["username"],
-        "name": workspace.get("full_name", username),
-        "role": workspace.get("role_code", "STAFF"),
-        "role_name": workspace.get("role_name", "Staff"),
-        "usertype_ref_id": workspace.get("usertype_ref_id"),
-        "workspace_type": workspace.get("workspace_type", "EMPLOYEE"),
-        "default_route": workspace.get("default_route", "/employee"),
-        "hospital_id": workspace.get("hospital_ref_id"),
-        "hospital_ref_id": workspace.get("hospital_ref_id"),
-        "hospital_name": workspace.get("hospital_name", "Kedar Hospital"),
-        "hospital_code": workspace.get("hospital_code", "KEDAR-CHE"),
-        "branch_ref_id": workspace.get("branch_ref_id"),
-        "branch_name": workspace.get("branch_name"),
-        "tenant_id": workspace.get("tenant_id", "ten-kedar"),
-        "tenant_name": workspace.get("tenant_name", "Kedar Healthcare Group"),
-        "permissions": combined_ws_perms,
-        "roles": [workspace.get("role_code", "STAFF")]
-    }
+    # Super Admin and Platform Admin bypass organization approval gate
+    if "SUPER_ADMIN" in user_roles or "PLATFORM_ADMIN" in user_roles or "system.manage" in user_perms:
+        return user_context
+
+    # Verify hospital facility lifecycle status dynamically
+    hosp_id = user_context.get("hospital_ref_id") or user_context.get("hospital_id")
+    if hosp_id:
+        hosp_status = sp_repository.get_hospital_approval_status(hosp_id)
+        if not hosp_status:
+            raise HTTPException(status_code=403, detail="Forbidden: Organization facility not found or unauthorized.")
+
+        lifecycle = (hosp_status.get("lifecycle_status") or "").upper()
+        is_active = hosp_status.get("is_active")
+
+        if lifecycle in ("SUBMITTED", "PENDING", "UNDER_REVIEW"):
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Hospital/Clinic registration is pending Super Admin review and approval."
+            )
+        elif lifecycle == "NEEDS_INFORMATION":
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Hospital/Clinic application requires additional information before approval."
+            )
+        elif lifecycle == "REJECTED":
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Hospital/Clinic application was rejected by Super Admin."
+            )
+        elif lifecycle == "SUSPENDED" or not is_active:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Hospital/Clinic facility has been suspended by Super Admin."
+            )
+        elif lifecycle != "APPROVED" and hosp_status.get("status") != "ACTIVE":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Organization facility access not authorized (Status: {lifecycle})."
+            )
+
+        # Enforce distinct clinical staff authorization
+        role_code = (user_context.get("role") or "").upper()
+        if role_code in ("DOCTOR", "NURSE", "CLINICAL_STAFF", "LAB_TECHNICIAN", "PHARMACIST", "RADIOLOGIST"):
+            membership = sp_repository.check_staff_membership_authorization(
+                user_id=user_context.get("user_ref_id") or user_context.get("id"),
+                hospital_id=hosp_id
+            )
+            if not membership or not membership.get("is_active"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Forbidden: Clinical staff member is not authorized or active for this hospital."
+                )
+            verif = (membership.get("verification_status") or "").upper()
+            if verif not in ("VERIFIED", "APPROVED"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Forbidden: Clinical staff member credentials have not been verified and authorized by the hospital."
+                )
+
+    return user_context
 
 def require_permission(permission_code: str) -> Callable:
     """
@@ -335,6 +418,13 @@ def verify_clinical_record_access(
     # 4. Same-hospital access: normal clinical workflow preserved
     if not patient_hospital or not user_hospital or user_hospital == patient_hospital:
         return patient
+
+    # If clinician has verified active staff membership in patient's hospital, access is authorized
+    user_id = user.get("user_ref_id") or user.get("id")
+    if user_id and patient_hospital:
+        doc_mem = sp_repository.check_staff_membership_authorization(user_id=user_id, hospital_id=patient_hospital)
+        if doc_mem and doc_mem.get("is_active") and (doc_mem.get("verification_status") or "").upper() in ("VERIFIED", "APPROVED"):
+            return patient
 
     # 5. Cross-hospital access: check consent & network sharing settings
     actor_id = user.get("user_ref_id") or user.get("id") or user.get("username") or "unknown"

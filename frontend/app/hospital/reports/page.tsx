@@ -36,7 +36,7 @@ import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function ReportsPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
   const [activeReportTab, setActiveReportTab] = useState<"PATIENT_FLOW" | "APPOINTMENTS" | "DEPARTMENT_QUEUES" | "DOCTOR_PRODUCTIVITY">("PATIENT_FLOW");
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();

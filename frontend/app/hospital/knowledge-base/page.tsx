@@ -24,7 +24,7 @@ import { KnowledgeDocument, KnowledgeQueryResponse } from "@/lib/types";
 
 export default function HospitalKnowledgeBasePage() {
   const { workspace } = useWorkspace();
-  const hospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const hospitalId = workspace?.hospital_ref_id || "";
 
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(true);

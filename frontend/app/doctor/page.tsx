@@ -61,14 +61,14 @@ export default function DoctorDashboardPage() {
       try {
         setLoading(true);
         const meProfile = await api.me.getProfile().catch(() => null);
-        const currentHospId = meProfile?.hospital_ref_id || workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+        const currentHospId = meProfile?.hospital_ref_id || workspace?.hospital_ref_id || "";
 
         // Load Doctor Profile Details
         const doc = await api.doctors.getMe().catch(() => null);
         setDoctorProfile(doc || {
-          name: meProfile?.doctor?.name || meProfile?.name || user?.name || "Dr. Senthil Nathan",
-          specialty: meProfile?.doctor?.specialty || "General Medicine & Diabetology",
-          registration_number: meProfile?.doctor?.registration_number || "TN-MCI-2026-REG"
+          name: meProfile?.doctor?.name || meProfile?.name || user?.name || "Doctor",
+          specialty: meProfile?.doctor?.specialty || "General Medicine",
+          registration_number: meProfile?.doctor?.registration_number || ""
         });
 
         // Load Appointments & Queue strictly scoped to this hospital

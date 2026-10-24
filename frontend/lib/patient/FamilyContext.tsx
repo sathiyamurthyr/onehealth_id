@@ -43,20 +43,12 @@ interface FamilyContextValue {
 
 const FamilyContext = createContext<FamilyContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "oh_active_patient_person_id";
-
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { workspace, user } = useWorkspace();
   const [primaryProfile, setPrimaryProfile] = useState<PatientProfile | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [familyOverview, setFamilyOverview] = useState<FamilyOverview | null>(null);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      return saved && saved !== "self" ? saved : null;
-    }
-    return null;
-  });
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,10 +64,16 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
-      const [profileRes, overviewRes, membersRes] = await Promise.all([
-        api.patient.getProfile().catch(() => null),
-        api.patient.getFamilyOverview().catch(() => null),
-        api.patient.getFamilyMembers().catch(() => null),
+      const [profileRes, membersRes, overviewRes] = await Promise.all([
+        api.patient.getProfile().catch((err) => {
+          console.warn("Could not load primary patient profile:", err);
+          return null;
+        }),
+        api.patient.getFamilyMembers(),
+        api.patient.getFamilyOverview().catch((err) => {
+          console.warn("Could not load family overview:", err);
+          return null;
+        }),
       ]);
 
       if (profileRes?.data) {
@@ -83,16 +81,15 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       }
       if (membersRes?.data && Array.isArray(membersRes.data)) {
         setFamilyMembers(membersRes.data);
-      } else if (overviewRes?.data) {
-        const mems = (overviewRes.data as any).family_members || (overviewRes.data as any).members || [];
-        setFamilyMembers(mems);
+      } else {
+        setFamilyMembers([]);
       }
       if (overviewRes?.data) {
         setFamilyOverview(overviewRes.data);
       }
     } catch (err: any) {
       console.error("Failed to load family healthcare context:", err);
-      setError(err?.message || "Failed to load family context.");
+      setError(err?.message || "Failed to load family context from server.");
     } finally {
       setIsLoading(false);
     }
@@ -104,13 +101,6 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const switchPerson = useCallback((personId: string | null) => {
     setSelectedPersonId(personId);
-    if (typeof window !== "undefined") {
-      if (personId) {
-        sessionStorage.setItem(STORAGE_KEY, personId);
-      } else {
-        sessionStorage.setItem(STORAGE_KEY, "self");
-      }
-    }
   }, []);
 
   // Compute active person object

@@ -38,7 +38,7 @@ import { LoadingState, EmptyState } from "@/components/ui/FeedbackStates";
 
 export default function ReceptionWorkspacePage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<"QUEUE" | "SEARCH_REGISTER" | "WALK_IN" | "DOCTORS" | "BILLING">("QUEUE");
 

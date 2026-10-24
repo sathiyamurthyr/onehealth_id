@@ -116,16 +116,7 @@ export interface UserFilterParams {
 }
 
 const getHospitalId = (explicitId?: string): string => {
-  if (explicitId) return explicitId;
-  if (typeof window !== "undefined") {
-    try {
-      const ws = JSON.parse(localStorage.getItem("oh_workspace") || "{}");
-      if (ws.hospital_ref_id) return ws.hospital_ref_id;
-    } catch {
-      // ignore
-    }
-  }
-  return "";
+  return explicitId || "";
 };
 
 export const hospitalApi = {
@@ -485,5 +476,23 @@ export const hospitalApi = {
     if (params?.date_from) q.set("date_from", params.date_from);
     if (params?.date_to) q.set("date_to", params.date_to);
     return fetchJSON<DoctorProductivityReport>(`/hospital/reports/doctor-productivity?${q.toString()}`);
+  },
+
+  registerFacility: async (payload: any) => {
+    return fetchJSON<any>("/api/v1/hospitals/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getApplicationStatus: async (applicationRef: string) => {
+    return fetchJSON<any>(`/api/v1/hospitals/applications/${applicationRef}`);
+  },
+
+  updateApplication: async (applicationRef: string, payload: any) => {
+    return fetchJSON<any>(`/api/v1/hospitals/applications/${applicationRef}/update`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };

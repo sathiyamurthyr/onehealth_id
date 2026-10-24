@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Response
 from typing import Optional, List, Dict, Any
 from backend.app.schemas.models import (
     WorkspaceResponse, WorkspaceDefinition, NavigationItem, 
@@ -25,23 +25,60 @@ def _build_workspace_response(user_ctx: Dict[str, Any]) -> WorkspaceResponse:
     # Parse navigation
     nav_raw = ws_row.get("navigation_config") or []
     nav_items = []
+
+    # Dynamically resolve database-backed family members count for patient workspaces
+    patient_family_count = None
+    if ws_row.get("workspace_type") == "PATIENT" or role_code == "PATIENT" or usertype_ref_id == "role-patient":
+        try:
+            pat = sp_repository.get_patient_by_user_ref(user_ref_id, user_ctx.get("email"))
+            if not pat and user_ctx.get("username") == "patient":
+                pat = sp_repository.get_patient_by_id("p-101")
+            if pat:
+                members = sp_repository.list_family_members(pat["id"])
+                patient_family_count = str(len(members))
+            else:
+                patient_family_count = "0"
+        except Exception:
+            patient_family_count = None
+
     if isinstance(nav_raw, list):
         for item in nav_raw:
+            badge_val = item.get("badge")
+            if item.get("href") == "/patient/family":
+                badge_val = patient_family_count if patient_family_count is not None else "0"
+
             nav_items.append(NavigationItem(
                 title=item.get("title", ""),
                 href=item.get("href", ""),
                 icon=item.get("icon", "LayoutDashboard"),
                 section=item.get("section", "General"),
-                badge=item.get("badge"),
+                badge=badge_val,
                 permission=item.get("permission")
             ))
 
     # Parse dashboard layout
     dash_layout = ws_row.get("dashboard_layout") or []
 
-    # Fetch available contexts for switching
-    available_workspaces = sp_repository.list_user_workspaces(user_ref_id)
-    available_hospitals = sp_repository.list_user_hospitals(user_ref_id)
+    # Fetch available contexts for switching and filter by approval status
+    raw_workspaces = sp_repository.list_user_workspaces(user_ref_id)
+    raw_hospitals = sp_repository.list_user_hospitals(user_ref_id)
+
+    is_super = "SUPER_ADMIN" in (user_ctx.get("roles") or []) or "PLATFORM_ADMIN" in (user_ctx.get("roles") or [])
+    if is_super:
+        available_workspaces = raw_workspaces
+        available_hospitals = raw_hospitals
+    else:
+        # Only surface approved and active hospitals
+        approved_hosp_ids = set()
+        for h in raw_hospitals:
+            h_id = h.get("id") or h.get("hospital_ref_id")
+            if h_id:
+                stat = sp_repository.get_hospital_approval_status(h_id)
+                if stat and (stat.get("lifecycle_status") == "APPROVED" or stat.get("status") == "ACTIVE") and stat.get("is_active"):
+                    approved_hosp_ids.add(h_id)
+
+        available_hospitals = [h for h in raw_hospitals if (h.get("id") or h.get("hospital_ref_id")) in approved_hosp_ids]
+        available_workspaces = [w for w in raw_workspaces if not w.get("hospital_ref_id") or w.get("hospital_ref_id") in approved_hosp_ids]
 
     profile = UserProfile(
         id=user_ctx["id"],
@@ -105,6 +142,7 @@ def get_my_workspace(current_user: Dict[str, Any] = Depends(get_current_user_con
 @router.post("/workspace/switch-context", response_model=SwitchContextResponse)
 def switch_workspace_context(
     req: SwitchContextRequest,
+    response: Response,
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """
@@ -139,6 +177,38 @@ def switch_workspace_context(
             detail="Forbidden: You are not authorized for the requested workspace context."
         )
 
+    # Verify target hospital approval status if hospital context is being switched
+    target_hosp_id = target_ws.get("hospital_ref_id")
+    is_super = "SUPER_ADMIN" in (current_user.get("roles") or []) or "PLATFORM_ADMIN" in (current_user.get("roles") or [])
+    if target_hosp_id and not is_super:
+        hosp_stat = sp_repository.get_hospital_approval_status(target_hosp_id)
+        if not hosp_stat:
+            raise HTTPException(status_code=403, detail="Forbidden: Target hospital facility not found.")
+        lc = (hosp_stat.get("lifecycle_status") or "").upper()
+        if lc in ("SUBMITTED", "PENDING", "UNDER_REVIEW"):
+            raise HTTPException(status_code=403, detail="Forbidden: Target hospital registration is pending Super Admin review and approval.")
+        elif lc == "NEEDS_INFORMATION":
+            raise HTTPException(status_code=403, detail="Forbidden: Target hospital application requires additional information before approval.")
+        elif lc == "REJECTED":
+            raise HTTPException(status_code=403, detail="Forbidden: Target hospital application was rejected by Super Admin.")
+        elif lc == "SUSPENDED" or not hosp_stat.get("is_active"):
+            raise HTTPException(status_code=403, detail="Forbidden: Target hospital facility is suspended by Super Admin.")
+        elif lc != "APPROVED" and hosp_stat.get("status") != "ACTIVE":
+            raise HTTPException(status_code=403, detail=f"Forbidden: Target hospital access not authorized (Status: {lc}).")
+
+        # Distinct clinical staff verification check
+        role_code = (target_ws.get("role_code") or "").upper()
+        if role_code in ("DOCTOR", "NURSE", "CLINICAL_STAFF", "LAB_TECHNICIAN", "PHARMACIST", "RADIOLOGIST"):
+            membership = sp_repository.check_staff_membership_authorization(
+                user_id=user_ref_id,
+                hospital_id=target_hosp_id
+            )
+            if not membership or not membership.get("is_active"):
+                raise HTTPException(status_code=403, detail="Forbidden: Clinical staff member is not active or authorized for this hospital.")
+            verif = (membership.get("verification_status") or "").upper()
+            if verif not in ("VERIFIED", "APPROVED"):
+                raise HTTPException(status_code=403, detail="Forbidden: Clinical staff credentials have not been authorized by the target hospital.")
+
     # Issue updated access token with new active hospital and role context
     token = create_access_token({
         "sub": current_user["username"],
@@ -156,6 +226,15 @@ def switch_workspace_context(
     updated_ctx["role"] = target_ws["role_code"]
 
     workspace_resp = _build_workspace_response(updated_ctx)
+    response.set_cookie(
+        key="oh_access_token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=86400,
+        path="/"
+    )
     return SwitchContextResponse(access_token=token, workspace=workspace_resp)
 
 @router.get("/workspace/roles")

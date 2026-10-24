@@ -44,7 +44,7 @@ import {
 
 export default function HospitalBillingOperationsPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [activeTab, setActiveTab] = useState<"invoices" | "charges" | "payments" | "refunds" | "adjustments">("invoices");
   const [loading, setLoading] = useState(true);
@@ -101,9 +101,9 @@ export default function HospitalBillingOperationsPage() {
       const [invRes, chgRes, payRes, refRes, adjRes, anaRes] = await Promise.all([
         phase5Api.listInvoices({ hospital_id: activeHospitalId }).catch(() => []),
         phase5Api.listCharges({ hospital_id: activeHospitalId }).catch(() => []),
-        phase5Api.listPayments(activeHospitalId).catch(() => []),
-        phase5Api.listRefunds(activeHospitalId).catch(() => []),
-        phase5Api.listAdjustments(activeHospitalId).catch(() => []),
+        phase5Api.listPayments({ hospital_id: activeHospitalId }).catch(() => []),
+        phase5Api.listRefunds({ hospital_id: activeHospitalId }).catch(() => []),
+        phase5Api.listAdjustments({ hospital_id: activeHospitalId }).catch(() => []),
         phase5Api.getFinancialAnalytics(activeHospitalId).catch(() => null)
       ]);
 

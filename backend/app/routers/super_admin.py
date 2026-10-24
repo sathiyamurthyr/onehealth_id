@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.response import success_response, error_response
-from backend.app.core.rbac import require_permission
+from backend.app.core.rbac import require_permission, get_current_user_context
 import logging
 
 logger = logging.getLogger("ohid.router.super_admin")
@@ -22,6 +22,18 @@ class HospitalStatusUpdateRequest(BaseModel):
     new_status: str = Field(..., description="ACTIVE, SUSPENDED, INACTIVE, UNDER_REVIEW, TERMINATED")
     reason: str = Field(..., min_length=5, description="Mandatory operational or payment audit reason")
     ticket_ref: Optional[str] = None
+
+class ApplicationDecisionRequest(BaseModel):
+    decision_notes: Optional[str] = "Approved by Super Admin after regulatory verification."
+
+class ApplicationRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=5, description="Mandatory regulatory or statutory rejection reason")
+
+class ApplicationRequestInfoRequest(BaseModel):
+    notes: str = Field(..., min_length=5, description="Mandatory details of what information/documents are required")
+
+class ApplicationReviewRequest(BaseModel):
+    notes: Optional[str] = "Review started by Super Admin"
 
 class HospitalOnboardRequest(BaseModel):
     name: str = Field(..., min_length=2)
@@ -232,20 +244,156 @@ def get_hospital_details(hospital_id: str):
 def update_hospital_status(
     hospital_id: str,
     payload: HospitalStatusUpdateRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Updates hospital status (ACTIVE, SUSPENDED, INACTIVE, etc.) with mandatory audit reason."""
     try:
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
         res = sp_repository.update_platform_hospital_status(
             hospital_id=hospital_id,
             new_status=payload.new_status,
             reason=payload.reason,
-            ticket_ref=payload.ticket_ref
+            ticket_ref=payload.ticket_ref,
+            admin_user_id=admin_user_id
         )
         return success_response(data=res, message=res.get("message", "Status updated"))
     except Exception as e:
         logger.error(f"Error updating hospital status: {e}")
         return error_response(message=str(e), status_code=500)
+
+# --------------------------------------------------------------------------
+# Hospital & Clinic Registration Application Review & Approval Workflow
+# --------------------------------------------------------------------------
+
+@router.get("/applications")
+def list_facility_applications(
+    status: Optional[str] = Query(None, description="SUBMITTED, UNDER_REVIEW, NEEDS_INFORMATION, APPROVED, REJECTED, SUSPENDED, ALL"),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    Lists hospital & clinic registration applications awaiting or undergoing Super Admin review.
+    """
+    try:
+        apps = sp_repository.list_facility_applications_super_admin(
+            status=status, search=search, limit=limit, offset=offset
+        )
+        return success_response(data=apps, message=f"Loaded {len(apps)} facility applications")
+    except Exception as e:
+        logger.error(f"Error listing facility applications: {e}")
+        return error_response(message=str(e), status_code=500)
+
+@router.get("/applications/{hospital_id}")
+def get_facility_application_details(hospital_id: str):
+    """
+    360-degree review view of a hospital/clinic application including uploaded documents and audit trail.
+    """
+    try:
+        app_details = sp_repository.get_facility_application_details_super_admin(hospital_id)
+        if not app_details:
+            raise HTTPException(status_code=404, detail="Facility application not found")
+        return success_response(data=app_details, message="Facility application details loaded")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading facility application details: {e}")
+        return error_response(message=str(e), status_code=500)
+
+@router.post("/applications/{hospital_id}/review")
+def review_facility_application(
+    hospital_id: str,
+    payload: Optional[ApplicationReviewRequest] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Transitions application from SUBMITTED to UNDER_REVIEW.
+    """
+    try:
+        notes = payload.notes if payload else "Super Admin review started"
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
+        admin_username = current_user.get("username") or "admin"
+        res = sp_repository.review_facility_application_super_admin(
+            hospital_id=hospital_id,
+            admin_user_id=admin_user_id,
+            admin_username=admin_username,
+            notes=notes
+        )
+        return success_response(data=res, message=res.get("message", "Application moved to UNDER_REVIEW"))
+    except Exception as e:
+        logger.error(f"Error starting review for {hospital_id}: {e}")
+        return error_response(message=str(e), status_code=400)
+
+@router.post("/applications/{hospital_id}/approve")
+def approve_facility_application(
+    hospital_id: str,
+    payload: ApplicationDecisionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Explicit Super Admin approval. Atomically transitions lifecycle_status to APPROVED,
+    sets is_active=True, provisions default main branch, activates verification record.
+    """
+    try:
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
+        admin_username = current_user.get("username") or "admin"
+        res = sp_repository.approve_facility_application_super_admin(
+            hospital_id=hospital_id,
+            admin_user_id=admin_user_id,
+            admin_username=admin_username,
+            decision_notes=payload.decision_notes or "Approved by Super Admin"
+        )
+        return success_response(data=res, message=res.get("message", "Facility approved successfully"))
+    except Exception as e:
+        logger.error(f"Error approving facility {hospital_id}: {e}")
+        return error_response(message=str(e), status_code=400)
+
+@router.post("/applications/{hospital_id}/reject")
+def reject_facility_application(
+    hospital_id: str,
+    payload: ApplicationRejectRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Explicit Super Admin rejection with mandatory audit reason.
+    """
+    try:
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
+        admin_username = current_user.get("username") or "admin"
+        res = sp_repository.reject_facility_application_super_admin(
+            hospital_id=hospital_id,
+            admin_user_id=admin_user_id,
+            admin_username=admin_username,
+            reason=payload.reason
+        )
+        return success_response(data=res, message=res.get("message", "Facility application rejected"))
+    except Exception as e:
+        logger.error(f"Error rejecting facility {hospital_id}: {e}")
+        return error_response(message=str(e), status_code=400)
+
+@router.post("/applications/{hospital_id}/request-info")
+def request_info_facility_application(
+    hospital_id: str,
+    payload: ApplicationRequestInfoRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Requests additional documentation or clarification from the applicant (NEEDS_INFORMATION state).
+    """
+    try:
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
+        admin_username = current_user.get("username") or "admin"
+        res = sp_repository.request_info_facility_application_super_admin(
+            hospital_id=hospital_id,
+            admin_user_id=admin_user_id,
+            admin_username=admin_username,
+            notes=payload.notes
+        )
+        return success_response(data=res, message=res.get("message", "Information requested from applicant"))
+    except Exception as e:
+        logger.error(f"Error requesting info for facility {hospital_id}: {e}")
+        return error_response(message=str(e), status_code=400)
 
 @router.get("/hospitals/{hospital_id}/features")
 @router.get("/features/{hospital_id}")

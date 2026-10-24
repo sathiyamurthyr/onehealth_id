@@ -1461,8 +1461,16 @@ def create_patient_visit_encounter(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient record not found.")
 
-    target_hosp = user.get("hospital_ref_id") or patient.get("hospital_id") or "hosp-kedar"
-    doc_id = payload.doctor_id if payload and payload.doctor_id else "doc-k-01"
+    target_hosp = user.get("hospital_ref_id") or patient.get("hospital_id")
+    if not target_hosp:
+        raise HTTPException(status_code=400, detail="Hospital scope is required for check-in")
+    doc_id = payload.doctor_id if payload and payload.doctor_id else None
+    if not doc_id:
+        docs = sp_repository.list_doctors(target_hosp)
+        if docs:
+            doc_id = docs[0].get("id")
+        else:
+            raise HTTPException(status_code=400, detail="No doctor available at this facility for check-in")
 
     # Create appointment / visit
     appt = sp_repository.book_patient_appointment(
@@ -1519,5 +1527,120 @@ def register_reception_walk_in(
         actor_id=actor_id
     )
 
+# =============================================================================
+# PUBLIC HOSPITAL & CLINIC REGISTRATION & APPLICATION TRACKING
+# =============================================================================
 
+class FacilityRegistrationRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=128, description="Official Facility or Hospital/Clinic Name")
+    facility_type: str = Field("HOSPITAL", description="HOSPITAL or CLINIC")
+    display_name: Optional[str] = None
+    legal_name: Optional[str] = None
+    ownership_type: Optional[str] = "PRIVATE"
+    registration_number: str = Field(..., min_length=2, max_length=128, description="Clinical establishment / state registration number")
+    registration_authority: Optional[str] = "State Health Directorate"
+    registration_date: Optional[str] = None
+    registration_expiry: Optional[str] = None
+    address: str = Field(..., min_length=3, description="Registered street address")
+    city: str = Field(..., min_length=2, description="City")
+    state: str = Field(..., min_length=2, description="State")
+    country: Optional[str] = "India"
+    pin_code: str = Field(..., min_length=4, max_length=10, description="Postal code")
+    phone: str = Field(..., min_length=10, description="Official telephone or 10-digit mobile")
+    email: str = Field(..., min_length=5, description="Official registered organization email")
+    website: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    rep_name: str = Field(..., min_length=2, max_length=128, description="Authorized representative name")
+    rep_designation: Optional[str] = "Authorized Signatory / Medical Director"
+    rep_email: str = Field(..., min_length=5, description="Authorized representative email")
+    rep_phone: str = Field(..., min_length=10, description="Authorized representative phone")
+    supporting_documents: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Uploaded license certificates, accreditation, or statutory documents")
 
+class FacilityApplicationUpdateRequest(BaseModel):
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pin_code: Optional[str] = None
+    phone: Optional[str] = None
+    rep_name: Optional[str] = None
+    rep_phone: Optional[str] = None
+    supporting_documents: Optional[List[Dict[str, Any]]] = None
+
+@router.post("/register")
+def register_facility_public(payload: FacilityRegistrationRequest):
+    """
+    Public self-registration for hospitals and clinics.
+    Application defaults to SUBMITTED and remains strictly blocked from platform access
+    until Super Admin approval.
+    """
+    try:
+        data = payload.model_dump()
+        # Security: Strip any client attempt to self-assign administrative roles
+        data.pop("role", None)
+        data.pop("roles", None)
+        data.pop("is_active", None)
+        data.pop("is_verified", None)
+        data.pop("lifecycle_status", None)
+
+        res = sp_repository.register_facility_application(data)
+        return {
+            "status": "success",
+            "data": res,
+            "message": "Hospital/Clinic application submitted successfully and is queued for Super Admin review."
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error registering facility application: {e}")
+        raise HTTPException(status_code=500, detail="Internal error submitting facility application")
+
+@router.get("/applications/{application_ref}")
+def get_facility_application_status_public(application_ref: str):
+    """
+    Public status tracking endpoint for applicants.
+    """
+    try:
+        app_status = sp_repository.get_facility_application_by_ref(application_ref)
+        if not app_status:
+            raise HTTPException(status_code=404, detail="Application reference not found")
+        return {
+            "status": "success",
+            "data": app_status,
+            "message": "Application status loaded"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching application {application_ref}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/applications/{application_ref}/update")
+def update_facility_application_public(application_ref: str, payload: FacilityApplicationUpdateRequest):
+    """
+    Public endpoint for applicants to provide requested information or updated documents.
+    """
+    try:
+        data = payload.model_dump(exclude_unset=True)
+        # Security: Prevent client from modifying approval state
+        data.pop("lifecycle_status", None)
+        data.pop("status", None)
+        data.pop("is_active", None)
+        data.pop("is_verified", None)
+
+        res = sp_repository.update_facility_application_by_ref(application_ref, data)
+        return {
+            "status": "success",
+            "data": res,
+            "message": res.get("message", "Application updated successfully")
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error updating application {application_ref}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Secondary router for plural /hospitals route prefix
+hospitals_router = APIRouter(prefix="/hospitals", tags=["Hospitals & Clinics Registration"])
+hospitals_router.add_api_route("/register", register_facility_public, methods=["POST"])
+hospitals_router.add_api_route("/applications/{application_ref}", get_facility_application_status_public, methods=["GET"])
+hospitals_router.add_api_route("/applications/{application_ref}/update", update_facility_application_public, methods=["POST"])

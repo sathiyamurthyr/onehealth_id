@@ -240,7 +240,7 @@ const DEFAULT_DEPARTMENTS = [
 export default function HospitalAdminOnboardingWizard() {
   const router = useRouter();
   const { workspace, user } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);

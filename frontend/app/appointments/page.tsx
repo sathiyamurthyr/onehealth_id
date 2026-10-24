@@ -33,12 +33,7 @@ import { LoadingState, EmptyState, ErrorState } from "@/components/ui/FeedbackSt
 
 export default function AppointmentsPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId =
-    workspace?.hospital_ref_id ||
-    (typeof window !== "undefined"
-      ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id
-      : "") ||
-    "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);

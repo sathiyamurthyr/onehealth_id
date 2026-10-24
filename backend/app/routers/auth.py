@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, status
+from fastapi import APIRouter, HTTPException, Depends, Header, status, Response, Request
 from typing import Optional
 import logging
 from pydantic import BaseModel, Field
@@ -15,10 +15,14 @@ logger = logging.getLogger("ohid.auth")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
-    if not authorization or not authorization.startswith("Bearer "):
+def get_current_user(request: Optional[Request] = None, authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    elif request and hasattr(request, "cookies") and request.cookies.get("oh_access_token"):
+        token = request.cookies.get("oh_access_token")
+    if not token:
         return None
-    token = authorization.split(" ")[1]
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username = payload.get("sub")
@@ -34,7 +38,7 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[di
     return None
 
 @router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit_login)])
-def login(creds: LoginRequest):
+def login(creds: LoginRequest, response: Response):
     identifier = creds.username.strip()
     # Reject email logins per Phase 1 Architecture Conformance
     if "@" in identifier:
@@ -80,6 +84,36 @@ def login(creds: LoginRequest):
         permissions=active_perms
     )
 
+    # Enforce organization approval status during login
+    is_super = active_role in ("SUPER_ADMIN", "PLATFORM_ADMIN") or "system.manage" in active_perms
+    if active_hospital and not is_super:
+        hosp_stat = sp_repository.get_hospital_approval_status(active_hospital)
+        if not hosp_stat:
+            raise HTTPException(status_code=403, detail="Forbidden: Organization facility not found.")
+        lc = (hosp_stat.get("lifecycle_status") or "").upper()
+        if lc in ("SUBMITTED", "PENDING", "UNDER_REVIEW"):
+            raise HTTPException(status_code=403, detail="Forbidden: Hospital/Clinic registration is pending Super Admin review and approval.")
+        elif lc == "NEEDS_INFORMATION":
+            raise HTTPException(status_code=403, detail="Forbidden: Hospital/Clinic application requires additional information before approval.")
+        elif lc == "REJECTED":
+            raise HTTPException(status_code=403, detail="Forbidden: Hospital/Clinic application was rejected by Super Admin.")
+        elif lc == "SUSPENDED" or not hosp_stat.get("is_active"):
+            raise HTTPException(status_code=403, detail="Forbidden: Hospital/Clinic facility has been suspended by Super Admin.")
+        elif lc != "APPROVED" and hosp_stat.get("status") != "ACTIVE":
+            raise HTTPException(status_code=403, detail=f"Forbidden: Organization access not authorized (Status: {lc}).")
+
+        # Clinical staff verification check
+        if active_role in ("DOCTOR", "NURSE", "CLINICAL_STAFF", "LAB_TECHNICIAN", "PHARMACIST", "RADIOLOGIST"):
+            membership = sp_repository.check_staff_membership_authorization(
+                user_id=user_ref_id,
+                hospital_id=active_hospital
+            )
+            if not membership or not membership.get("is_active"):
+                raise HTTPException(status_code=403, detail="Forbidden: Clinical staff member is not active or authorized for this hospital.")
+            verif = (membership.get("verification_status") or "").upper()
+            if verif not in ("VERIFIED", "APPROVED"):
+                raise HTTPException(status_code=403, detail="Forbidden: Clinical staff credentials have not been verified and authorized by the hospital.")
+
     token = create_access_token({
         "sub": profile.username,
         "uid": profile.user_ref_id,
@@ -89,10 +123,20 @@ def login(creds: LoginRequest):
         "hospital_ref_id": profile.hospital_ref_id
     })
 
+    response.set_cookie(
+        key="oh_access_token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=86400,
+        path="/"
+    )
+
     return LoginResponse(access_token=token, user=profile)
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_login)])
-def register(payload: RegisterRequest):
+def register(payload: RegisterRequest, response: Response):
     """
     Public/Citizen self-registration for OneHealth ID.
     Enforces 10-digit mobile verification, bcrypt password hashing,
@@ -192,6 +236,16 @@ def register(payload: RegisterRequest):
         "hospital_ref_id": profile.hospital_ref_id
     })
 
+    response.set_cookie(
+        key="oh_access_token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=86400,
+        path="/"
+    )
+
     return RegisterResponse(
         message=f"Registration successful! Your OneHealth ID is {reg_result['onehealth_id']}.",
         user_id=reg_result["user_id"],
@@ -203,8 +257,8 @@ def register(payload: RegisterRequest):
     )
 
 @router.get("/me")
-def get_me(authorization: Optional[str] = Header(None)):
-    user_row = get_current_user(authorization)
+def get_me(request: Request, authorization: Optional[str] = Header(None)):
+    user_row = get_current_user(request, authorization)
     if not user_row:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -242,9 +296,9 @@ def get_me(authorization: Optional[str] = Header(None)):
     return success_response(data=profile.model_dump())
 
 @router.get("/me/workspace")
-def get_me_workspace(authorization: Optional[str] = Header(None)):
+def get_me_workspace(request: Request, authorization: Optional[str] = Header(None)):
     """Authoritative workspace resolution for authenticated user."""
-    user_row = get_current_user(authorization)
+    user_row = get_current_user(request, authorization)
     if not user_row:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -271,8 +325,9 @@ def get_me_workspace(authorization: Optional[str] = Header(None)):
     return success_response(data=ws)
 
 @router.post("/logout")
-def logout(authorization: Optional[str] = Header(None)):
+def logout(response: Response, authorization: Optional[str] = Header(None)):
     """Logs out user and terminates session."""
+    response.delete_cookie(key="oh_access_token", path="/")
     return success_response(data={"message": "Logged out successfully"})
 
 class AcceptInvitationRequest(BaseModel):
@@ -313,4 +368,310 @@ def accept_invitation(token: str, payload: AcceptInvitationRequest):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to accept invitation: {e}")
+
+# --------------------------------------------------------------------------
+# SECURE FORGOT PASSWORD, EMAIL OTP & SUPER ADMIN ASSISTANCE WORKFLOW
+# --------------------------------------------------------------------------
+
+import uuid
+import secrets
+import hashlib
+import hmac
+import re
+from datetime import datetime, timedelta, timezone
+from backend.app.core.security import get_password_hash
+from backend.app.core.rate_limit import SlidingWindowRateLimiter, get_client_ip
+from backend.app.services.email_service import email_service
+
+forgot_password_ip_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=600)
+forgot_password_email_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=600)
+privileged_reset_limiter = SlidingWindowRateLimiter(max_requests=3, window_seconds=900)
+otp_verify_ip_limiter = SlidingWindowRateLimiter(max_requests=30, window_seconds=600)
+assistance_request_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=3600)
+
+GENERIC_RESET_INIT_RESPONSE = {
+    "message": "If an active account is associated with this email address, a password reset verification code has been dispatched. Please check your inbox and spam folder.",
+    "status": "REQUEST_ACCEPTED"
+}
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+def _hash_otp(otp: str) -> str:
+    return hashlib.sha256(f"{otp}:{settings.SECRET_KEY}".encode()).hexdigest()
+
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(f"{token}:{settings.SECRET_KEY}".encode()).hexdigest()
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+class VerifyResetOtpRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    otp: str = Field(..., min_length=6, max_length=6)
+
+class ResetPasswordConfirmRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    reset_token: str = Field(..., min_length=16, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
+
+class ResendResetOtpRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+class PasswordAssistanceRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    category: str = Field("OTP_DELIVERY", max_length=64)
+    description: Optional[str] = Field(None, max_length=1000)
+    contact_phone: Optional[str] = Field(None, max_length=20)
+
+@router.post("/forgot-password")
+def request_password_reset(payload: ForgotPasswordRequest, request: Request):
+    """
+    Initiates password recovery by sending a 6-digit OTP to the user's verified registered email.
+    Strictly anti-enumeration: displays a generic response regardless of whether an account exists.
+    """
+    clean_email = payload.email.strip().lower()
+    if not EMAIL_REGEX.match(clean_email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    client_ip = get_client_ip(request)
+    forgot_password_ip_limiter.check(f"fp_ip_{client_ip}")
+    forgot_password_email_limiter.check(f"fp_email_{clean_email}")
+
+    user = sp_repository.get_user_by_email(clean_email)
+    if not user:
+        # Anti-enumeration: Return generic accepted response
+        return success_response(data=GENERIC_RESET_INIT_RESPONSE)
+
+    user_role = (user.get("role") or "").upper()
+    if user_role in ("HOSPITAL_ADMIN", "SUPER_ADMIN"):
+        privileged_reset_limiter.check(f"priv_{user['id']}")
+
+    # Generate 6-digit cryptographically secure numeric OTP
+    otp = f"{secrets.randbelow(900000) + 100000:06d}"
+    otp_hash = _hash_otp(otp)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    correlation_id = f"corr-pwd-{uuid.uuid4().hex[:10]}"
+
+    sp_repository.create_password_reset_otp(
+        user_id=user["id"],
+        email=clean_email,
+        otp_hash=otp_hash,
+        expires_at=expires_at,
+        correlation_id=correlation_id,
+        ip_address=client_ip,
+        user_agent=request.headers.get("user-agent")
+    )
+
+    # Dispatch email
+    email_service.send_password_reset_otp(
+        recipient_email=user["email"],
+        otp_code=otp,
+        expires_in_minutes=5,
+        correlation_id=correlation_id
+    )
+
+    return success_response(data=GENERIC_RESET_INIT_RESPONSE)
+
+@router.post("/verify-reset-otp")
+def verify_reset_otp(payload: VerifyResetOtpRequest, request: Request):
+    """
+    Verifies the short-lived 6-digit OTP and generates an ephemeral password reset session token.
+    Enforces maximum 5 attempts and short expiry.
+    """
+    clean_email = payload.email.strip().lower()
+    clean_otp = payload.otp.strip()
+
+    if not clean_otp.isdigit() or len(clean_otp) != 6:
+        raise HTTPException(status_code=400, detail="Verification code must be a 6-digit number.")
+
+    client_ip = get_client_ip(request)
+    otp_verify_ip_limiter.check(f"v_otp_ip_{client_ip}")
+
+    otp_record = sp_repository.get_active_password_reset_otp(clean_email)
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+
+    if otp_record["attempts_count"] >= otp_record["max_attempts"]:
+        sp_repository.invalidate_otp(otp_record["id"])
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum verification attempts exceeded. Please request a new verification code."
+        )
+
+    attempts = sp_repository.increment_otp_attempts(otp_record["id"])
+    candidate_hash = _hash_otp(clean_otp)
+
+    if not hmac.compare_digest(otp_record["otp_hash"], candidate_hash):
+        if attempts >= otp_record["max_attempts"]:
+            sp_repository.invalidate_otp(otp_record["id"])
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum verification attempts exceeded. Please request a new verification code."
+            )
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+
+    # Generate ephemeral reset token for password update
+    reset_token = secrets.token_urlsafe(32)
+    reset_token_hash = _hash_reset_token(reset_token)
+
+    sp_repository.verify_password_reset_otp(otp_record["id"], reset_token_hash)
+
+    return success_response(data={
+        "message": "Verification code confirmed successfully.",
+        "reset_token": reset_token,
+        "expires_in_seconds": 600
+    })
+
+@router.post("/reset-password")
+def confirm_password_reset(payload: ResetPasswordConfirmRequest, request: Request):
+    """
+    Updates the account password using the verified ephemeral reset token.
+    Enforces bcrypt hashing, revokes active sessions, and invalidates the reset session.
+    """
+    clean_email = payload.email.strip().lower()
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+    has_letter = any(c.isalpha() for c in payload.new_password)
+    has_digit = any(c.isdigit() or not c.isalnum() for c in payload.new_password)
+    if not (has_letter and has_digit):
+        raise HTTPException(status_code=400, detail="Password must contain both letters and numbers or symbols.")
+
+    new_hash = get_password_hash(payload.new_password)
+    candidate_token_hash = _hash_reset_token(payload.reset_token.strip())
+
+    try:
+        user_res = sp_repository.validate_and_consume_reset_token(
+            email=clean_email,
+            reset_token_hash=candidate_token_hash,
+            new_password_hash=new_hash
+        )
+        return success_response(data={
+            "message": "Your password has been reset successfully. Please sign in with your new credentials.",
+            "email": user_res.get("email")
+        })
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Failed to complete password reset: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to reset password. Please try again.")
+
+@router.post("/resend-reset-otp")
+def resend_reset_otp(payload: ResendResetOtpRequest, request: Request):
+    """
+    Resends password reset OTP subject to cooldown and anti-abuse limits.
+    """
+    clean_email = payload.email.strip().lower()
+    if not EMAIL_REGEX.match(clean_email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    client_ip = get_client_ip(request)
+    forgot_password_ip_limiter.check(f"fp_ip_{client_ip}")
+
+    # Check cooldown on existing active OTP
+    active_otp = sp_repository.get_active_password_reset_otp(clean_email)
+    if active_otp:
+        created_at = active_otp["created_at"]
+        if created_at:
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            delta = (datetime.now(timezone.utc) - created_at).total_seconds()
+            if delta < 60:
+                cooldown_remaining = int(60 - delta)
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Please wait {cooldown_remaining} seconds before requesting another verification code."
+                )
+
+    user = sp_repository.get_user_by_email(clean_email)
+    if not user:
+        return success_response(data=GENERIC_RESET_INIT_RESPONSE)
+
+    user_role = (user.get("role") or "").upper()
+    if user_role in ("HOSPITAL_ADMIN", "SUPER_ADMIN"):
+        privileged_reset_limiter.check(f"priv_{user['id']}")
+
+    otp = f"{secrets.randbelow(900000) + 100000:06d}"
+    otp_hash = _hash_otp(otp)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    correlation_id = f"corr-pwd-resend-{uuid.uuid4().hex[:8]}"
+
+    sp_repository.create_password_reset_otp(
+        user_id=user["id"],
+        email=clean_email,
+        otp_hash=otp_hash,
+        expires_at=expires_at,
+        correlation_id=correlation_id,
+        ip_address=client_ip,
+        user_agent=request.headers.get("user-agent")
+    )
+
+    email_service.send_password_reset_otp(
+        recipient_email=user["email"],
+        otp_code=otp,
+        expires_in_minutes=5,
+        correlation_id=correlation_id
+    )
+
+    return success_response(data=GENERIC_RESET_INIT_RESPONSE)
+
+@router.post("/request-assistance")
+def request_password_assistance(payload: PasswordAssistanceRequest, request: Request):
+    """
+    Submits a password recovery assistance request to the Super Admin support channel.
+    Generates a unique reference number (REQ-2026-XXXXXX) and dispatches an alert email.
+    """
+    clean_email = payload.email.strip().lower()
+    if not EMAIL_REGEX.match(clean_email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    client_ip = get_client_ip(request)
+    assistance_request_limiter.check(f"asst_ip_{client_ip}")
+
+    category = payload.category.strip().upper()
+    if category not in ("OTP_DELIVERY", "OTP_VERIFICATION", "ACCOUNT_RECOVERY"):
+        category = "ACCOUNT_RECOVERY"
+
+    ticket = sp_repository.create_password_assistance_ticket(
+        email=clean_email,
+        category=category,
+        description=payload.description,
+        contact_phone=payload.contact_phone,
+        client_ip=client_ip
+    )
+
+    # Notify Super Admin channel via email
+    masked = email_service._mask_email(clean_email)
+    email_service.send_super_admin_assistance_alert(
+        ticket_number=ticket["reference_number"],
+        category=category,
+        masked_email=masked,
+        user_role=ticket.get("user_role"),
+        client_ip=client_ip,
+        notes=payload.description
+    )
+
+    return success_response(data={
+        "reference_number": ticket["reference_number"],
+        "status": ticket["status"],
+        "message": "Your assistance request has been submitted to the Super Admin support team. Please save your reference number for communication."
+    })
+
+@router.get("/assistance-status/{reference_number}")
+def get_assistance_status(reference_number: str):
+    """
+    Public lookup for assistance request status by tracking reference number.
+    Returns sanitized status without sensitive account data.
+    """
+    ticket = sp_repository.get_assistance_ticket_by_number(reference_number)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Assistance request not found.")
+
+    return success_response(data=ticket, message="Assistance request status loaded")
+
 

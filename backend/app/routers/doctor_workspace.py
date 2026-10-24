@@ -309,7 +309,7 @@ def get_effective_doctor_id(user: Dict[str, Any]) -> str:
         doc = sp_repository.get_doctor_by_user_id(user_ref_id)
         if doc and doc.get("id"):
             return doc["id"]
-    return user.get("doctor_id") or "doc-k-01"
+    return user.get("doctor_id") or user_ref_id or ""
 
 
 @router.post("/patients/{patient_id}/investigations", response_model=List[Dict[str, Any]], status_code=status.HTTP_201_CREATED)
@@ -321,7 +321,9 @@ def order_patient_investigations(
     """Doctor orders multi-category investigations directly from consultation."""
     patient = verify_doctor_patient_access(patient_id, user)
     doctor_id = get_effective_doctor_id(user)
-    hospital_id = patient.get("hospital_id") or user.get("hospital_ref_id") or "hosp-kedar"
+    hospital_id = patient.get("hospital_id") or user.get("hospital_ref_id")
+    if not hospital_id:
+        raise HTTPException(status_code=400, detail="Hospital scope is required for investigation ordering")
 
     orders_data = [item.model_dump() for item in payload.orders]
     created = sp_repository.order_investigations(

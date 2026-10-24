@@ -76,6 +76,16 @@ def list_my_family_members(current_user: Dict[str, Any] = Depends(get_current_us
     members = sp_repository.list_family_members(patient["id"])
     return success_response(data=members)
 
+@router.get("/me/family/count")
+def get_my_family_members_count(current_user: Dict[str, Any] = Depends(get_current_user_context)):
+    """
+    Returns authoritative database-backed count of authorized linked family members
+    for the authenticated patient. Excludes the patient themselves.
+    """
+    patient = _resolve_authenticated_patient(current_user)
+    members = sp_repository.list_family_members(patient["id"])
+    return success_response(data={"count": len(members), "patient_id": patient["id"]})
+
 @router.get("/me/family/overview")
 def get_my_family_overview(current_user: Dict[str, Any] = Depends(get_current_user_context)):
     """

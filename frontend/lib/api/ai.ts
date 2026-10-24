@@ -26,16 +26,7 @@ import {
 } from "../types";
 
 const getHospitalId = (override?: string): string => {
-  if (override && override.trim()) return override;
-  if (typeof window !== "undefined") {
-    try {
-      const ws = JSON.parse(localStorage.getItem("oh_workspace") || "{}");
-      if (ws.hospital_ref_id) return ws.hospital_ref_id;
-    } catch {
-      // ignore
-    }
-  }
-  return "";
+  return override?.trim() || "";
 };
 
 export const aiApi = {

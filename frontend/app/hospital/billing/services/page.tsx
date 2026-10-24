@@ -29,7 +29,7 @@ import { HospitalService, PriceList, MedicalPackage, PriceListItem } from "@/lib
 
 export default function ServicesAndPricingPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   const [activeTab, setActiveTab] = useState<"services" | "pricelists" | "packages">("services");
   const [loading, setLoading] = useState(true);

@@ -15,7 +15,7 @@ UPDATE oh_id.roles SET
     navigation_config = '[
         {"title": "Overview", "href": "/patient", "icon": "LayoutDashboard", "section": "My Health"},
         {"title": "My Profile", "href": "/patient/profile", "icon": "User", "section": "My Health"},
-        {"title": "Family Members", "href": "/patient/family", "icon": "Users", "section": "My Health", "badge": "4"},
+        {"title": "Family Members", "href": "/patient/family", "icon": "Users", "section": "My Health"},
         {"title": "My OneHealth ID", "href": "/patient/onehealth-id", "icon": "CreditCard", "section": "My Health"},
         {"title": "My QR", "href": "/patient/qr", "icon": "QrCode", "section": "My Health"},
         {"title": "Appointments", "href": "/patient/appointments", "icon": "Calendar", "section": "Medical Journey"},

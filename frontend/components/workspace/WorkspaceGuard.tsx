@@ -21,19 +21,14 @@ export function WorkspaceGuard({
   const { workspace, user, isLoading, hasPermission, hasAnyPermission, refreshWorkspace } = useWorkspace();
   const router = useRouter();
 
-  // If token exists in localStorage but workspace not yet loaded, refresh instead of kicking to login
+  // If workspace not loaded after initial resolution, redirect to login
   React.useEffect(() => {
     if (!isLoading && (!workspace || !user) && typeof window !== "undefined") {
-      const token = localStorage.getItem("oh_access_token");
-      if (token) {
-        refreshWorkspace();
-      } else {
-        router.push("/login");
-      }
+      router.push("/login");
     }
-  }, [isLoading, workspace, user, refreshWorkspace, router]);
+  }, [isLoading, workspace, user, router]);
 
-  if (isLoading || (!workspace && typeof window !== "undefined" && !!localStorage.getItem("oh_access_token"))) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center text-slate-600">
         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />

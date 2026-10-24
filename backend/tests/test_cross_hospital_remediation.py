@@ -75,7 +75,7 @@ def remediation_env():
                 INSERT INTO oh_id.hospitals (id, name, code, is_active)
                 VALUES (%s, %s, %s, TRUE)
                 ON CONFLICT (id) DO NOTHING;
-            """, (hid, hname, hid[:8].upper()))
+            """, (hid, hname, hid.upper()))
 
         # Doctors
         for did, hid, dname in [

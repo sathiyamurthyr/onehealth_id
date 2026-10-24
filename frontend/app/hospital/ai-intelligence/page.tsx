@@ -38,7 +38,7 @@ import {
 export default function HospitalAIIntelligencePage() {
   const { workspace } = useWorkspace();
   const [activeTab, setActiveTab] = useState<"copilot" | "diagnostics" | "predictions" | "bed_forecast">("copilot");
-  const hospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const hospitalId = workspace?.hospital_ref_id || "";
 
   // State for Management Copilot
   const [copilotQuery, setCopilotQuery] = useState("");

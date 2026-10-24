@@ -201,16 +201,7 @@ export interface RegulatoryComplianceReport {
 }
 
 const getHospitalId = (explicitId?: string): string => {
-  if (explicitId) return explicitId;
-  if (typeof window !== "undefined") {
-    try {
-      const ws = JSON.parse(localStorage.getItem("oh_workspace") || "{}");
-      if (ws.hospital_ref_id) return ws.hospital_ref_id;
-    } catch {
-      // ignore
-    }
-  }
-  return "";
+  return explicitId || "";
 };
 
 export const complianceApi = {

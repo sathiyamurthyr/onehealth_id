@@ -11,7 +11,9 @@ from backend.app.core.rbac import (
     require_any_permission,
     validate_hospital_tenant_scope
 )
+from backend.app.core.security import verify_password
 from backend.app.core.logging import logger, log_security_event
+from backend.app.database.session import get_readonly_cursor
 
 router = APIRouter(prefix="/prescriptions", tags=["Prescription Management & Digital Signing"])
 
@@ -113,15 +115,49 @@ def create_prescription(
     resolved_doctor_id = payload.doctor_id
     if not resolved_doctor_id:
         doc = sp_repository.get_doctor_by_user_id(current_user["user_ref_id"])
-        resolved_doctor_id = doc.get("id") if doc else "doc-k-01"
+        resolved_doctor_id = doc.get("id") if doc else (current_user.get("user_ref_id") or current_user.get("id"))
 
     # 4. Resolve hospital context
-    resolved_hospital_id = payload.hospital_id or current_user.get("hospital_ref_id") or patient.get("hospital_id") or "hosp-kedar"
+    resolved_hospital_id = payload.hospital_id or current_user.get("hospital_ref_id") or patient.get("hospital_id")
+    if not resolved_hospital_id:
+        raise HTTPException(status_code=400, detail="Hospital context is required for prescription creation")
 
     # 5. Handle PIN verification if required
     if payload.requires_pin:
-        # Standard clinical PIN for demonstration / test is '1234' or matching doctor credentials
-        if not payload.verification_pin or payload.verification_pin.strip() not in ["1234", "doctor123", "9999"]:
+        pin = (payload.verification_pin or "").strip()
+        if not pin:
+            raise HTTPException(
+                status_code=400,
+                detail="Prescription verification PIN is invalid. Please enter your authorized 4-digit digital signing PIN."
+            )
+        verified = False
+        doc_pin_hash = None
+        target_doc_id = (doc.get("id") if doc else None) or resolved_doctor_id
+        if target_doc_id:
+            try:
+                with get_readonly_cursor() as cur:
+                    cur.execute(
+                        "SELECT pin_hash FROM oh_id.doctors WHERE id = %s OR user_id = %s LIMIT 1;",
+                        (target_doc_id, current_user.get("user_ref_id") or current_user.get("id"))
+                    )
+                    p_row = cur.fetchone()
+                    if p_row and p_row.get("pin_hash"):
+                        doc_pin_hash = p_row["pin_hash"]
+            except Exception as e:
+                logger.warning(f"Could not load pin_hash for doctor {target_doc_id}: {e}")
+
+        if doc_pin_hash and verify_password(pin, doc_pin_hash):
+            verified = True
+        elif doc and doc.get("user_id"):
+            u = sp_repository.get_user_by_id(doc["user_id"])
+            if u and u.get("password_hash") and verify_password(pin, u["password_hash"]):
+                verified = True
+        elif not doc_pin_hash:
+            cur_u = sp_repository.get_user_by_id(current_user["user_ref_id"])
+            if cur_u and cur_u.get("password_hash") and verify_password(pin, cur_u["password_hash"]):
+                verified = True
+
+        if not verified:
             raise HTTPException(
                 status_code=400,
                 detail="Prescription verification PIN is invalid. Please enter your authorized 4-digit digital signing PIN."
@@ -184,8 +220,13 @@ def get_prescription_details(
     # Patient role authorization check
     if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "system.manage" not in user_perms:
         user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
-        if rx.get("patient_id") != user_ref_id:
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, current_user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if rx.get("patient_id") != effective_patient_id and rx.get("patient_id") != user_ref_id:
+            log_security_event("BOLA_ATTEMPT", actor_id=current_user.get("username"), resource=f"prescription:{prescription_id}", status="DENIED")
             raise HTTPException(status_code=403, detail="Forbidden: You can only view your own prescriptions.")
+    else:
+        validate_hospital_tenant_scope(current_user, rx.get("hospital_id"))
 
     return rx
 
@@ -196,9 +237,17 @@ def finalize_prescription(
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Finalizes and locks the prescription into an immutable version."""
+    user_perms = current_user.get("permissions") or []
+    roles = current_user.get("roles") or [current_user.get("role")]
+    is_clinician = ("DOCTOR" in roles) or ("prescription.create" in user_perms) or ("clinical.write" in user_perms) or ("system.manage" in user_perms)
+    if not is_clinician:
+        raise HTTPException(status_code=403, detail="Forbidden: Only authorized medical doctors can finalize prescriptions.")
+
     rx = sp_repository.get_prescription_by_id(prescription_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
+
+    validate_hospital_tenant_scope(current_user, rx.get("hospital_id"))
 
     signed = sp_repository.sign_prescription(
         prescription_id=prescription_id,
@@ -245,6 +294,17 @@ def get_prescription_print_layout(
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
 
+    user_perms = current_user.get("permissions") or []
+    if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "system.manage" not in user_perms:
+        user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, current_user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if rx.get("patient_id") != effective_patient_id and rx.get("patient_id") != user_ref_id:
+            log_security_event("BOLA_ATTEMPT", actor_id=current_user.get("username"), resource=f"prescription_print:{prescription_id}", status="DENIED")
+            raise HTTPException(status_code=403, detail="Forbidden: You can only print your own prescriptions.")
+    else:
+        validate_hospital_tenant_scope(current_user, rx.get("hospital_id"))
+
     return {
         "layout": "A4_PORTRAIT",
         "header": {
@@ -265,6 +325,17 @@ def generate_prescription_pdf(
     rx = sp_repository.get_prescription_by_id(prescription_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
+
+    user_perms = current_user.get("permissions") or []
+    if "patient.self.read" in user_perms and "clinical.read" not in user_perms and "system.manage" not in user_perms:
+        user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, current_user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if rx.get("patient_id") != effective_patient_id and rx.get("patient_id") != user_ref_id:
+            log_security_event("BOLA_ATTEMPT", actor_id=current_user.get("username"), resource=f"prescription_pdf:{prescription_id}", status="DENIED")
+            raise HTTPException(status_code=403, detail="Forbidden: You can only download your own prescriptions.")
+    else:
+        validate_hospital_tenant_scope(current_user, rx.get("hospital_id"))
 
     return {
         "download_url": f"/api/v1/prescriptions/{prescription_id}/print",

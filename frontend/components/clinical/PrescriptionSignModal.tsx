@@ -219,7 +219,7 @@ export const PrescriptionSignModal: React.FC<PrescriptionSignModalProps> = ({
                   maxLength={6}
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
-                  placeholder="Enter 4 or 6-digit clinical signing PIN (demo: 1234)"
+                  placeholder="Enter 4 or 6-digit clinical signing PIN"
                   className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-mono tracking-widest"
                   autoFocus
                 />

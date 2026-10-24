@@ -33,11 +33,17 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     }
   }
 
+  // Protect state-changing requests against CSRF
+  if (options?.method && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method.toUpperCase())) {
+    headers["X-Requested-With"] = "XMLHttpRequest";
+  }
+
   const cleanEndpoint = endpoint.startsWith("/api/v1")
     ? endpoint.replace(/^\/api\/v1/, "")
     : endpoint;
   const url = `${API_BASE}${cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`}`;
   const response = await fetch(url, {
+    credentials: "include",
     ...options,
     headers,
   });

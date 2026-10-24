@@ -720,6 +720,9 @@ export const patientApi = {
   getFamilyMembers: () =>
     fetchJSON<{ success: boolean; data: FamilyMember[] }>("/me/family"),
 
+  getFamilyCount: () =>
+    fetchJSON<{ success: boolean; data: { count: number; patient_id: string } }>("/me/family/count"),
+
   getFamilyOverview: () =>
     fetchJSON<{ success: boolean; data: FamilyOverview }>("/me/family/overview"),
 

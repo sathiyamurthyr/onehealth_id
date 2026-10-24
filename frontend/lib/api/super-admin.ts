@@ -20,6 +20,52 @@ export interface PlatformMetrics {
   open_support_tickets_count: number;
 }
 
+export interface FacilityApplication {
+  id: string;
+  name: string;
+  display_name?: string;
+  code: string;
+  hospital_type: "HOSPITAL" | "CLINIC";
+  ownership_type?: string;
+  registration_number: string;
+  registration_authority?: string;
+  registration_date?: string;
+  registration_expiry?: string;
+  address?: string;
+  city: string;
+  state: string;
+  country: string;
+  pin_code: string;
+  phone: string;
+  email: string;
+  lifecycle_status: "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_INFORMATION" | "APPROVED" | "REJECTED" | "SUSPENDED";
+  status: string;
+  is_active: boolean;
+  is_verified: boolean;
+  verification_status: string;
+  application_ref: string;
+  rep_name: string;
+  rep_designation?: string;
+  rep_email: string;
+  rep_phone: string;
+  supporting_documents?: Array<{
+    title: string;
+    document_type: string;
+    file_name: string;
+    file_url?: string;
+    uploaded_at?: string;
+  }>;
+  review_notes?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  rejection_reason?: string;
+  created_at: string;
+  updated_at?: string;
+  documents_count?: number;
+  verifications?: any[];
+  audit_history?: any[];
+}
+
 export interface PlatformHospital {
   id: string;
   name: string;
@@ -490,6 +536,44 @@ export const superAdminApi = {
 
   getHealth: async (): Promise<any> => {
     const res = await apiClient.get<any>("/api/v1/super-admin/health");
+    return unwrap<any>(res);
+  },
+
+  listApplications: async (params?: { status?: string; search?: string; limit?: number; offset?: number }): Promise<FacilityApplication[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.append("status", params.status);
+    if (params?.search) searchParams.append("search", params.search);
+    if (params?.limit) searchParams.append("limit", params.limit.toString());
+    if (params?.offset) searchParams.append("offset", params.offset.toString());
+
+    const res = await apiClient.get<FacilityApplication[]>(`/api/v1/super-admin/applications?${searchParams.toString()}`);
+    return unwrap<FacilityApplication[]>(res, []);
+  },
+
+  getApplicationDetails: async (hospitalId: string): Promise<FacilityApplication> => {
+    const res = await apiClient.get<FacilityApplication>(`/api/v1/super-admin/applications/${hospitalId}`);
+    return unwrap<FacilityApplication>(res);
+  },
+
+  reviewApplication: async (hospitalId: string, notes?: string): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/review`, { notes });
+    return unwrap<any>(res);
+  },
+
+  approveApplication: async (hospitalId: string, decisionNotes?: string): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/approve`, {
+      decision_notes: decisionNotes || "Approved by Super Admin after regulatory review",
+    });
+    return unwrap<any>(res);
+  },
+
+  rejectApplication: async (hospitalId: string, reason: string): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/reject`, { reason });
+    return unwrap<any>(res);
+  },
+
+  requestInfoApplication: async (hospitalId: string, notes: string): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/request-info`, { notes });
     return unwrap<any>(res);
   },
 };

@@ -43,7 +43,7 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 
 export default function HospitalUsersPage() {
   const { workspace } = useWorkspace();
-  const activeHospitalId = workspace?.hospital_ref_id || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("oh_workspace") || "{}").hospital_ref_id : "") || "";
+  const activeHospitalId = workspace?.hospital_ref_id || "";
 
   // Data State
   const [users, setUsers] = useState<HospitalUser[]>([]);

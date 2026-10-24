@@ -39,7 +39,7 @@ app.add_middleware(
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Hospital-Ref-Id", "X-Usertype-Ref-Id", "Accept", "Origin", "X-Signature", "X-Idempotency-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-Hospital-Ref-Id", "X-Usertype-Ref-Id", "Accept", "Origin", "X-Signature", "X-Idempotency-Key", "X-Requested-With"],
 )
 
 # API v1 Router Mount
@@ -62,6 +62,7 @@ api_v1.include_router(billing.router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(admin.router)
 api_v1.include_router(hospital.router)
+api_v1.include_router(hospital.hospitals_router)
 api_v1.include_router(compliance.router)
 api_v1.include_router(super_admin.router)
 api_v1.include_router(pharmacy.router)
@@ -131,6 +132,7 @@ app.include_router(billing.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)
 app.include_router(hospital.router)
+app.include_router(hospital.hospitals_router)
 app.include_router(compliance.router)
 app.include_router(super_admin.router)
 app.include_router(pharmacy.router)

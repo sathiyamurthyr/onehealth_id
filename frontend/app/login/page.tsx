@@ -504,14 +504,33 @@ export default function LoginPage() {
                   <span>New to OH-ID? Register</span>
                 </Link>
 
-                <button
-                  type="button"
-                  onClick={() => setForgotModalOpen(true)}
+                <Link
+                  href="/forgot-password"
                   className="text-slate-500 hover:text-slate-800 font-medium transition hover:underline cursor-pointer inline-flex items-center gap-1"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
                   <span>Forgot Password?</span>
-                </button>
+                </Link>
+              </div>
+
+              {/* Facility Onboarding Prompt */}
+              <div className="p-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 leading-tight">Healthcare Facility?</p>
+                    <p className="text-[11px] text-slate-600">Register hospital or clinic for Super Admin review</p>
+                  </div>
+                </div>
+                <Link
+                  href="/register/facility"
+                  className="px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 font-bold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition shadow-xs text-[11px] shrink-0 inline-flex items-center gap-1"
+                >
+                  <span>Register</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
             </form>
 

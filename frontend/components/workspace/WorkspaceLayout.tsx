@@ -1,11 +1,14 @@
 "use client";
 
 import React, { ReactNode } from "react";
+import Image from "next/image";
+import { Menu } from "lucide-react";
 import { DynamicNav } from "./DynamicNav";
 import { WorkspaceGuard } from "./WorkspaceGuard";
 import { FamilyContextBanner } from "./FamilyContextBanner";
 import { FamilySwitcher } from "./FamilySwitcher";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { SidebarProvider, useSidebar } from "@/lib/workspace/SidebarContext";
 
 interface WorkspaceLayoutProps {
   children: ReactNode;
@@ -14,13 +17,14 @@ interface WorkspaceLayoutProps {
   requiredAnyPermission?: string[];
 }
 
-export function WorkspaceLayout({
+function WorkspaceLayoutInner({
   children,
   allowedWorkspaceTypes,
   requiredPermission,
   requiredAnyPermission,
 }: WorkspaceLayoutProps) {
   const { workspace } = useWorkspace();
+  const { isMobileOpen, toggleMobile } = useSidebar();
   const isPatient = workspace?.workspace_type === "PATIENT";
 
   return (
@@ -29,22 +33,38 @@ export function WorkspaceLayout({
       requiredPermission={requiredPermission}
       requiredAnyPermission={requiredAnyPermission}
     >
-      <div className="min-h-screen bg-white text-slate-900 flex flex-col lg:flex-row antialiased">
+      <div className="min-h-screen bg-white text-slate-900 flex flex-col lg:flex-row antialiased overflow-x-hidden">
         <DynamicNav />
 
         {/* Mobile / Tablet Header (< lg) */}
         {isPatient && (
           <header className="lg:hidden p-3 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-30 shadow-xs">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-xs shadow-xs">
-                OH
+              <button
+                type="button"
+                id="btn-mobile-nav-toggle"
+                aria-label="Open navigation menu"
+                aria-expanded={isMobileOpen}
+                onClick={toggleMobile}
+                className="p-1.5 -ml-1 rounded-xl text-slate-700 hover:text-[#155EEF] hover:bg-blue-50 transition focus:outline-hidden focus:ring-2 focus:ring-[#155EEF] shrink-0"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                <Image
+                  src="/images/oh-id-logo.png"
+                  alt="One Health ID"
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-contain filter drop-shadow-2xs"
+                />
               </div>
               <div>
                 <span className="font-bold text-slate-900 text-sm tracking-tight">OneHealth ID</span>
                 <p className="text-[10px] text-slate-500">Personal Health</p>
               </div>
             </div>
-            <div className="w-48 sm:w-64">
+            <div className="w-44 sm:w-60">
               <FamilySwitcher />
             </div>
           </header>
@@ -78,3 +98,12 @@ export function WorkspaceLayout({
     </WorkspaceGuard>
   );
 }
+
+export function WorkspaceLayout(props: WorkspaceLayoutProps) {
+  return (
+    <SidebarProvider>
+      <WorkspaceLayoutInner {...props} />
+    </SidebarProvider>
+  );
+}
+

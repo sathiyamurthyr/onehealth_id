@@ -273,6 +273,29 @@ export default function RegisterPage() {
         ) : (
           /* ── Registration Form View ── */
           <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-10">
+            {/* Institutional Onboarding Banner */}
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-sky-50 border border-blue-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md inline-block mb-1">
+                    Institutional Onboarding
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-900">Hospital or Clinic Administrator?</h3>
+                  <p className="text-xs text-slate-600">Register your healthcare facility for statutory verification and Super Admin approval.</p>
+                </div>
+              </div>
+              <Link
+                href="/register/facility"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shrink-0 shadow-sm"
+              >
+                <span>Register Facility</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
             {/* Header info */}
             <div className="mb-8 text-left">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold mb-3">
