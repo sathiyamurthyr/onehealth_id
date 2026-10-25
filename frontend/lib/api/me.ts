@@ -48,8 +48,8 @@ export const meApi = {
 
   switchHospitalContext: async (hospitalId: string, branchId?: string, departmentId?: string) => {
     const res = await fetchJSON<{
-      access_token: string;
-      token_type: string;
+      access_token?: string;
+      token_type?: string;
       active_hospital_id: string;
       active_hospital_name: string;
       doctor_id?: string;
@@ -63,8 +63,12 @@ export const meApi = {
       }),
     });
 
-    if (typeof window !== "undefined" && res.access_token) {
-      localStorage.setItem("oh_access_token", res.access_token);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("oh_access_token");
+      } catch {
+        // Ignore storage restrictions
+      }
     }
     return res;
   },

@@ -1,16 +1,33 @@
 import { fetchJSON } from "./client";
 import { UserProfile } from "../types";
 
+let _inMemoryUser: UserProfile | null = null;
+
+export function purgeLegacyStorage(): void {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem("oh_access_token");
+      localStorage.removeItem("oh_user");
+      localStorage.removeItem("oh_workspace");
+      localStorage.removeItem("oh_impersonation");
+      localStorage.removeItem("sathus_impersonation_session");
+      sessionStorage.removeItem("oh_access_token");
+      sessionStorage.removeItem("oh_user");
+      sessionStorage.removeItem("oh_workspace");
+    } catch {
+      // Ignore localStorage access restrictions
+    }
+  }
+}
+
 export const authApi = {
   login: async (username: string, password: string) => {
-    const res = await fetchJSON<{ access_token: string; user: UserProfile }>("/auth/login", {
+    purgeLegacyStorage();
+    const res = await fetchJSON<{ access_token?: string; user: UserProfile }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     });
-    if (typeof window !== "undefined") {
-      localStorage.setItem("oh_access_token", res.access_token);
-      localStorage.setItem("oh_user", JSON.stringify(res.user));
-    }
+    _inMemoryUser = res.user;
     return res;
   },
 
@@ -26,22 +43,20 @@ export const authApi = {
     address?: string;
     consent_given: boolean;
   }) => {
+    purgeLegacyStorage();
     const res = await fetchJSON<{
       message: string;
       user_id: string;
       patient_id: string;
       onehealth_id: string;
-      access_token: string;
+      access_token?: string;
       token_type: string;
       user: UserProfile;
     }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    if (typeof window !== "undefined" && res.access_token) {
-      localStorage.setItem("oh_access_token", res.access_token);
-      localStorage.setItem("oh_user", JSON.stringify(res.user));
-    }
+    _inMemoryUser = res.user;
     return res;
   },
 
@@ -51,28 +66,19 @@ export const authApi = {
     } catch {
       // Ignore network errors during logout
     }
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("oh_access_token");
-      localStorage.removeItem("oh_user");
-      localStorage.removeItem("oh_workspace");
-      localStorage.removeItem("oh_impersonation");
-      localStorage.removeItem("sathus_impersonation_session");
-    }
+    _inMemoryUser = null;
+    purgeLegacyStorage();
   },
 
   getCurrentUser: (): UserProfile | null => {
-    if (typeof window !== "undefined") {
-      const u = localStorage.getItem("oh_user");
-      if (u) {
-        try {
-          return JSON.parse(u);
-        } catch {
-          return null;
-        }
-      }
-    }
-    return null;
+    return _inMemoryUser;
   },
+
+  setCurrentUser: (user: UserProfile | null): void => {
+    _inMemoryUser = user;
+  },
+
+  purgeLegacyStorage,
 
   getMe: async () => {
     return fetchJSON<{ success: boolean; data: UserProfile }>("/auth/me");

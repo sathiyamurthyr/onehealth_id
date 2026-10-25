@@ -24,21 +24,33 @@ def get_current_user(request: Optional[Request] = None, authorization: Optional[
     if not token:
         return None
     try:
+        import hashlib
+        from backend.app.core.session_manager import session_manager
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        jti = payload.get("jti") or hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+        user_ref = payload.get("uid") or payload.get("user_ref_id")
+        iat = payload.get("iat")
+
+        if session_manager.is_token_revoked(jti, user_id=user_ref, issued_at=iat):
+            return None
+
         username = payload.get("sub")
         if username:
             user = sp_repository.get_user_by_username(username)
             if user:
+                if not user.get("is_active", True):
+                    return None
                 user["token_role"] = payload.get("role")
                 user["token_usertype_ref_id"] = payload.get("usertype_ref_id")
                 user["token_hospital_ref_id"] = payload.get("hospital_ref_id") or payload.get("hospital_id")
+                user["token_jti"] = jti
                 return user
     except Exception:
         return None
     return None
 
 @router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit_login)])
-def login(creds: LoginRequest, response: Response):
+def login(creds: LoginRequest, response: Response, request: Request):
     identifier = creds.username.strip()
     # Reject email logins per Phase 1 Architecture Conformance
     if "@" in identifier:
@@ -123,20 +135,29 @@ def login(creds: LoginRequest, response: Response):
         "hospital_ref_id": profile.hospital_ref_id
     })
 
+    is_production = settings.ENVIRONMENT in ("production", "staging")
     response.set_cookie(
         key="oh_access_token",
         value=token,
         httponly=True,
-        secure=False,
+        secure=is_production,
         samesite="lax",
-        max_age=86400,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/"
     )
 
-    return LoginResponse(access_token=token, user=profile)
+    # For browser clients (identified by X-Requested-With or X-Session-Mode: cookie),
+    # suppress the raw JWT in the response body to prevent browser script exposure.
+    is_browser_cookie_client = (
+        request.headers.get("x-requested-with") == "XMLHttpRequest"
+        or request.headers.get("x-session-mode") == "cookie"
+    )
+    returned_token = None if is_browser_cookie_client else token
+
+    return LoginResponse(access_token=returned_token, user=profile)
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_login)])
-def register(payload: RegisterRequest, response: Response):
+def register(payload: RegisterRequest, response: Response, request: Request):
     """
     Public/Citizen self-registration for OneHealth ID.
     Enforces 10-digit mobile verification, bcrypt password hashing,
@@ -236,22 +257,29 @@ def register(payload: RegisterRequest, response: Response):
         "hospital_ref_id": profile.hospital_ref_id
     })
 
+    is_production = settings.ENVIRONMENT in ("production", "staging")
     response.set_cookie(
         key="oh_access_token",
         value=token,
         httponly=True,
-        secure=False,
+        secure=is_production,
         samesite="lax",
-        max_age=86400,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/"
     )
+
+    is_browser_cookie_client = (
+        request.headers.get("x-requested-with") == "XMLHttpRequest"
+        or request.headers.get("x-session-mode") == "cookie"
+    )
+    returned_token = None if is_browser_cookie_client else token
 
     return RegisterResponse(
         message=f"Registration successful! Your OneHealth ID is {reg_result['onehealth_id']}.",
         user_id=reg_result["user_id"],
         patient_id=reg_result["patient_id"],
         onehealth_id=reg_result["onehealth_id"],
-        access_token=token,
+        access_token=returned_token,
         token_type="bearer",
         user=profile
     )
@@ -325,10 +353,37 @@ def get_me_workspace(request: Request, authorization: Optional[str] = Header(Non
     return success_response(data=ws)
 
 @router.post("/logout")
-def logout(response: Response, authorization: Optional[str] = Header(None)):
-    """Logs out user and terminates session."""
-    response.delete_cookie(key="oh_access_token", path="/")
-    return success_response(data={"message": "Logged out successfully"})
+def logout(request: Request, response: Response, authorization: Optional[str] = Header(None)):
+    """
+    Logs out user, revokes active server-side session, and clears auth cookie.
+    Ensures copied bearer tokens cannot continue accessing protected endpoints.
+    """
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    elif request and hasattr(request, "cookies") and request.cookies.get("oh_access_token"):
+        token = request.cookies.get("oh_access_token")
+
+    if token:
+        try:
+            import hashlib
+            from backend.app.core.session_manager import session_manager
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"verify_exp": False})
+            jti = payload.get("jti") or hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+            user_id = payload.get("uid") or payload.get("user_ref_id") or payload.get("sub")
+            session_manager.revoke_token(jti, user_id=user_id, reason="logout")
+        except Exception as e:
+            logger.debug(f"Logout token revocation notice: {e}")
+
+    res = success_response(data={"message": "Logged out successfully"})
+    res.delete_cookie(
+        key="oh_access_token",
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=settings.ENVIRONMENT in ("production", "staging")
+    )
+    return res
 
 class AcceptInvitationRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)

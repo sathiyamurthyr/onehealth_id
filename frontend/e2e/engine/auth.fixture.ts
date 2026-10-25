@@ -72,11 +72,17 @@ export async function loginAsPersona(page: Page, persona: TestPersona): Promise<
   await expect(page).toHaveURL(persona.expectedRouteRegex, { timeout: 12000 });
   await page.waitForLoadState("domcontentloaded");
 
-  // Retrieve JWT access token from localStorage
-  const token = await page.evaluate(() => localStorage.getItem("oh_access_token") || "");
-  expect(token).toBeTruthy();
+  // Verify ZERO JWT access token in localStorage (HttpOnly Cookie architecture)
+  const lsToken = await page.evaluate(() => localStorage.getItem("oh_access_token"));
+  expect(lsToken).toBeNull();
 
-  return token;
+  // Retrieve JWT access token from secure HttpOnly cookie
+  const cookies = await page.context().cookies();
+  const authCookie = cookies.find((c) => c.name === "oh_access_token");
+  expect(authCookie).toBeTruthy();
+  expect(authCookie?.httpOnly).toBe(true);
+
+  return authCookie?.value || "";
 }
 
 /**

@@ -68,12 +68,12 @@ class SwitchContextRequest(BaseModel):
     department_id: Optional[str] = None
 
 class SwitchContextResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     workspace: WorkspaceResponse
 
 class LoginResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserProfile
     workspace: Optional[WorkspaceResponse] = None
@@ -95,7 +95,7 @@ class RegisterResponse(BaseModel):
     user_id: str
     patient_id: str
     onehealth_id: str
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserProfile
 
@@ -154,6 +154,35 @@ class DuplicateCheckResponse(BaseModel):
 class QRTokenResolveRequest(BaseModel):
     qr_token: str
     scanned_by: Optional[str] = "staff"
+
+class QRWorkflowScanRequest(BaseModel):
+    qr_input: str = Field(..., min_length=2, max_length=512)
+    hospital_id: Optional[str] = None
+
+class QRWorkflowScanResponse(BaseModel):
+    status: str = "SUCCESS"
+    role: str
+    patient_identity: Dict[str, Any]
+    hospital_context: Dict[str, Any]
+    workflow_data: Dict[str, Any]
+    permitted_actions: List[str]
+
+class QRHospitalRegisterRequest(BaseModel):
+    patient_id: str = Field(..., min_length=3, max_length=64)
+    hospital_id: Optional[str] = None
+    local_uhid: Optional[str] = None
+
+class QRAppointmentCheckInRequest(BaseModel):
+    appointment_id: str = Field(..., min_length=3, max_length=64)
+    hospital_id: Optional[str] = None
+
+class QRIssueTokenRequest(BaseModel):
+    patient_id: str = Field(..., min_length=3, max_length=64)
+    hospital_id: Optional[str] = None
+    department_name: Optional[str] = "General Medicine"
+    doctor_id: Optional[str] = None
+    priority: Optional[str] = "NORMAL"
+    chief_complaint: Optional[str] = None
 
 # --- Doctor Schemas ---
 class DoctorBase(BaseModel):

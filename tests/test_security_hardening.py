@@ -271,7 +271,9 @@ def test_qr_verification_masks_pii_for_unauthenticated_requests(admin_token):
         assert rot_res.status_code == 200
         qr_token = rot_res.json()["qr_token"]
 
-    verify_res = client.get(f"/api/v1/patients/verify-qr/{qr_token}")
+    # Use clean client without authenticated cookies to simulate anonymous kiosk scanner
+    anon_client = TestClient(app)
+    verify_res = anon_client.get(f"/api/v1/patients/verify-qr/{qr_token}")
     assert verify_res.status_code == 200
     data = verify_res.json()
     

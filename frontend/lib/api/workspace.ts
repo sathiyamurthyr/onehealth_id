@@ -14,10 +14,14 @@ export const workspaceApi = {
       method: "POST",
       body: JSON.stringify(req),
     });
+    // HttpOnly cookie is updated by backend automatically. Ensure zero token in localStorage.
     if (typeof window !== "undefined") {
-      localStorage.setItem("oh_access_token", res.access_token);
-      localStorage.setItem("oh_workspace", JSON.stringify(res.workspace?.workspace || res.workspace));
-      localStorage.setItem("oh_user", JSON.stringify(res.workspace?.user || res.workspace));
+      try {
+        localStorage.removeItem("oh_access_token");
+        localStorage.removeItem("oh_user");
+      } catch {
+        // Ignore storage restrictions
+      }
     }
     return res;
   },

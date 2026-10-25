@@ -163,7 +163,8 @@ class TestPatientMeAPI:
         assert data["data"]["qr_token"] is not None
 
     def test_unauthenticated_blocked(self):
-        res = client.get("/api/v1/me/profile")
+        unauth_client = TestClient(app)
+        res = unauth_client.get("/api/v1/me/profile")
         assert res.status_code == 401
 
     def test_patient_idor_protection(self):

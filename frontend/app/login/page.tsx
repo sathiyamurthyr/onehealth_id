@@ -137,8 +137,8 @@ export default function LoginPage() {
 
       const explicitRedirect = getExplicitRedirect();
       const targetRoute = explicitRedirect || res.workspace?.workspace?.default_route || ws.default_route || "/dashboard";
+      api.auth.purgeLegacyStorage();
       if (typeof window !== "undefined") {
-        localStorage.setItem("oh_workspace", JSON.stringify(res.workspace?.workspace || ws));
         window.location.href = targetRoute;
       } else {
         router.push(targetRoute);
@@ -148,8 +148,8 @@ export default function LoginPage() {
       // Fallback direct navigate
       const explicitRedirect = getExplicitRedirect();
       const targetRoute = explicitRedirect || ws.default_route || "/dashboard";
+      api.auth.purgeLegacyStorage();
       if (typeof window !== "undefined") {
-        localStorage.setItem("oh_workspace", JSON.stringify(ws));
         window.location.href = targetRoute;
       } else {
         router.push(targetRoute);
@@ -199,13 +199,8 @@ export default function LoginPage() {
           return;
         }
 
-        if (wsRes?.workspace) {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("oh_workspace", JSON.stringify(wsRes.workspace));
-          }
-          if (wsRes.workspace.default_route) {
-            targetRoute = wsRes.workspace.default_route;
-          }
+        if (wsRes?.workspace?.default_route) {
+          targetRoute = wsRes.workspace.default_route;
         }
       } catch (wsErr) {
         console.warn("Could not resolve workspace route, falling back to default", wsErr);

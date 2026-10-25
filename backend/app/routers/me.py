@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Query, Body, status
+from fastapi import APIRouter, HTTPException, Depends, Header, Query, Body, status, Response, Request
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from backend.app.schemas.models import UserProfile, WorkspaceResponse
+from backend.app.core.config import settings
 from backend.app.core.rbac import get_current_user_context
 from backend.app.core.security import create_access_token
 from backend.app.core.response import success_response
@@ -1748,9 +1749,10 @@ def record_lab_report_client_audit(
     return success_response(message="Lab report audit event recorded.")
 
 @router.post("/me/hospital-context")
-
 def switch_hospital_context(
     req: HospitalContextSwitchRequest,
+    response: Response,
+    request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """Doctor multi-hospital context switcher."""
@@ -1776,6 +1778,12 @@ def switch_hospital_context(
             detail="Forbidden: You are not authorized to access this hospital facility."
         )
 
+    # Invalidate prior token context to prevent old hospital token replay
+    prior_jti = current_user.get("jti") or current_user.get("token_jti")
+    if prior_jti:
+        from backend.app.core.session_manager import session_manager
+        session_manager.revoke_token(prior_jti, user_id=user_ref_id, reason="hospital_context_switch")
+
     role = current_user.get("role", "DOCTOR")
     usertype_ref_id = current_user.get("usertype_ref_id", "role-doctor")
     token = create_access_token({
@@ -1788,9 +1796,26 @@ def switch_hospital_context(
         "branch_id": req.branch_id or target_match.get("branch_ref_id")
     })
 
+    is_production = settings.ENVIRONMENT in ("production", "staging")
+    response.set_cookie(
+        key="oh_access_token",
+        value=token,
+        httponly=True,
+        secure=is_production,
+        samesite="lax",
+        max_age=86400,
+        path="/"
+    )
+
+    is_browser_cookie_client = (
+        request.headers.get("x-requested-with") == "XMLHttpRequest"
+        or request.headers.get("x-session-mode") == "cookie"
+    )
+    returned_token = None if is_browser_cookie_client else token
+
     return {
         "success": True,
-        "access_token": token,
+        "access_token": returned_token,
         "token_type": "bearer",
         "hospital_id": req.hospital_id,
         "hospital_ref_id": req.hospital_id,

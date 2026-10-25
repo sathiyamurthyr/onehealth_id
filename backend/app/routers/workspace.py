@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Response
+from fastapi import APIRouter, HTTPException, Depends, Header, Response, Request
 from typing import Optional, List, Dict, Any
 from backend.app.schemas.models import (
     WorkspaceResponse, WorkspaceDefinition, NavigationItem, 
     DashboardConfig, UserProfile, SwitchContextRequest, SwitchContextResponse
 )
+from backend.app.core.config import settings
 from backend.app.core.rbac import get_current_user_context, require_permission
 from backend.app.core.security import create_access_token
 from backend.app.core.response import success_response, error_response
@@ -143,6 +144,7 @@ def get_my_workspace(current_user: Dict[str, Any] = Depends(get_current_user_con
 def switch_workspace_context(
     req: SwitchContextRequest,
     response: Response,
+    request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """
@@ -209,6 +211,12 @@ def switch_workspace_context(
             if verif not in ("VERIFIED", "APPROVED"):
                 raise HTTPException(status_code=403, detail="Forbidden: Clinical staff credentials have not been authorized by the target hospital.")
 
+    # Invalidate prior token context to prevent old role/hospital token replay
+    prior_jti = current_user.get("jti")
+    if prior_jti:
+        from backend.app.core.session_manager import session_manager
+        session_manager.revoke_token(prior_jti, user_id=user_ref_id, reason="role_or_context_switch")
+
     # Issue updated access token with new active hospital and role context
     token = create_access_token({
         "sub": current_user["username"],
@@ -226,16 +234,25 @@ def switch_workspace_context(
     updated_ctx["role"] = target_ws["role_code"]
 
     workspace_resp = _build_workspace_response(updated_ctx)
+
+    is_production = settings.ENVIRONMENT in ("production", "staging")
     response.set_cookie(
         key="oh_access_token",
         value=token,
         httponly=True,
-        secure=False,
+        secure=is_production,
         samesite="lax",
         max_age=86400,
         path="/"
     )
-    return SwitchContextResponse(access_token=token, workspace=workspace_resp)
+
+    is_browser_cookie_client = (
+        request.headers.get("x-requested-with") == "XMLHttpRequest"
+        or request.headers.get("x-session-mode") == "cookie"
+    )
+    returned_token = None if is_browser_cookie_client else token
+
+    return SwitchContextResponse(access_token=returned_token, workspace=workspace_resp)
 
 @router.get("/workspace/roles")
 def list_system_roles(current_user: Dict[str, Any] = Depends(require_permission("role.read"))):

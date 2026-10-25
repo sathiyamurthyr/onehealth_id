@@ -48,19 +48,10 @@ export default function SuperAdminSecurityPage() {
 
   const checkStoredSession = () => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("sathus_impersonation_session");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (new Date(parsed.expires_at) > new Date()) {
-            setActiveSession(parsed);
-          } else {
-            localStorage.removeItem("sathus_impersonation_session");
-            setActiveSession(null);
-          }
-        } catch (e) {
-          localStorage.removeItem("sathus_impersonation_session");
-        }
+      try {
+        localStorage.removeItem("sathus_impersonation_session");
+      } catch {
+        // Ignore storage restrictions
       }
     }
   };
@@ -105,10 +96,7 @@ export default function SuperAdminSecurityPage() {
         ticket_ref: ticketRef,
       };
 
-      if (typeof window !== "undefined") {
-        localStorage.setItem("sathus_impersonation_session", JSON.stringify(sessionObj));
-      }
-
+      // In-memory component state only — credentials never stored in browser localStorage
       setActiveSession(sessionObj);
       setShowImpersonateModal(false);
       setFeedback({
@@ -133,7 +121,11 @@ export default function SuperAdminSecurityPage() {
       console.warn("End session API call notice", e);
     } finally {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("sathus_impersonation_session");
+        try {
+          localStorage.removeItem("sathus_impersonation_session");
+        } catch {
+          // Ignore
+        }
       }
       setActiveSession(null);
       setFeedback({

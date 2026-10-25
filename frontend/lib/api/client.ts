@@ -6,32 +6,11 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8050/api/v1";
 
 export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("oh_access_token") : null;
+  const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
     ...(options?.headers as Record<string, string>),
   };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  if (typeof window !== "undefined") {
-    try {
-      const wsStr = localStorage.getItem("oh_workspace");
-      if (wsStr) {
-        const ws = JSON.parse(wsStr);
-        if (ws?.hospital_ref_id && !headers["X-Hospital-Ref-Id"]) {
-          headers["X-Hospital-Ref-Id"] = ws.hospital_ref_id;
-        }
-        if (ws?.usertype_ref_id && !headers["X-Usertype-Ref-Id"]) {
-          headers["X-Usertype-Ref-Id"] = ws.usertype_ref_id;
-        }
-      }
-    } catch {
-      // Ignore JSON parse errors
-    }
-  }
 
   // Protect state-changing requests against CSRF
   if (options?.method && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method.toUpperCase())) {
@@ -50,10 +29,29 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("oh_access_token");
-      localStorage.removeItem("oh_workspace");
-      localStorage.removeItem("oh_user");
-      if (!endpoint.includes("/auth/login") && !window.location.pathname.startsWith("/login")) {
+      // Purge any legacy browser-stored credentials on unauthorized response
+      try {
+        localStorage.removeItem("oh_access_token");
+        localStorage.removeItem("oh_workspace");
+        localStorage.removeItem("oh_user");
+        localStorage.removeItem("oh_impersonation");
+        localStorage.removeItem("sathus_impersonation_session");
+      } catch {
+        // Ignore localStorage access restrictions
+      }
+
+      const path = window.location.pathname;
+      const isPublicRoute =
+        path.startsWith("/login") ||
+        path.startsWith("/scan") ||
+        path.startsWith("/verify") ||
+        path.startsWith("/share") ||
+        path === "/" ||
+        path.startsWith("/terms") ||
+        path.startsWith("/privacy") ||
+        path.startsWith("/register");
+
+      if (!endpoint.includes("/auth/login") && !isPublicRoute) {
         // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/login";
       }
@@ -105,6 +103,16 @@ export const apiClient = {
     const data = await fetchJSON<T>(endpoint, { ...options, method: "DELETE" });
     return { data };
   },
+  upload: async <T = any>(endpoint: string, formData: FormData): Promise<{ data: T }> => {
+    const data = await fetchJSON<T>(endpoint, {
+      method: "POST",
+      body: formData,
+    });
+    return { data };
+  },
 };
+
+export { API_BASE };
+
 
 

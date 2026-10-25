@@ -1,8 +1,12 @@
+import hashlib
+from datetime import datetime, timezone
 from fastapi import HTTPException, Header, Depends, Request
 from typing import Optional, List, Callable, Dict, Any
 from jose import jwt
 from backend.app.core.config import settings
 from backend.app.repositories.sp_views_repository import sp_repository
+from backend.app.core.session_manager import session_manager
+from backend.app.core.logging import log_security_event
 
 def get_optional_user_context(
     request: Request,
@@ -39,12 +43,23 @@ def get_current_user_context(
     if not token:
         raise HTTPException(status_code=401, detail="Authentication credentials were not provided")
 
-    # Enforce CSRF protection for state-changing requests when authenticated via cookie
+    # Enforce strict CSRF protection for state-changing requests when authenticated via cookie
     if using_cookie and request and hasattr(request, "method") and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("origin")
         x_requested_with = request.headers.get("x-requested-with")
         sec_fetch_site = request.headers.get("sec-fetch-site")
-        if not x_requested_with and sec_fetch_site == "cross-site":
+
+        # 1. Reject explicit cross-site fetch metadata
+        if sec_fetch_site == "cross-site":
             raise HTTPException(status_code=403, detail="Cross-site request forgery protection triggered")
+
+        # 2. Origin validation: If Origin header is sent, it must match trusted CORS origins
+        if origin and origin not in settings.CORS_ORIGINS:
+            raise HTTPException(status_code=403, detail="Cross-site origin rejected by CSRF protection")
+
+        # 3. Require custom anti-CSRF header for cookie-authenticated mutating operations
+        if not x_requested_with and not (origin and origin in settings.CORS_ORIGINS and sec_fetch_site in ("same-origin", "same-site")):
+            raise HTTPException(status_code=403, detail="Missing required CSRF verification header")
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -56,6 +71,27 @@ def get_current_user_context(
     hospital_ref_id = x_hospital_ref_id or payload.get("hospital_ref_id") or payload.get("hospital_id")
     usertype_ref_id = x_usertype_ref_id or payload.get("usertype_ref_id") or payload.get("role_id")
     role_code = payload.get("role")
+
+    # Server-Side Session Revocation Check
+    jti = payload.get("jti") or hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+    iat = payload.get("iat")
+    if session_manager.is_token_revoked(jti, user_id=user_ref_id, issued_at=iat):
+        log_security_event(
+            "REVOKED_TOKEN_BLOCKED",
+            actor_id=username or user_ref_id or "ANONYMOUS",
+            resource=f"token:{jti[:8]}",
+            status="DENIED"
+        )
+        raise HTTPException(status_code=401, detail="Authentication token has been revoked. Please sign in again.")
+
+    # Immediate Deactivated / Locked User Check
+    if user_ref_id:
+        user_status = sp_repository.get_user_by_id(user_ref_id)
+        if user_status:
+            if not user_status.get("is_active", True):
+                raise HTTPException(status_code=403, detail="User account is deactivated.")
+            if user_status.get("locked_until") and user_status["locked_until"] > datetime.now(timezone.utc):
+                raise HTTPException(status_code=403, detail="User account is temporarily locked.")
 
     if not username and not user_ref_id:
         raise HTTPException(status_code=401, detail="Invalid authentication payload")

@@ -45,6 +45,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const res = await api.workspace.getMyWorkspace();
       setWorkspace(res.workspace);
       setUser(res.user);
+      api.auth.setCurrentUser(res.user);
       setNavigation(res.navigation || []);
       setPermissions(res.permissions || []);
       setAvailableWorkspaces(res.available_workspaces || []);
@@ -53,6 +54,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       // Unauthenticated or session expired — do not fall back to stale browser storage
       setWorkspace(null);
       setUser(null);
+      api.auth.setCurrentUser(null);
       setNavigation([]);
       setPermissions([]);
       setAvailableWorkspaces([]);
@@ -88,6 +90,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       
       setWorkspace(activeWs);
       setUser(activeUser);
+      api.auth.setCurrentUser(activeUser);
       setNavigation(res.workspace.navigation || []);
       setPermissions(res.workspace.permissions || []);
       setAvailableWorkspaces(res.workspace.available_workspaces || []);
