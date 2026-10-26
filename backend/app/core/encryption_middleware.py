@@ -219,7 +219,7 @@ class PayloadEncryptionMiddleware(BaseHTTPMiddleware):
                 encrypted_json_bytes = json.dumps(envelope).encode("utf-8")
 
                 # Create new response with encrypted body and updated headers
-                headers = dict(response.headers)
+                headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
                 headers["Content-Length"] = str(len(encrypted_json_bytes))
                 headers["X-OH-Encrypted"] = "1"
                 headers["Content-Type"] = "application/json"
