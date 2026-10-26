@@ -162,6 +162,17 @@ class PayloadEncryptionMiddleware(BaseHTTPMiddleware):
                             status_code=400,
                             content={"error": {"code": "ENCRYPTION_REQUIRED", "message": "Encrypted payload envelope required on this endpoint."}}
                         )
+        elif settings.PAYLOAD_ENCRYPTION_STRICT and request.method == "GET":
+            is_encrypted_client = (
+                request.headers.get("x-oh-encrypted") == "1"
+                or "application/vnd.oh-id.encrypted" in content_type
+                or "application/vnd.oh-id.encrypted" in request.headers.get("accept", "")
+            )
+            if not is_encrypted_client:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": {"code": "ENCRYPTION_REQUIRED", "message": "All API requests must be encrypted using an established ECDH session key."}}
+                )
 
         # 3. Call downstream endpoint
         response: Response = await call_next(request)
