@@ -69,11 +69,15 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
       console.warn("Client payload encryption skipped or failed:", encErr);
     }
   } else if (canEncrypt) {
-    // For read operations (e.g. GET), signal encryption capability if active key exists
-    const activeKeyId = payloadCrypto.getActiveKeyId();
-    if (activeKeyId) {
-      headers["X-OH-Encrypted"] = "1";
-      headers["X-Session-Key-Id"] = activeKeyId;
+    // For read operations (e.g. GET), signal encryption capability or establish session
+    try {
+      const activeKeyId = await payloadCrypto.ensureActiveSession(API_BASE);
+      if (activeKeyId) {
+        headers["X-OH-Encrypted"] = "1";
+        headers["X-Session-Key-Id"] = activeKeyId;
+      }
+    } catch (encErr) {
+      console.warn("Client read encryption handshake skipped:", encErr);
     }
   }
 
