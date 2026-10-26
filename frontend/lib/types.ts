@@ -113,6 +113,50 @@ export interface DuplicateCheckResult {
   matches: Patient[];
 }
 
+export interface QRWorkflowScanResult {
+  status: string;
+  role: string;
+  patient_identity: {
+    id: string;
+    onehealth_id: string;
+    qr_token: string;
+    name: string;
+    age?: number;
+    gender?: string;
+    blood_group?: string;
+    emergency_contact?: string;
+    phone_masked?: string;
+    email_masked?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    address_masked?: string;
+    primary_hospital_id?: string;
+    primary_hospital_name?: string;
+  };
+  hospital_context: {
+    active_hospital_id: string;
+    active_hospital_name: string;
+    is_registered_at_active_hospital: boolean;
+    local_uhid?: string | null;
+    first_registration_date?: string | null;
+  };
+  workflow_data: {
+    today_appointments?: any[];
+    active_queue_entry?: any;
+    clinical_summary?: {
+      allergies?: string[];
+      diagnosis?: string;
+      prescriptions?: any[];
+      lab_orders?: any[];
+      past_consultations?: any[];
+    };
+    cross_hospital_sharing_blocked?: boolean;
+    sharing_block_reason?: string | null;
+  };
+  permitted_actions: string[];
+}
+
 export interface Doctor {
   id: string;
   tenant_id?: string;

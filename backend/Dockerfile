@@ -17,8 +17,19 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy backend application source
 COPY backend ./backend
 
+# Create dedicated unprivileged non-root application user and group (UID/GID 10001)
+# Create necessary runtime directories and ensure appuser ownership
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/sh -d /app -M appuser && \
+    mkdir -p /app/storage/documents/quarantine \
+             /app/storage/documents/approved \
+             /app/backend/logs && \
+    chown -R 10001:10001 /app
+
 ENV PYTHONPATH=/app
 ENV PORT=8000
+
+USER 10001:10001
 
 EXPOSE 8000
 

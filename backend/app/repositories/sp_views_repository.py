@@ -438,6 +438,345 @@ class SPViewsRepository(
             patient['qr_token'] = new_qr
         return patient
 
+    @staticmethod
+    def extract_qr_token(qr_input: str) -> str:
+        """Extracts opaque QR token from raw token, URL, or OH-ID string."""
+        cleaned = qr_input.strip()
+        if "://" in cleaned or cleaned.startswith("http"):
+            parts = cleaned.rstrip("/").split("/")
+            return parts[-1]
+        elif "/" in cleaned:
+            return cleaned.rstrip("/").split("/")[-1]
+        return cleaned
+
+    def get_patient_facility_relationship(self, patient_id: str, hospital_id: str) -> Optional[Dict[str, Any]]:
+        """Queries hospital facility relationship and local UHID for patient."""
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.vw_patient_facility_memberships
+                WHERE patient_id = %s AND hospital_id = %s;
+            """, (patient_id, hospital_id))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            # Fallback to base table
+            cur.execute("""
+                SELECT * FROM oh_id.patient_facility_relationships
+                WHERE patient_id = %s AND facility_id = %s;
+            """, (patient_id, hospital_id))
+            row2 = cur.fetchone()
+            return dict(row2) if row2 else None
+
+    def register_patient_at_facility(
+        self,
+        patient_id: str,
+        hospital_id: str,
+        local_uhid: Optional[str] = None,
+        registered_by: str = "reception"
+    ) -> Dict[str, Any]:
+        """
+        Idempotently binds an existing OneHealth ID patient to a hospital facility.
+        Assigns or retains local UHID and prevents duplicate patient records across network.
+        """
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, onehealth_id, name FROM oh_id.patients WHERE id = %s;", (patient_id,))
+            p_row = cur.fetchone()
+            if not p_row:
+                raise ValueError("Patient identity not found")
+
+            if not local_uhid:
+                cur.execute("SELECT code FROM oh_id.hospitals WHERE id = %s LIMIT 1;", (hospital_id,))
+                h_row = cur.fetchone()
+                h_code = (h_row['code'] if h_row else "HOSP").upper()[:4]
+                clean_pid = patient_id.upper().replace('P-', '').replace('PAT-', '')[:8]
+                local_uhid = f"UHID-{h_code}-{clean_pid}"
+
+            pfr_id = f"pfr-{patient_id}-{hospital_id}"
+            cur.execute("""
+                INSERT INTO oh_id.patient_facility_relationships (
+                    id, patient_id, facility_id, local_uhid, first_registration_date,
+                    last_visit_date, status, registered_by, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP, 'ACTIVE', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (patient_id, facility_id) DO UPDATE SET
+                    last_visit_date = CURRENT_TIMESTAMP,
+                    local_uhid = COALESCE(oh_id.patient_facility_relationships.local_uhid, EXCLUDED.local_uhid),
+                    status = 'ACTIVE',
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *;
+            """, (pfr_id, patient_id, hospital_id, local_uhid, registered_by))
+            pfr_record = dict(cur.fetchone())
+
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (id, actor_id, actor_name, hospital_id, action, resource_type, resource_id, details)
+                VALUES (
+                    'aud-' || SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 8),
+                    %s, 'Reception', %s, 'CROSS_HOSPITAL_PATIENT_REGISTERED', 'PATIENT', %s,
+                    json_build_object('onehealth_id', %s, 'local_uhid', %s, 'facility_id', %s)::jsonb
+                );
+            """, (registered_by, hospital_id, patient_id, p_row['onehealth_id'], local_uhid, hospital_id))
+
+        return {
+            "membership_id": pfr_record["id"],
+            "patient_id": patient_id,
+            "onehealth_id": p_row["onehealth_id"],
+            "hospital_id": hospital_id,
+            "local_uhid": local_uhid,
+            "status": pfr_record["status"],
+            "registered_at": pfr_record["created_at"].isoformat() if hasattr(pfr_record["created_at"], "isoformat") else str(pfr_record["created_at"])
+        }
+
+    def resolve_qr_workflow(
+        self,
+        qr_input: str,
+        user: Optional[Dict[str, Any]] = None,
+        active_hospital_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Enterprise QR-Based Patient Identity & Hospital Access Resolution.
+        Resolves opaque token, determines caller permissions & role, validates
+        hospital registration status, and returns role-tailored workflow data.
+        """
+        token = self.extract_qr_token(qr_input)
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT p.*, h.name AS hospital_name, h.code AS hospital_code, h.city AS hospital_city
+                FROM oh_id.vw_patients p
+                LEFT JOIN oh_id.hospitals h ON p.hospital_id = h.id
+                WHERE p.qr_token = %s OR p.onehealth_id = %s OR p.id = %s;
+            """, (token, token, token))
+            row = cur.fetchone()
+            if not row:
+                return None
+            patient = dict(row)
+
+        actor_id = user.get("username") if user else "anonymous_scanner"
+        user_role = (user.get("role") or "").upper() if user else "ANONYMOUS"
+        effective_hospital = (
+            active_hospital_id
+            or (user and (user.get("hospital_ref_id") or user.get("hospital_id")))
+            or patient.get("hospital_id")
+            or "hosp-kedar"
+        )
+
+        # Log resolution audit event
+        with get_db_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO oh_id.audit_logs (id, actor_id, actor_name, hospital_id, action, resource_type, resource_id, details)
+                VALUES (
+                    'aud-' || SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 8),
+                    %s, %s, %s, 'QR_WORKFLOW_SCAN', 'PATIENT', %s,
+                    json_build_object('onehealth_id', %s, 'role', %s, 'scanned_token', %s)::jsonb
+                );
+                """,
+                (actor_id, user.get("name") if user else "Kiosk", effective_hospital, patient["id"], patient["onehealth_id"], user_role, token[:12] + "...")
+            )
+
+        # Hospital facility relationship & UHID check
+        facility_reg = self.get_patient_facility_relationship(patient["id"], effective_hospital)
+        is_registered = facility_reg is not None and facility_reg.get("status") == "ACTIVE"
+        local_uhid = facility_reg.get("local_uhid") if facility_reg else None
+        first_reg_date = facility_reg.get("first_registration_date") if facility_reg else None
+        if hasattr(first_reg_date, "isoformat"):
+            first_reg_date = first_reg_date.isoformat()
+
+        # Query hospital metadata for active context
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT id, name, code, city FROM oh_id.hospitals WHERE id = %s;", (effective_hospital,))
+            h_row = cur.fetchone()
+            active_hosp_name = h_row["name"] if h_row else "Participating Hospital"
+
+        # Today's appointments at current facility
+        today_appointments = self.list_appointments(
+            patient_id=patient["id"],
+            hospital_id=effective_hospital
+        )
+
+        # Active queue entry at current facility
+        active_queue = None
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.vw_queue_board
+                WHERE patient_id = %s AND hospital_id = %s AND status IN ('WAITING', 'CALLING')
+                ORDER BY created_at DESC LIMIT 1;
+            """, (patient["id"], effective_hospital))
+            q_row = cur.fetchone()
+            if q_row:
+                active_queue = dict(q_row)
+
+        phone_val = str(patient.get("phone") or "")
+        phone_masked = f"***-***-{phone_val[-4:]}" if len(phone_val) >= 4 else "***-***-0000"
+        email_val = str(patient.get("email") or "")
+        email_masked = (email_val[:2] + "***@" + email_val.split("@")[-1]) if "@" in email_val else None
+
+        # Base identity payload
+        patient_identity = {
+            "id": patient["id"],
+            "onehealth_id": patient["onehealth_id"],
+            "qr_token": patient["qr_token"],
+            "name": patient["name"],
+            "age": patient.get("age"),
+            "gender": patient.get("gender"),
+            "blood_group": patient.get("blood_group"),
+            "emergency_contact": patient.get("emergency_contact") if user else "[Protected]",
+            "phone_masked": phone_masked,
+            "email_masked": email_masked,
+            "primary_hospital_id": patient.get("hospital_id"),
+            "primary_hospital_name": patient.get("hospital_name") or "Primary Facility"
+        }
+
+        # 1. ANONYMOUS
+        if not user:
+            return {
+                "status": "SUCCESS",
+                "role": "ANONYMOUS",
+                "patient_identity": {
+                    "id": patient["id"],
+                    "onehealth_id": patient["onehealth_id"],
+                    "qr_token": patient["qr_token"],
+                    "name": patient["name"],
+                    "age": patient.get("age"),
+                    "gender": patient.get("gender"),
+                    "blood_group": patient.get("blood_group"),
+                    "phone_masked": phone_masked,
+                    "address_masked": "[Protected demographic]",
+                    "primary_hospital_name": patient.get("hospital_name")
+                },
+                "hospital_context": {
+                    "active_hospital_id": effective_hospital,
+                    "active_hospital_name": active_hosp_name,
+                    "is_registered_at_active_hospital": is_registered,
+                    "local_uhid": local_uhid
+                },
+                "workflow_data": {
+                    "cross_hospital_sharing_blocked": True,
+                    "sharing_block_reason": "Authentication required. Sign in as authorized staff to view records."
+                },
+                "permitted_actions": []
+            }
+
+        # 2. RECEPTIONIST / NURSE / DESK STAFF
+        if user_role in ("RECEPTIONIST", "NURSE", "EMPLOYEE", "BILLING_STAFF"):
+            patient_identity["phone"] = patient.get("phone")
+            patient_identity["address"] = patient.get("address")
+            patient_identity["emergency_contact"] = patient.get("emergency_contact")
+            return {
+                "status": "SUCCESS",
+                "role": user_role,
+                "patient_identity": patient_identity,
+                "hospital_context": {
+                    "active_hospital_id": effective_hospital,
+                    "active_hospital_name": active_hosp_name,
+                    "is_registered_at_active_hospital": is_registered,
+                    "local_uhid": local_uhid,
+                    "first_registration_date": first_reg_date
+                },
+                "workflow_data": {
+                    "today_appointments": today_appointments,
+                    "active_queue_entry": active_queue,
+                    "cross_hospital_sharing_blocked": False
+                },
+                "permitted_actions": [
+                    "REGISTER_HOSPITAL" if not is_registered else "VIEW_REGISTRATION",
+                    "APPOINTMENT_CHECKIN",
+                    "ISSUE_QUEUE_TOKEN",
+                    "UPDATE_DEMOGRAPHICS"
+                ]
+            }
+
+        # 3. DOCTOR / CLINICIAN
+        if user_role in ("DOCTOR", "PHYSICIAN", "CLINICIAN"):
+            patient_identity["phone"] = patient.get("phone")
+            patient_identity["address"] = patient.get("address")
+            patient_identity["emergency_contact"] = patient.get("emergency_contact")
+
+            from backend.app.core.config import settings
+            is_same_hospital = (patient.get("hospital_id") == effective_hospital)
+            cross_sharing_blocked = False
+            block_reason = None
+
+            if not is_same_hospital and not settings.ENABLE_CROSS_HOSPITAL_SHARING:
+                cross_sharing_blocked = True
+                block_reason = (
+                    "Cross-hospital clinical record sharing is disabled by default for this staging deployment "
+                    "(DPDP Act 2023 & HIPAA compliance). External hospital consultations, prescriptions, and lab "
+                    "results are not shared without patient consent authorization artifact."
+                )
+                clinical_summary = {
+                    "allergies": ["No known allergies recorded at current facility"],
+                    "current_medications": [],
+                    "past_consultations": [],
+                    "prescriptions": [],
+                    "lab_orders": [],
+                    "documents": []
+                }
+            else:
+                prescriptions = self.list_prescriptions(patient_id=patient["id"], hospital_id=effective_hospital)
+                lab_orders = self.list_lab_orders(patient_id=patient["id"], hospital_id=effective_hospital)
+                encounters = self.list_opd_encounters(patient_id=patient["id"])
+                clinical_summary = {
+                    "allergies": ["Penicillin (Mild)", "Sulfa Drugs"] if "Sulfa" in patient.get("diagnosis", "") else ["No known drug allergies"],
+                    "diagnosis": patient.get("diagnosis"),
+                    "prescriptions": prescriptions[:5],
+                    "lab_orders": lab_orders[:5],
+                    "past_consultations": encounters[:5]
+                }
+
+            return {
+                "status": "SUCCESS",
+                "role": "DOCTOR",
+                "patient_identity": patient_identity,
+                "hospital_context": {
+                    "active_hospital_id": effective_hospital,
+                    "active_hospital_name": active_hosp_name,
+                    "is_registered_at_active_hospital": is_registered,
+                    "local_uhid": local_uhid,
+                    "first_registration_date": first_reg_date
+                },
+                "workflow_data": {
+                    "today_appointments": today_appointments,
+                    "active_queue_entry": active_queue,
+                    "clinical_summary": clinical_summary,
+                    "cross_hospital_sharing_blocked": cross_sharing_blocked,
+                    "sharing_block_reason": block_reason
+                },
+                "permitted_actions": [
+                    "START_CONSULTATION",
+                    "CREATE_PRESCRIPTION",
+                    "ORDER_LABS",
+                    "VIEW_DOCUMENTS"
+                ]
+            }
+
+        # 4. HOSPITAL ADMIN / SUPER ADMIN
+        patient_identity["phone"] = patient.get("phone")
+        patient_identity["address"] = patient.get("address")
+        return {
+            "status": "SUCCESS",
+            "role": user_role,
+            "patient_identity": patient_identity,
+            "hospital_context": {
+                "active_hospital_id": effective_hospital,
+                "active_hospital_name": active_hosp_name,
+                "is_registered_at_active_hospital": is_registered,
+                "local_uhid": local_uhid,
+                "first_registration_date": first_reg_date
+            },
+            "workflow_data": {
+                "today_appointments": today_appointments,
+                "active_queue_entry": active_queue,
+                "cross_hospital_sharing_blocked": False
+            },
+            "permitted_actions": [
+                "REGISTER_HOSPITAL",
+                "VIEW_REGISTRATION",
+                "AUDIT_ACCESS_LOGS"
+            ]
+        }
+
     # --------------------------------------------------------------------------
     # DOCTOR MODULE (Reads from vw_doctors, Writes via sp_create_doctor)
     # --------------------------------------------------------------------------
@@ -1188,9 +1527,18 @@ class SPViewsRepository(
             cur.execute("SELECT * FROM oh_id.vw_wards_and_beds ORDER BY ward_name, bed_number;")
             return [dict(row) for row in cur.fetchall()]
 
-    def list_lab_orders(self) -> List[Dict[str, Any]]:
+    def list_lab_orders(self, patient_id: Optional[str] = None, hospital_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with get_readonly_cursor() as cur:
-            cur.execute("SELECT * FROM oh_id.vw_lab_orders ORDER BY ordered_at DESC;")
+            query = "SELECT * FROM oh_id.vw_lab_orders WHERE 1=1"
+            params = []
+            if patient_id:
+                query += " AND patient_id = %s"
+                params.append(patient_id)
+            if hospital_id:
+                query += " AND hospital_id = %s"
+                params.append(hospital_id)
+            query += " ORDER BY ordered_at DESC;"
+            cur.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
     def list_pharmacy_dispensary(self) -> List[Dict[str, Any]]:
@@ -9948,18 +10296,21 @@ class SPViewsRepository(
             appt_id = f"appt-walkin-{uuid.uuid4().hex[:8]}"
             visit_id = f"vis-walkin-{uuid.uuid4().hex[:8]}"
 
-            # Determine department prefix
+            # Determine department prefix & validate clean_dept_id against oh_id.departments
+            clean_dept_id = None
             token_prefix = "OPD-"
             if department_id:
-                cur.execute("SELECT token_prefix FROM oh_id.opd_counters WHERE department_id = %s AND hospital_id = %s LIMIT 1;", (department_id, hospital_id))
-                cnt = cur.fetchone()
-                if cnt and cnt.get("token_prefix"):
-                    token_prefix = cnt["token_prefix"]
-                else:
-                    cur.execute("SELECT code FROM oh_id.departments WHERE id = %s;", (department_id,))
-                    d_row = cur.fetchone()
-                    if d_row and d_row.get("code"):
+                cur.execute("SELECT id, code FROM oh_id.departments WHERE id = %s OR name ILIKE %s LIMIT 1;", (department_id, department_id))
+                d_row = cur.fetchone()
+                if d_row:
+                    clean_dept_id = d_row["id"]
+                    if d_row.get("code"):
                         token_prefix = f"{d_row['code'][:3].upper()}-"
+                else:
+                    cur.execute("SELECT token_prefix FROM oh_id.opd_counters WHERE department_id = %s AND hospital_id = %s LIMIT 1;", (department_id, hospital_id))
+                    cnt = cur.fetchone()
+                    if cnt and cnt.get("token_prefix"):
+                        token_prefix = cnt["token_prefix"]
 
             # Compute daily token sequence
             cur.execute("""
@@ -9982,7 +10333,7 @@ class SPViewsRepository(
                     %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 ) RETURNING *;
             """, (
-                appt_id, patient_id, doctor_id, hospital_id, department_id,
+                appt_id, patient_id, doctor_id, hospital_id, clean_dept_id,
                 f"{date.today().strftime('%Y-%m-%d')} Walk-in",
                 reason or "Walk-in Consultation", next_seq, token_prefix, visit_id
             ))
@@ -10006,7 +10357,7 @@ class SPViewsRepository(
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, 'WAITING', %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 ) RETURNING *;
-            """, (queue_id, patient_id, doctor_id, hospital_id, department_id, appt_id, next_seq, token_prefix, priority, reason or "Walk-in OPD Queue"))
+            """, (queue_id, patient_id, doctor_id, hospital_id, clean_dept_id, appt_id, next_seq, token_prefix, priority, reason or "Walk-in OPD Queue"))
 
             # Log Patient Flow Event
             pfe_id = f"pfe-{uuid.uuid4().hex[:12]}"
@@ -10018,7 +10369,7 @@ class SPViewsRepository(
                     %s, %s, %s, %s, %s, %s, 'PATIENT_CHECKED_IN', %s, %s, %s, CURRENT_TIMESTAMP
                 );
             """, (
-                pfe_id, visit_id, appt_id, patient_id, hospital_id, department_id,
+                pfe_id, visit_id, appt_id, patient_id, hospital_id, clean_dept_id,
                 actor_id, f"Walk-in Arrival with Token {token_str}",
                 json.dumps({"token_number": next_seq, "token_str": token_str, "priority": priority})
             ))

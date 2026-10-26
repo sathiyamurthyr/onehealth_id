@@ -65,6 +65,16 @@ def get_super_admin_token() -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+@pytest.fixture(autouse=True)
+def setup_ai_test_staff():
+    with get_db_cursor() as cur:
+        cur.execute("""
+            INSERT INTO oh_id.doctors (id, user_id, hospital_id, name, specialty, is_available)
+            VALUES ('doc-kedar-101', NULL, 'hosp-kedar', 'Dr. Kedar AI Clinician', 'General Medicine', TRUE)
+            ON CONFLICT (id) DO UPDATE SET is_available = TRUE;
+        """)
+
+
 # ==============================================================================
 # TEST 1: AI MULTI-PROVIDER GATEWAY & MODEL REGISTRY
 # ==============================================================================

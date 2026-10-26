@@ -19,10 +19,13 @@ from backend.app.routers import (
     network_referrals, network_marketplace, network_pharmacy, network_diagnostics,
     network_emergency, network_intelligence,
     global_country, global_developer, global_telehealth, global_wearables,
-    global_payer, global_localization, global_research
+    global_payer, global_localization, global_research,
+    document_ocr,
+    crypto_handshake
 )
 
 from backend.app.core.middleware import SecurityHeadersMiddleware
+from backend.app.core.encryption_middleware import PayloadEncryptionMiddleware
 
 app = FastAPI(
     title="OneHealth ID (OH-ID) Enterprise Hospital Operating System API",
@@ -33,13 +36,20 @@ app = FastAPI(
 # Enterprise Security Headers Middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Application-Layer Payload Encryption Middleware
+app.add_middleware(PayloadEncryptionMiddleware)
+
 # Hardened CORS Middleware (Explicit origins, restricted methods & headers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Hospital-Ref-Id", "X-Usertype-Ref-Id", "Accept", "Origin", "X-Signature", "X-Idempotency-Key", "X-Requested-With"],
+    allow_headers=[
+        "Authorization", "Content-Type", "X-Hospital-Ref-Id", "X-Usertype-Ref-Id",
+        "Accept", "Origin", "X-Signature", "X-Idempotency-Key", "X-Requested-With",
+        "X-OH-Encrypted", "X-Session-Key-Id"
+    ],
 )
 
 # API v1 Router Mount
@@ -89,6 +99,8 @@ api_v1.include_router(ai_operations.router)
 api_v1.include_router(ai_search.router)
 api_v1.include_router(ai_knowledge.router)
 api_v1.include_router(ai_agents.router)
+api_v1.include_router(document_ocr.router)
+api_v1.include_router(crypto_handshake.router)
 
 # Phase 7 Network Ecosystem Routers
 api_v1.include_router(network_onboarding.router)
@@ -159,6 +171,8 @@ app.include_router(ai_operations.router)
 app.include_router(ai_search.router)
 app.include_router(ai_knowledge.router)
 app.include_router(ai_agents.router)
+app.include_router(document_ocr.router)
+app.include_router(crypto_handshake.router)
 
 # Phase 7 Network Ecosystem Routers on Root
 app.include_router(network_onboarding.router)
@@ -188,3 +202,42 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "oh-id-api"}
+
+@app.get("/health/security")
+def security_health_check():
+    """
+    Staging & Production DevSecOps Security Health Check.
+    Reports operational status of Redis, ClamAV, KMS, and Envelope Encryption.
+    Zero disclosure of secrets, credentials, patient PHI, or private keys.
+    """
+    from backend.app.core.rate_limit import distributed_rate_limiter
+    from backend.app.services.security.malware_scanner import malware_scanner
+    from backend.app.services.crypto.kms_provider import get_kms_provider
+
+    kms = get_kms_provider()
+    redis_health = distributed_rate_limiter.health_check()
+    clamav_health = malware_scanner.health_check()
+
+    overall_status = "HEALTHY"
+    if redis_health.get("status") == "UNHEALTHY" or clamav_health.get("status") == "OFFLINE":
+        overall_status = "DEGRADED"
+
+    return {
+        "status": overall_status,
+        "environment": settings.ENVIRONMENT,
+        "security_controls": {
+            "rate_limiter": redis_health,
+            "malware_scanner": clamav_health,
+            "kms_provider": {
+                "provider_type": settings.KMS_PROVIDER,
+                "provider_class": kms.__class__.__name__,
+                "key_arn_configured": bool(settings.KMS_KEY_ARN),
+                "is_production_ready": kms.__class__.__name__ == "AWSKMSProvider"
+            },
+            "envelope_encryption": {
+                "algorithm": "AES-256-GCM",
+                "format": "OHID_ENC_V1",
+                "status": "ACTIVE"
+            }
+        }
+    }

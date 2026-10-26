@@ -54,12 +54,13 @@ def setup_test_patient_and_doctor():
                 ON CONFLICT (id) DO NOTHING;
             """, (hospital_id,))
 
-        # Insert test doctor
-        cur.execute("""
-            INSERT INTO oh_id.doctors (id, hospital_id, name, email, specialty, is_available)
-            VALUES (%s, %s, 'Dr. Aris Thorne', %s, 'Internal Medicine', TRUE)
-            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
-        """, (doctor_id, hospital_id, f"aris.{suffix}@kedar.org"))
+        # Insert test doctors and clinical staff
+        for staff_id in (doctor_id, "usr-nurse-1", "usr-er-1"):
+            cur.execute("""
+                INSERT INTO oh_id.doctors (id, hospital_id, name, email, specialty, is_available)
+                VALUES (%s, %s, 'Clinical Test Staff', %s, 'Clinical Care', TRUE)
+                ON CONFLICT (id) DO UPDATE SET is_available = TRUE;
+            """, (staff_id, hospital_id, f"{staff_id}.{suffix}@kedar.org"))
 
         # Insert test patient
         qr_token = f"qr-{uuid.uuid4().hex}"

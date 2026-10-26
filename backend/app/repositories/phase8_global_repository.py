@@ -122,6 +122,7 @@ class Phase8GlobalRepositoryMixin:
                 )
                 ON CONFLICT (country_code, identifier_type, identifier_value)
                 DO UPDATE SET
+                    master_patient_id = EXCLUDED.master_patient_id,
                     issuing_authority = EXCLUDED.issuing_authority,
                     is_verified = EXCLUDED.is_verified,
                     verified_at = CURRENT_TIMESTAMP

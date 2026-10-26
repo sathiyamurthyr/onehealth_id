@@ -83,9 +83,7 @@ export function DynamicNav() {
     });
   }, []);
 
-  if (!workspace || !user) return null;
-
-  const isPatient = workspace.workspace_type === "PATIENT";
+  const isPatient = workspace?.workspace_type === "PATIENT";
 
   // Filter navigation items by search query (case-insensitive on title or section)
   const filteredNavItems = useMemo(() => {
@@ -275,7 +273,7 @@ export function DynamicNav() {
     OTHER: { bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-300" },
   };
 
-  const badgeStyle = roleColors[workspace.workspace_type] || roleColors.OTHER;
+  const badgeStyle = (workspace && roleColors[workspace.workspace_type]) || roleColors.OTHER;
 
   // Canonical active route determination: strictly guarantees exactly one active route match
   const activeNavHref = useMemo(() => {
@@ -283,18 +281,18 @@ export function DynamicNav() {
     const normalizedPath = pathname.replace(/\/+$/, "") || "/";
 
     // 1. Strict exact match against configured navigation items
-    const exact = navigation.find((item) => item.href.replace(/\/+$/, "") === normalizedPath);
+    const exact = (navigation || []).find((item) => item.href.replace(/\/+$/, "") === normalizedPath);
     if (exact) return exact.href;
 
     // 2. Explicit nested alias / parent mapping
     const explicitParent = EXPLICIT_NESTED_PARENTS[normalizedPath];
-    if (explicitParent && navigation.some((item) => item.href === explicitParent)) {
+    if (explicitParent && (navigation || []).some((item) => item.href === explicitParent)) {
       return explicitParent;
     }
 
     // 3. Child route matching for non-root navigation items (e.g. /patient/appointments/123 -> /patient/appointments)
     // Root landing hubs (/patient, /doctor, /hospital, etc.) are strictly excluded to avoid broad prefix hijacking
-    const eligibleParents = navigation.filter(
+    const eligibleParents = (navigation || []).filter(
       (item) => !ROOT_LANDING_ROUTES.has(item.href.replace(/\/+$/, ""))
     );
 
@@ -327,6 +325,8 @@ export function DynamicNav() {
     { title: "Health", href: "/patient/timeline", icon: "History" },
     { title: "Profile", href: "/patient/profile", icon: "User" },
   ];
+
+  if (!workspace || !user) return null;
 
   return (
     <>

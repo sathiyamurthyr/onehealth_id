@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { ShieldCheck, Download, Share2, Scan, CheckCircle2, User, Building2, Phone, Calendar } from "lucide-react";
 import { Patient } from "@/lib/types";
@@ -14,7 +14,14 @@ interface OneHealthQRCardProps {
 export const OneHealthQRCard: React.FC<OneHealthQRCardProps> = ({ patient }) => {
   const [copied, setCopied] = useState(false);
 
-  const qrValue = patient.qr_token || `QR-OHID-${patient.id}-SECURE`;
+  const rawToken = patient.qr_token || `QR-OHID-${patient.id}-SECURE`;
+  const [qrValue, setQrValue] = useState(`https://ohid.online/scan/${rawToken}`);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setQrValue(`${window.location.origin}/scan/${rawToken}`);
+    }
+  }, [rawToken]);
 
   const copyOneHealthId = () => {
     if (patient.onehealth_id) {

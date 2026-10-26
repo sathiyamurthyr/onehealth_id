@@ -17,13 +17,7 @@ export function FamilyContextBanner() {
     return null;
   }
 
-  const getRelationshipIcon = () => {
-    if (activePerson.isMinor) return Baby;
-    if (activePerson.relationship.toLowerCase().includes("spouse") || activePerson.relationship.toLowerCase().includes("wife")) return HeartHandshake;
-    return User;
-  };
-
-  const Icon = getRelationshipIcon();
+  const isSpouse = activePerson.relationship.toLowerCase().includes("spouse") || activePerson.relationship.toLowerCase().includes("wife");
 
   return (
     <div 
@@ -34,7 +28,13 @@ export function FamilyContextBanner() {
         {/* Left Info */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
-            <Icon className="w-5 h-5" />
+            {activePerson.isMinor ? (
+              <Baby className="w-5 h-5" />
+            ) : isSpouse ? (
+              <HeartHandshake className="w-5 h-5" />
+            ) : (
+              <User className="w-5 h-5" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">

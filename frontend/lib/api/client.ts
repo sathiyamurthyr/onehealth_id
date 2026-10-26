@@ -3,6 +3,13 @@
  * Centralizes authentication headers, token refresh, base URL, error parsing, and request logging.
  */
 
+import {
+  payloadCrypto,
+  isRouteExcluded,
+  isEncryptedEnvelope,
+  EncryptedPayloadEnvelope
+} from "../crypto/payload_encryption";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8050/api/v1";
 
 export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -12,8 +19,10 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     ...(options?.headers as Record<string, string>),
   };
 
+  const method = (options?.method || "GET").toUpperCase();
+
   // Protect state-changing requests against CSRF
-  if (options?.method && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method.toUpperCase())) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     headers["X-Requested-With"] = "XMLHttpRequest";
   }
 
@@ -21,39 +30,90 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     ? endpoint.replace(/^\/api\/v1/, "")
     : endpoint;
   const url = `${API_BASE}${cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`}`;
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8050";
+  const canonicalPath = new URL(url, origin).pathname;
+
+  let requestBody = options?.body;
+  const canEncrypt =
+    !isFormData &&
+    !isRouteExcluded(canonicalPath) &&
+    payloadCrypto.isSupported();
+
+  // 1. Inbound Request Body Encryption
+  if (canEncrypt && ["POST", "PUT", "PATCH", "DELETE"].includes(method) && requestBody) {
+    try {
+      let parsedPayload: unknown;
+      if (typeof requestBody === "string") {
+        try {
+          parsedPayload = JSON.parse(requestBody);
+        } catch {
+          parsedPayload = requestBody;
+        }
+      } else {
+        parsedPayload = requestBody;
+      }
+
+      const envelope: EncryptedPayloadEnvelope = await payloadCrypto.encryptRequest(
+        method,
+        canonicalPath,
+        parsedPayload,
+        API_BASE
+      );
+
+      requestBody = JSON.stringify(envelope);
+      headers["X-OH-Encrypted"] = "1";
+      headers["X-Session-Key-Id"] = envelope.key_id;
+      headers["Content-Type"] = "application/json";
+    } catch (encErr) {
+      console.warn("Client payload encryption skipped or failed:", encErr);
+    }
+  } else if (canEncrypt) {
+    // For read operations (e.g. GET), signal encryption capability if active key exists
+    const activeKeyId = payloadCrypto.getActiveKeyId();
+    if (activeKeyId) {
+      headers["X-OH-Encrypted"] = "1";
+      headers["X-Session-Key-Id"] = activeKeyId;
+    }
+  }
+
   const response = await fetch(url, {
     credentials: "include",
     ...options,
+    body: requestBody,
     headers,
   });
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
-      // Purge any legacy browser-stored credentials on unauthorized response
-      try {
-        localStorage.removeItem("oh_access_token");
-        localStorage.removeItem("oh_workspace");
-        localStorage.removeItem("oh_user");
-        localStorage.removeItem("oh_impersonation");
-        localStorage.removeItem("sathus_impersonation_session");
-      } catch {
-        // Ignore localStorage access restrictions
-      }
+    if (response.status === 401) {
+      payloadCrypto.clearSession();
+      if (typeof window !== "undefined") {
+        // Purge any legacy browser-stored credentials on unauthorized response
+        try {
+          localStorage.removeItem("oh_access_token");
+          localStorage.removeItem("oh_workspace");
+          localStorage.removeItem("oh_user");
+          localStorage.removeItem("oh_impersonation");
+          localStorage.removeItem("sathus_impersonation_session");
+        } catch {
+          // Ignore localStorage access restrictions
+        }
 
-      const path = window.location.pathname;
-      const isPublicRoute =
-        path.startsWith("/login") ||
-        path.startsWith("/scan") ||
-        path.startsWith("/verify") ||
-        path.startsWith("/share") ||
-        path === "/" ||
-        path.startsWith("/terms") ||
-        path.startsWith("/privacy") ||
-        path.startsWith("/register");
+        const path = window.location.pathname;
+        const isPublicRoute =
+          path.startsWith("/login") ||
+          path.startsWith("/scan") ||
+          path.startsWith("/verify") ||
+          path.startsWith("/share") ||
+          path === "/" ||
+          path.startsWith("/terms") ||
+          path.startsWith("/privacy") ||
+          path.startsWith("/register");
 
-      if (!endpoint.includes("/auth/login") && !isPublicRoute) {
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.href = "/login";
+        if (!endpoint.includes("/auth/login") && !isPublicRoute) {
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.href = "/login";
+        }
       }
     }
 
@@ -67,7 +127,17 @@ export async function fetchJSON<T>(endpoint: string, options?: RequestInit): Pro
     throw new Error(errorDetail);
   }
 
-  return response.json();
+  const responseData = await response.json();
+
+  // 2. Outbound Encrypted Response Decryption
+  if (
+    response.headers.get("x-oh-encrypted") === "1" ||
+    isEncryptedEnvelope(responseData)
+  ) {
+    return payloadCrypto.decryptResponse<T>(method, canonicalPath, responseData as EncryptedPayloadEnvelope);
+  }
+
+  return responseData as T;
 }
 
 export const apiClient = {

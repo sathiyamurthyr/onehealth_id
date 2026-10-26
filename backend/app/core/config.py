@@ -1,6 +1,7 @@
 import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "OneHealth ID (OH-ID) Enterprise Hospital Operating System"
@@ -19,6 +20,31 @@ class Settings(BaseSettings):
     
     # Cross-Hospital Sharing Governance - Disabled by default for single-facility isolation
     ENABLE_CROSS_HOSPITAL_SHARING: bool = os.getenv("ENABLE_CROSS_HOSPITAL_SHARING", "false").lower() in ("true", "1", "yes")
+    
+    # Document & PII Encryption Configuration (Envelope Encryption with AES-256-GCM)
+    DOC_ENCRYPTION_KEY: str = os.getenv("DOC_ENCRYPTION_KEY", "")
+    DOC_ENCRYPTION_KEY_ID: str = os.getenv("DOC_ENCRYPTION_KEY_ID", "kek-v1")
+    KMS_PROVIDER: str = os.getenv("KMS_PROVIDER", "local")  # 'local', 'mock_cloud_kms', 'aws_kms'
+    KMS_KEY_ARN: str = os.getenv("KMS_KEY_ARN", "")
+
+    # Application-Layer API Request/Response Payload Encryption (AES-256-GCM + ECDH)
+    PAYLOAD_ENCRYPTION_ENABLED: bool = os.getenv("PAYLOAD_ENCRYPTION_ENABLED", "true").lower() in ("true", "1", "yes")
+    PAYLOAD_ENCRYPTION_STRICT: bool = os.getenv("PAYLOAD_ENCRYPTION_STRICT", "false").lower() in ("true", "1", "yes")
+    PAYLOAD_ENCRYPTION_KEY_TTL_SECONDS: int = int(os.getenv("PAYLOAD_ENCRYPTION_KEY_TTL_SECONDS", "3600"))
+    PAYLOAD_ENCRYPTION_TIMESTAMP_WINDOW: int = int(os.getenv("PAYLOAD_ENCRYPTION_TIMESTAMP_WINDOW", "60"))
+    PAYLOAD_ENCRYPTION_MAX_PAYLOAD_SIZE: int = int(os.getenv("PAYLOAD_ENCRYPTION_MAX_PAYLOAD_SIZE", str(10 * 1024 * 1024)))
+
+    # Distributed Redis & Rate Limiting Configuration
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "false").lower() in ("true", "1", "yes")
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
+    RATE_LIMIT_FAIL_POLICY: str = os.getenv("RATE_LIMIT_FAIL_POLICY", "strict")  # 'strict' (fail-closed on critical) or 'lenient'
+
+    # Anti-Malware Scanning Configuration (ClamAV / ICAP)
+    CLAMAV_HOST: str = os.getenv("CLAMAV_HOST", "127.0.0.1")
+    CLAMAV_PORT: int = int(os.getenv("CLAMAV_PORT", "3310"))
+    CLAMAV_ENABLED: bool = os.getenv("CLAMAV_ENABLED", "false").lower() in ("true", "1", "yes")
+    MALWARE_SCAN_FAIL_POLICY: str = os.getenv("MALWARE_SCAN_FAIL_POLICY", "fail_closed")  # 'fail_closed' or 'fail_open'
     
     # Email / SMTP Infrastructure Configuration
     SMTP_HOST: str = os.getenv("SMTP_HOST", "")
@@ -59,9 +85,14 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if self.ENVIRONMENT == "production":
+            if not self.SECRET_KEY or "default-secret" in self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+                raise RuntimeError("FATAL SECURITY MISCONFIGURATION: SECRET_KEY must be explicitly set to a cryptographically secure random value in production.")
+            if self.REDIS_ENABLED and not self.REDIS_URL.startswith("rediss://"):
+                raise RuntimeError("FATAL SECURITY MISCONFIGURATION: In production, Redis must use TLS encryption with the 'rediss://' URI scheme.")
+        return self
+
 settings = Settings()
 
-# Enforce non-default cryptographic secret key in production
-if settings.ENVIRONMENT == "production":
-    if not settings.SECRET_KEY or "default-secret" in settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
-        raise RuntimeError("FATAL SECURITY MISCONFIGURATION: SECRET_KEY must be explicitly set to a cryptographically secure random value in production.")

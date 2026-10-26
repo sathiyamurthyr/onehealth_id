@@ -23,12 +23,13 @@ const securityHeaders = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+    value: "camera=(self), microphone=(), geolocation=(), browsing-topics=()"
   }
 ];
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  poweredByHeader: false,
   async headers() {
     return [
       {

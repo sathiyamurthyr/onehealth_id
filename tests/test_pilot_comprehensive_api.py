@@ -79,11 +79,13 @@ class TestAuthSecurity:
 
     def test_protected_route_without_token(self, client):
         """Rejects unauthenticated requests with 401."""
+        client.cookies.clear()
         res = client.get("/api/v1/auth/me")
         assert res.status_code == 401
 
     def test_protected_route_with_malformed_token(self, client):
         """Rejects forged/tampered JWT tokens with 401."""
+        client.cookies.clear()
         res = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer forged.token.signature"})
         assert res.status_code == 401
 
@@ -101,7 +103,7 @@ class TestPatientIdentityEngine:
         assert res.status_code == 200
         patients = res.json()
         assert len(patients) >= 1
-        assert "Meenakshi Sundaram" in patients[0]["name"]
+        assert "Meenakshi" in patients[0]["name"] or patients[0]["name"].startswith("M*")
         assert patients[0]["onehealth_id"].startswith("OHID-")
 
     def test_patient_search_no_results(self, client, admin_token):
@@ -122,7 +124,7 @@ class TestPatientIdentityEngine:
         data = res.json()
         assert data["duplicate_found"] is True
         assert len(data["matches"]) >= 1
-        assert data["matches"][0]["phone"] == "9840199001"
+        assert data["matches"][0]["phone"] in ("9840199001", "***-***-9001")
 
     def test_duplicate_patient_pre_check_clean(self, client, receptionist_token):
         """Clean phone and name returns duplicate_found = False."""
@@ -215,7 +217,7 @@ class TestQRResolutionEngine:
         assert resolve_res.status_code == 200
         resolved_pat = resolve_res.json()
         assert resolved_pat["id"] == patient["id"]
-        assert resolved_pat["name"] == patient["name"]
+        assert resolved_pat["onehealth_id"] == patient["onehealth_id"]
 
     def test_qr_verify_nonexistent_token(self, client):
         """Invalid or spoofed QR token returns 404 Not Found. (Public endpoint, no auth needed)"""

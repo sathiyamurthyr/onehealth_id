@@ -7,14 +7,22 @@ services:
       dockerfile: backend/Dockerfile
     container_name: oh-id-backend
     restart: unless-stopped
-    network_mode: host
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     env_file:
       - .env
     environment:
       - PORT=8050
       - DB_SCHEMA=oh_id
       - PYTHONPATH=/app
-    command: ["uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8050"]
+    ports:
+      - "127.0.0.1:8050:8050"
+    networks:
+      - oh_id_net
+    command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8050"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8050/health"]
       interval: 15s
@@ -42,6 +50,11 @@ services:
         - NEXT_PUBLIC_API_URL=/api/v1
     container_name: oh-id-frontend
     restart: unless-stopped
+    user: "1001:1001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - PORT=3000
       - HOSTNAME=0.0.0.0

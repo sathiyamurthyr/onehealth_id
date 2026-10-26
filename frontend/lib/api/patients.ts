@@ -1,5 +1,5 @@
 import { fetchJSON } from "./client";
-import { Patient, DuplicateCheckResult } from "../types";
+import { Patient, DuplicateCheckResult, QRWorkflowScanResult } from "../types";
 
 export const patientsApi = {
   list: (params?: string | { search?: string; hospital_id?: string; branch_id?: string; limit?: number; offset?: number }) => {
@@ -47,6 +47,37 @@ export const patientsApi = {
     fetchJSON<Patient>("/patients/qr/resolve", {
       method: "POST",
       body: JSON.stringify({ qr_token, scanned_by }),
+    }),
+
+  scanWorkflow: (qr_input: string, hospital_id?: string) =>
+    fetchJSON<QRWorkflowScanResult>("/patients/qr/scan-workflow", {
+      method: "POST",
+      body: JSON.stringify({ qr_input, hospital_id }),
+    }),
+
+  registerHospital: (patient_id: string, hospital_id?: string, local_uhid?: string) =>
+    fetchJSON<{ success: boolean; data: any; message: string }>("/patients/qr/register-hospital", {
+      method: "POST",
+      body: JSON.stringify({ patient_id, hospital_id, local_uhid }),
+    }),
+
+  checkInAppointment: (appointment_id: string, hospital_id?: string) =>
+    fetchJSON<{ success: boolean; data: any; message: string }>("/patients/qr/check-in", {
+      method: "POST",
+      body: JSON.stringify({ appointment_id, hospital_id }),
+    }),
+
+  issueToken: (params: {
+    patient_id: string;
+    hospital_id?: string;
+    department_name?: string;
+    doctor_id?: string;
+    priority?: string;
+    chief_complaint?: string;
+  }) =>
+    fetchJSON<{ success: boolean; data: any; message: string }>("/patients/qr/issue-token", {
+      method: "POST",
+      body: JSON.stringify(params),
     }),
 
   rotateQr: (patientId: string) =>

@@ -27,6 +27,7 @@ import { api } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
 import { Badge, Button } from "@/components/ui/Card";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { OneHealthQRScannerModal } from "@/components/qr/OneHealthQRScannerModal";
 
 interface NavbarProps {
   onOpenMobileMenu?: () => void;
@@ -304,75 +305,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, isMobileMenuOp
         </div>
       )}
 
-      {/* OneHealth QR Scanner / Lookup Modal */}
-      {showQRModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md rounded-3xl bg-white  p-6 shadow-2xl border border-slate-200 ">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 ">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-50  text-blue-600 rounded-xl">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 ">
-                    Scan / Enter OneHealth ID
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Resolve digital healthcare token across hospitals
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowQRModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 "
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleQuickQRScan} className="mt-5 space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-700  block mb-1">
-                  OneHealth Token or ID (e.g. OHID-IND-2026-01001 or QR Token)
-                </label>
-                <input
-                  type="text"
-                  value={qrInput}
-                  onChange={(e) => setQrInput(e.target.value)}
-                  placeholder="Paste QR token or OHID-IND-..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300  bg-white  text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
-                />
-              </div>
-
-              {qrError && (
-                <div className="p-3 text-xs text-rose-700 bg-rose-50  rounded-xl border border-rose-200 ">
-                  {qrError}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="md"
-                  onClick={() => setShowQRModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  disabled={qrVerifying || !qrInput.trim()}
-                >
-                  {qrVerifying ? "Verifying Token..." : "Resolve Identity"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Universal OneHealth QR Scanner Modal */}
+      <OneHealthQRScannerModal
+        isOpen={showQRModal}
+        onClose={() => setShowQRModal(false)}
+        activeHospitalId={workspace?.hospital_ref_id || user?.hospital_ref_id || user?.hospital_id || undefined}
+      />
     </>
   );
 };

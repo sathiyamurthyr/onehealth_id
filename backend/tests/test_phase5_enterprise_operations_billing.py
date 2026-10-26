@@ -76,9 +76,9 @@ def setup_test_entities():
         """)
         # Hospital Apollo (Tenant B)
         cur.execute("""
-            INSERT INTO oh_id.hospitals (id, code, name, display_name, hospital_type, is_active)
-            VALUES ('hosp-apollo', 'HOSP-APOLLO', 'Apollo Multispeciality Health City', 'Apollo Health City', 'HOSPITAL', TRUE)
-            ON CONFLICT (id) DO NOTHING;
+            INSERT INTO oh_id.hospitals (id, code, name, display_name, hospital_type, is_active, status, lifecycle_status)
+            VALUES ('hosp-apollo', 'HOSP-APOLLO', 'Apollo Multispeciality Health City', 'Apollo Health City', 'HOSPITAL', TRUE, 'ACTIVE', 'APPROVED')
+            ON CONFLICT (id) DO UPDATE SET is_active = TRUE, status = 'ACTIVE', lifecycle_status = 'APPROVED';
         """)
         # Patient
         cur.execute("""
@@ -454,7 +454,9 @@ def test_08_cross_hospital_billing_isolation_and_idor(auth_headers, hosp_b_heade
     assert "Forbidden" in b_attempt.json()["detail"]
 
     # Hospital B admin lists invoices -> Should not see Hospital A invoice
-    b_list = client.get("/api/v1/hospital/billing/invoices?hospital_id=hosp-apollo", headers=hosp_b_headers).json()
+    b_res = client.get("/api/v1/hospital/billing/invoices?hospital_id=hosp-apollo", headers=hosp_b_headers)
+    assert b_res.status_code == 200
+    b_list = b_res.json()
     assert all(i["id"] != inv_a["id"] for i in b_list)
 
 def test_09_hospital_operational_kpis_and_financial_analytics(auth_headers):

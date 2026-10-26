@@ -22,6 +22,7 @@ export * from "./phase5";
 export * from "./ai";
 export * from "./network";
 export * from "./global";
+export * from "./ocr";
 
 import { authApi } from "./auth";
 import { patientsApi } from "./patients";
@@ -45,10 +46,12 @@ import { phase4Api } from "./phase4";
 import { phase5Api } from "./phase5";
 import { aiApi } from "./ai";
 import { networkApi } from "./network";
+import { ocrApi } from "./ocr";
 import { fetchJSON } from "./client";
 
 export const api = {
   auth: authApi,
+  ocr: ocrApi,
   me: meApi,
   patient: patientApi,
   discovery: discoveryApi,

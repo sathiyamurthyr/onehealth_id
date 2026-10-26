@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { QRCodeSVG } from "qrcode.react";
 import {
   QrCode, ShieldCheck, ArrowLeft, RefreshCw, CheckCircle2,
   Lock, Sparkles, AlertCircle, Info, Download, Users
@@ -98,12 +99,12 @@ export default function PatientQRPage() {
               <div className="w-48 h-48 bg-slate-200 rounded-2xl animate-pulse" />
             ) : (
               <div className="relative p-3 bg-white rounded-xl shadow-md border border-slate-200">
-                <QrCode className="w-48 h-48 text-slate-900" />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-md border-2 border-white">
-                    OH
-                  </div>
-                </div>
+                <QRCodeSVG
+                  value={typeof window !== "undefined" ? `${window.location.origin}/scan/${qrData?.qr_token || "DEMO"}` : `https://ohid.online/scan/${qrData?.qr_token || "DEMO"}`}
+                  size={192}
+                  level="H"
+                  includeMargin={false}
+                />
               </div>
             )}
             <p className="text-[10px] font-mono font-bold text-slate-500 mt-3 uppercase tracking-wider">

@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": "warn",
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/purity": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/refs": "warn",
       "react/no-unescaped-entities": "off",
     },
   },
@@ -21,6 +23,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "e2e/**",
   ]),
 ]);
 

@@ -69,6 +69,9 @@ def doctor_auth_headers():
 
 @pytest.fixture
 def nurse_auth_headers():
+    from backend.app.database.session import get_db_cursor
+    with get_db_cursor() as cur:
+        cur.execute("UPDATE oh_id.hospital_staff_memberships SET verification_status = 'VERIFIED', employment_status = 'ACTIVE' WHERE user_id = 'usr-29809196ec';")
     token = jwt.encode(
         {
             "sub": "nurse.kavitha.1ab729@kedarhospital.org",

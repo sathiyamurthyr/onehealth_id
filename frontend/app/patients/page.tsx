@@ -14,13 +14,18 @@ import {
   Filter,
   UserCheck,
   ShieldCheck,
-  Activity
+  Activity,
+  UploadCloud,
+  FileText
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Patient } from "@/lib/types";
+import { DocumentOCRJob } from "@/lib/api/ocr";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/components/ui/Card";
 import { LoadingState, EmptyState, ErrorState } from "@/components/ui/FeedbackStates";
+import { DocumentUploadModal } from "@/components/documents/DocumentUploadModal";
+import { DocumentExtractionReviewModal } from "@/components/documents/DocumentExtractionReviewModal";
 
 export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -28,6 +33,11 @@ export default function PatientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  // Document OCR Upload & Human Review Modal states
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [activeOCRJob, setActiveOCRJob] = useState<DocumentOCRJob | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   const fetchPatients = async (query?: string) => {
     setLoading(true);
@@ -73,12 +83,24 @@ export default function PatientsPage() {
             </p>
           </div>
 
-          <Link href="/patients/register">
-            <Button variant="primary" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto">
-              <PlusCircle className="w-4 h-4" />
-              <span>Register New Patient</span>
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => setIsUploadModalOpen(true)}
+              className="gap-2 text-xs font-semibold w-full sm:w-auto border-blue-200 hover:bg-blue-50 text-blue-700 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900/30"
+            >
+              <UploadCloud className="w-4 h-4 text-blue-500" />
+              <span>Upload Document</span>
             </Button>
-          </Link>
+            <Link href="/patients/register">
+              <Button variant="primary" size="md" className="gap-2 text-xs font-semibold w-full sm:w-auto">
+                <PlusCircle className="w-4 h-4" />
+                <span>Register New Patient</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Search & Filter Bar */}
@@ -122,12 +144,59 @@ export default function PatientsPage() {
         ) : error ? (
           <ErrorState message={error} onRetry={() => fetchPatients(search)} />
         ) : patients.length === 0 ? (
-          <EmptyState
-            title="No patients found"
-            description="No matching patients found in the registry. Try another search or register a new patient."
-            actionText="Register Patient"
-            onAction={() => window.location.href = "/patients/register"}
-          />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto shadow-sm space-y-5 animate-in fade-in">
+            <div className="w-16 h-16 rounded-3xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto shadow-xs">
+              <Search className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Can&apos;t find the patient or hospital?
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                {search
+                  ? `No registry matches found for "${search}". You can search again with different terms or upload supporting documents to extract identity and clinical records via OCR.`
+                  : "No matching patients found in this hospital registry. You can search again or upload a supporting document to extract records."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => setIsUploadModalOpen(true)}
+                className="gap-2 font-bold text-xs"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Upload Document</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                onClick={() => {
+                  const input = document.querySelector('input[placeholder*="Search by name"]') as HTMLInputElement;
+                  input?.focus();
+                }}
+                className="text-xs"
+              >
+                Search Again
+              </Button>
+              {search && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  onClick={() => {
+                    setSearch("");
+                    fetchPatients("");
+                  }}
+                  className="text-xs text-slate-500"
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Main Patients List / Table (8 cols on Desktop, full width on Mobile) */}
@@ -318,6 +387,26 @@ export default function PatientsPage() {
             </div>
           </div>
         )}
+
+        {/* Document Upload Modal */}
+        <DocumentUploadModal
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onUploadSuccess={(job) => {
+            setActiveOCRJob(job);
+            setIsReviewModalOpen(true);
+          }}
+        />
+
+        {/* Human Review & Identity Verification Screen */}
+        <DocumentExtractionReviewModal
+          isOpen={isReviewModalOpen}
+          job={activeOCRJob}
+          onClose={() => setIsReviewModalOpen(false)}
+          onConfirmed={(res) => {
+            fetchPatients(search);
+          }}
+        />
       </div>
     </AppLayout>
   );

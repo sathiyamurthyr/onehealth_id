@@ -102,12 +102,11 @@ OVERALL PASS RATE:     100.0%
 
 ## 5. Commit Details
 
-- **Commit Message:**
-  ```text
-  security(oh-id): harden browser authentication sessions
-  ```
-- **Commit Hash:** *(Recorded immediately upon commit execution)*
-- **Staged File Count:** 20 files
+- **Commit Details:**
+  - **Commit Hash:** `739baf4bbddd8111d6deb395459c11ecf63b939f`
+  - **Commit Message:** `security(oh-id): harden browser authentication sessions`
+  - **Commit Timestamp:** `Sun Oct 25 20:57:43 2026 +0530`
+  - **Files Changed:** 20 files (`+1198`, `-120`)
 - **Push Status:** NOT PUSHED (Per instructions, changes remain local to branch `feature/ohid-kedar-pilot`).
 
 ---
