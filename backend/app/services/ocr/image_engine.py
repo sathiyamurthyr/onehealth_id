@@ -11,7 +11,10 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 from backend.app.services.ocr.base import BaseOCREngine
 from backend.app.core.logging import logger
 

@@ -6,7 +6,10 @@ Sathus Technology Pvt Ltd - OneHealth ID
 
 from pathlib import Path
 from typing import Dict, Any, List
-import pypdfium2 as pdfium
+try:
+    import pypdfium2 as pdfium
+except ImportError:
+    pdfium = None
 from backend.app.services.ocr.base import BaseOCREngine
 from backend.app.core.logging import logger
 
@@ -23,6 +26,8 @@ class PDFiumOCREngine(BaseOCREngine):
         return ["application/pdf"]
 
     def extract_text(self, file_input: Any, mime_type: str = "application/pdf") -> Dict[str, Any]:
+        if pdfium is None:
+            raise RuntimeError("pypdfium2 is not installed in the runtime environment.")
         if isinstance(file_input, (bytes, bytearray)):
             doc = pdfium.PdfDocument(bytes(file_input))
         else:
