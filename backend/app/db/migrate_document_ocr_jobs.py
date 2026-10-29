@@ -46,6 +46,10 @@ def migrate_document_ocr_jobs():
             CREATE INDEX IF NOT EXISTS idx_doc_ocr_jobs_uploader ON oh_id.document_ocr_jobs (uploader_user_id);
             CREATE INDEX IF NOT EXISTS idx_doc_ocr_jobs_hospital ON oh_id.document_ocr_jobs (hospital_id);
             CREATE INDEX IF NOT EXISTS idx_doc_ocr_jobs_created ON oh_id.document_ocr_jobs (created_at DESC);
+
+            ALTER TABLE oh_id.document_ocr_jobs ADD COLUMN IF NOT EXISTS validation_decision VARCHAR(50);
+            ALTER TABLE oh_id.document_ocr_jobs ADD COLUMN IF NOT EXISTS validation_metrics JSONB DEFAULT '{}'::jsonb;
+            ALTER TABLE oh_id.document_ocr_jobs ADD COLUMN IF NOT EXISTS actionable_remedy TEXT;
         """)
         logger.info("Successfully created oh_id.document_ocr_jobs table and indexes.")
 

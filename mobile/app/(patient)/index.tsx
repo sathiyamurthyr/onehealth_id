@@ -21,6 +21,7 @@ import {
   Pill,
   Calendar,
   Activity,
+  FileText,
   ChevronRight,
   ShieldCheck,
   Building2,
@@ -127,6 +128,14 @@ export default function PatientHomeScreen() {
       status: "INFO" as const,
       route: "/(patient)/timeline",
       testID: "nav-timeline",
+    },
+    {
+      title: "Upload Medical Document",
+      desc: "Enterprise OCR verification & clinical health records",
+      icon: <FileText size={20} color={COLORS.primary[600]} />,
+      status: "ACTIVE" as const,
+      route: "/(patient)/upload",
+      testID: "nav-upload-document",
     },
   ];
 

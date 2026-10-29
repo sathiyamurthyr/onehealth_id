@@ -22,10 +22,13 @@ from backend.app.services.ocr.pdfium_engine import PDFiumOCREngine
 from backend.app.services.ocr.image_engine import ImageAndMediaOCREngine
 from backend.app.services.ocr.extractor import DocumentFieldExtractor
 from backend.app.services.ocr.duplicate_detector import DocumentDuplicateDetector
+from backend.app.services.ocr.document_validator import document_validator, ValidationDecision
 from backend.app.core.logging import logger, log_security_event
 
 
 class DocumentOCRService:
+    delete_quarantined_file = staticmethod(delete_quarantined_file)
+
     def __init__(self):
         self.pdfium_engine = PDFiumOCREngine()
         self.image_engine = ImageAndMediaOCREngine()
@@ -41,24 +44,71 @@ class DocumentOCRService:
         hospital_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Full ingestion pipeline:
-        1. Validates magic bytes, file extensions, and file sizes.
-        2. Quarantines file in tenant-isolated directory.
+        Full enterprise document validation & ingestion pipeline:
+        1. Stage A: Pre-flight file validation (magic signatures, executable blocking, size, encryption).
+        2. Stage B: Security scan (anti-malware & archive bomb defenses) & quarantine envelope encryption.
         3. Creates job record in oh_id.document_ocr_jobs with status 'PROCESSING'.
-        4. Dispatches to appropriate OCR extraction engine.
-        5. Extracts hospital, patient, and clinical document entities with confidence.
-        6. Runs duplicate detection against existing OH-ID records.
-        7. Transitions state to 'REVIEW_REQUIRED' (or 'FAILED' if error).
+        4. Stage C: OCR extraction (PDFium / Tesseract) with character/word readability analysis.
+        5. Stage D & E: Healthcare relevance verification & category classification matching.
+        6. If Rejected: Deletes quarantined file immediately and records audit log.
+        7. If Accepted/Review: Extracts clinical entities, checks duplicates, and updates job state.
         """
         job_id = f"ocr-{uuid.uuid4().hex[:12]}"
-        
-        # 1 & 2: Validate and quarantine file
-        file_meta = validate_and_quarantine_file(
+
+        # 1. Stage A: Pre-flight file validation
+        is_valid, preflight_decision, preflight_reason, preflight_remedy = document_validator.validate_file_pre_flight(
             content=file_bytes,
-            original_filename=original_filename,
-            hospital_id=hospital_id,
-            job_id=job_id
+            filename=original_filename,
+            category=document_category
         )
+        if not is_valid:
+            log_security_event(
+                "DOCUMENT_PREFLIGHT_REJECTED",
+                actor_id=uploader_user_id,
+                hospital_id=hospital_id,
+                resource=f"file:{original_filename}",
+                status="DENIED",
+                details={"decision": preflight_decision.value, "reason": preflight_reason}
+            )
+            http_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+            if preflight_decision == ValidationDecision.REJECTED_UNSUPPORTED_TYPE:
+                http_status = status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            elif preflight_decision == ValidationDecision.REJECTED_TOO_LARGE:
+                http_status = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            elif preflight_decision == ValidationDecision.REJECTED_INVALID_FILE:
+                http_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+
+            raise HTTPException(
+                status_code=http_status,
+                detail={
+                    "decision": preflight_decision.value,
+                    "error": preflight_reason,
+                    "actionable_remedy": preflight_remedy,
+                    "file_name": original_filename
+                }
+            )
+
+        # 2. Stage B: Security scan & quarantine file with envelope encryption
+        try:
+            file_meta = validate_and_quarantine_file(
+                content=file_bytes,
+                original_filename=original_filename,
+                hospital_id=hospital_id,
+                job_id=job_id
+            )
+        except HTTPException as http_exc:
+            err_str = str(http_exc.detail)
+            if "Malicious payload detected" in err_str or "decompression risk" in err_str or "ZipSlip" in err_str:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "decision": ValidationDecision.REJECTED_MALWARE.value,
+                        "error": err_str,
+                        "actionable_remedy": "File failed anti-malware security inspection and was quarantined/deleted.",
+                        "file_name": original_filename
+                    }
+                )
+            raise
 
         storage_path = file_meta["storage_path"]
         mime_type = file_meta["mime_type"]
@@ -92,7 +142,7 @@ class DocumentOCRService:
             details={"file_name": file_meta["file_name"], "category": document_category, "size": file_size_bytes}
         )
 
-        # 4 & 5: Run OCR Extraction
+        # 4. Stage C: Run OCR Extraction
         try:
             # Safely decrypt in memory for processing; file stays envelope-encrypted at rest on disk
             decrypted_bytes = read_decrypted_document_bytes(
@@ -108,8 +158,55 @@ class DocumentOCRService:
 
             raw_text = extracted_data.get("raw_text", "")
             detected_lang = extracted_data.get("language_detected", "eng")
+            is_scanned = extracted_data.get("is_scanned", False)
 
-            # Extract structured fields with confidence scores
+            # 5. Stage D & E: Validate Healthcare Domain Relevance & Category Classification
+            val_result = document_validator.evaluate_validation_decision(
+                raw_text=raw_text,
+                selected_category=document_category,
+                is_scanned=is_scanned
+            )
+
+            # Case: REJECTION (Irrelevant content, low readability, or category mismatch)
+            if not val_result.is_accepted and val_result.decision != ValidationDecision.REVIEW_REQUIRED:
+                # Immediate security quarantine cleanup: Delete file from disk
+                delete_quarantined_file(storage_path)
+
+                with get_db_cursor() as cur:
+                    cur.execute("""
+                        UPDATE oh_id.document_ocr_jobs
+                        SET status = %s,
+                            validation_decision = %s,
+                            rejection_reason = %s,
+                            actionable_remedy = %s,
+                            validation_metrics = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s;
+                    """, (
+                        val_result.decision.value,
+                        val_result.decision.value,
+                        val_result.reason,
+                        val_result.actionable_remedy,
+                        json.dumps(val_result.model_dump()),
+                        job_id
+                    ))
+
+                log_security_event(
+                    "DOCUMENT_VALIDATION_REJECTED",
+                    actor_id=uploader_user_id,
+                    hospital_id=hospital_id,
+                    resource=f"ocr_job:{job_id}",
+                    status="DENIED",
+                    details={
+                        "decision": val_result.decision.value,
+                        "reason": val_result.reason,
+                        "relevance_score": val_result.relevance_score
+                    }
+                )
+                return self.get_job_detail(job_id)
+
+            # Case: ACCEPTED or REVIEW_REQUIRED
+            # Extract clinical fields
             parsed = self.extractor.extract_fields(
                 raw_text=raw_text,
                 document_category=document_category,
@@ -120,7 +217,7 @@ class DocumentOCRService:
             confidence_scores = parsed["confidence_scores"]
             source_locations = parsed["source_locations"]
 
-            # 6: Check for duplicates in existing database
+            # Check for duplicates in existing database
             patient_duplicates = self.duplicate_detector.check_patient_duplicates(
                 extracted_fields=extracted_fields,
                 hospital_id=hospital_id
@@ -134,34 +231,57 @@ class DocumentOCRService:
                 "hospital_match": hospital_duplicate
             }
 
-            # 7: Update database job with extracted results and status REVIEW_REQUIRED
+            final_status = "ACCEPTED" if val_result.decision == ValidationDecision.ACCEPTED else "REVIEW_REQUIRED"
+
             with get_db_cursor() as cur:
                 cur.execute("""
                     UPDATE oh_id.document_ocr_jobs
-                    SET status = 'REVIEW_REQUIRED',
+                    SET status = %s,
+                        validation_decision = %s,
                         extracted_fields = %s,
                         confidence_scores = %s,
                         source_locations = %s,
                         duplicate_matches = %s,
+                        validation_metrics = %s,
+                        rejection_reason = %s,
+                        actionable_remedy = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s;
                 """, (
+                    final_status,
+                    val_result.decision.value,
                     json.dumps(extracted_fields),
                     json.dumps(confidence_scores),
                     json.dumps(source_locations),
                     json.dumps(duplicate_matches),
+                    json.dumps(val_result.model_dump()),
+                    val_result.reason if final_status == "REVIEW_REQUIRED" else None,
+                    val_result.actionable_remedy if final_status == "REVIEW_REQUIRED" else None,
                     job_id
                 ))
 
+            log_security_event(
+                f"DOCUMENT_VALIDATION_{final_status}",
+                actor_id=uploader_user_id,
+                hospital_id=hospital_id,
+                resource=f"ocr_job:{job_id}",
+                status="SUCCESS",
+                details={"category": document_category, "confidence": val_result.confidence}
+            )
+
             return self.get_job_detail(job_id)
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"OCR Extraction failed for job {job_id}: {e}", exc_info=True)
             with get_db_cursor() as cur:
                 cur.execute("""
                     UPDATE oh_id.document_ocr_jobs
-                    SET status = 'FAILED',
+                    SET status = 'PROCESSING_FAILED',
+                        validation_decision = 'PROCESSING_FAILED',
                         error_message = %s,
+                        actionable_remedy = 'Validation service encountered an unexpected error. Please retry.',
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s;
                 """, (str(e)[:500], job_id))
@@ -181,6 +301,7 @@ class DocumentOCRService:
                     extracted_fields, confidence_scores, source_locations,
                     corrected_fields, duplicate_matches, created_record_id,
                     reviewed_by, reviewed_at, rejection_reason, error_message,
+                    validation_decision, validation_metrics, actionable_remedy,
                     created_at, updated_at
                 FROM oh_id.document_ocr_jobs
                 WHERE id = %s;
@@ -269,7 +390,7 @@ class DocumentOCRService:
         user_hospital = user.get("hospital_ref_id") or user.get("hospital_id")
         job = self.get_job_detail(job_id, user_hospital)
 
-        if job["status"] not in ("REVIEW_REQUIRED", "OCR_COMPLETED"):
+        if job["status"] not in ("ACCEPTED", "REVIEW_REQUIRED", "OCR_COMPLETED"):
             raise HTTPException(
                 status_code=400,
                 detail=f"Job cannot be approved from current state '{job['status']}'."
