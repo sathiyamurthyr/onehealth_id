@@ -33,7 +33,7 @@ mobile/
 │   ├── components/       # Reusable Native UI primitives
 │   └── theme/            # Ported OH-ID Design System tokens
 ├── __tests__/            # Jest automated test suites
-├── app.json              # Application manifest (com.sathus.ohid)
+├── app.json              # Application manifest (com.ohid.health)
 ├── eas.json              # Development, Preview & Production build profiles
 ├── tsconfig.json         # TypeScript strict configuration
 └── package.json          # Expo SDK dependencies

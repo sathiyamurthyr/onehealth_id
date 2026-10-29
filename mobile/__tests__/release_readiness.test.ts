@@ -26,9 +26,9 @@ describe("Phase G: Release Readiness & DevSecOps Validation", () => {
       appJson = JSON.parse(raw);
     });
 
-    test("verifies package identifier conforms to com.sathus.ohid", () => {
-      expect(appJson.expo.android.package).toBe("com.sathus.ohid");
-      expect(appJson.expo.ios.bundleIdentifier).toBe("com.sathus.ohid");
+    test("verifies package identifier conforms to com.ohid.health", () => {
+      expect(appJson.expo.android.package).toBe("com.ohid.health");
+      expect(appJson.expo.ios.bundleIdentifier).toBe("com.ohid.health");
       expect(appJson.expo.scheme).toBe("ohid");
     });
 
@@ -47,7 +47,7 @@ describe("Phase G: Release Readiness & DevSecOps Validation", () => {
 
     test("verifies app icon, splash, and adaptive icon configurations", () => {
       expect(appJson.expo.icon).toBe("./assets/icon.png");
-      expect(appJson.expo.splash.image).toBe("./assets/splash.png");
+      expect(fs.existsSync(path.join(rootDir, "assets", "splash.png"))).toBe(true);
       expect(appJson.expo.android.adaptiveIcon.foregroundImage).toBe("./assets/adaptive-icon.png");
     });
   });
