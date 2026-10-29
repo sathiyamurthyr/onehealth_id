@@ -21,6 +21,7 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.ohid.health",
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.USE_BIOMETRIC",
