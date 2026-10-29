@@ -146,13 +146,13 @@ export default function DocumentUploadScreen() {
 
       // Multi-stage progress indicators
       setValidationStage("Stage 1/4: File integrity & anti-malware inspection...");
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 400));
 
       setValidationStage("Stage 2/4: OCR text extraction & readability analysis...");
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 400));
 
       setValidationStage("Stage 3/4: Healthcare domain relevance verification...");
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 400));
 
       setValidationStage("Stage 4/4: Medical category classification & validation...");
 
@@ -307,10 +307,10 @@ export default function DocumentUploadScreen() {
               {isMalware
                 ? "Security Threat Blocked"
                 : isLowOcr
-                ? "Unreadable Document"
-                : isIrrelevant
-                ? "Irrelevant Content Blocked"
-                : "Upload Rejected"}
+                  ? "Unreadable Document"
+                  : isIrrelevant
+                    ? "Irrelevant Content Blocked"
+                    : "Upload Rejected"}
             </Text>
             <Text style={styles.outcomeSubtitle}>
               {result.rejection_reason || "The uploaded file does not satisfy OH-ID validation rules."}
@@ -889,4 +889,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-
