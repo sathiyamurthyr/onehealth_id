@@ -1,0 +1,238 @@
+/**
+ * ONEHEALTH ID (OH-ID) Mobile — Global Auth & Session Context
+ * 
+ * Manages native authentication lifecycle, biometric gating,
+ * hardware keystore persistence, and authoritative role routing.
+ *
+ * Sathus Technology Pvt Ltd - Enterprise DevSecOps Architecture
+ */
+
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { UserProfile } from "../types/auth";
+import { secureStorage } from "../services/storage/secure_store";
+import { authApi } from "../services/api/auth";
+import { biometricService, BiometricCapability } from "../services/auth/biometrics";
+
+export interface AuthContextType {
+  user: UserProfile | null;
+  token: string | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  biometricCapability: BiometricCapability;
+  isBiometricEnabled: boolean;
+  login: (username: string, password: string) => Promise<{ success: boolean; defaultRoute: string; error?: string }>;
+  loginWithBiometrics: () => Promise<{ success: boolean; defaultRoute?: string; error?: string }>;
+  logout: () => Promise<void>;
+  setBiometricPreference: (enabled: boolean) => Promise<void>;
+  refreshSession: () => Promise<void>;
+}
+
+export const resolveRoleRoute = (role?: string): string => {
+  const normalized = (role || "").toUpperCase().trim();
+  switch (normalized) {
+    case "PATIENT":
+    case "CITIZEN":
+      return "/(patient)";
+    case "DOCTOR":
+    case "PHYSICIAN":
+      return "/(doctor)";
+    case "RECEPTIONIST":
+    case "FRONT_DESK":
+      return "/(reception)";
+    case "HOSPITAL_ADMIN":
+    case "ADMIN":
+      return "/(admin)";
+    case "SUPER_ADMIN":
+    case "PLATFORM_ADMIN":
+      return "/(super)";
+    default:
+      return "/(patient)";
+  }
+};
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [biometricCapability, setBiometricCapability] = useState<BiometricCapability>({
+    hasHardware: false,
+    isEnrolled: false,
+    biometricType: "None",
+  });
+  const [isBiometricEnabled, setIsBiometricEnabled] = useState<boolean>(false);
+
+  // Initialize session state on app bootstrap
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initializeSession() {
+      try {
+        const [storedToken, storedUser, bioCap, bioPref] = await Promise.all([
+          secureStorage.getAccessToken(),
+          secureStorage.getActiveUser(),
+          biometricService.getCapability(),
+          biometricService.isBiometricEnabled(),
+        ]);
+
+        if (!isMounted) return;
+
+        setBiometricCapability(bioCap);
+        setIsBiometricEnabled(bioPref);
+
+        if (storedToken && storedUser) {
+          setToken(storedToken);
+          setUser(storedUser);
+          // Non-blocking background verification of active token
+          authApi.getMe().then((liveProfile) => {
+            if (isMounted && liveProfile) {
+              setUser(liveProfile);
+            }
+          }).catch(() => {
+            // Silently retain cached session if offline; 401 interceptor handles revocation
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to restore mobile auth session:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    initializeSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const login = useCallback(
+    async (
+      username: string,
+      password: string
+    ): Promise<{ success: boolean; defaultRoute: string; error?: string }> => {
+      setIsLoading(true);
+      try {
+        const res = await authApi.login(username, password);
+        const resolvedUser = res.user;
+        const accessToken = res.access_token || null;
+
+        setUser(resolvedUser);
+        setToken(accessToken);
+
+        // Fetch authoritative workspace route if available
+        let targetRoute = resolveRoleRoute(resolvedUser.role);
+        try {
+          const ws = await authApi.getWorkspace();
+          if (ws?.default_route) {
+            targetRoute = resolveRoleRoute(ws.role_code || resolvedUser.role);
+          }
+        } catch {
+          // Use default fallback route
+        }
+
+        return {
+          success: true,
+          defaultRoute: targetRoute,
+        };
+      } catch (err: any) {
+        const errorMsg =
+          err.message || "Invalid mobile number or credentials. Please verify and try again.";
+        return {
+          success: false,
+          defaultRoute: "/(auth)/login",
+          error: errorMsg,
+        };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  const loginWithBiometrics = useCallback(async (): Promise<{
+    success: boolean;
+    defaultRoute?: string;
+    error?: string;
+  }> => {
+    if (!biometricCapability.isEnrolled || !isBiometricEnabled) {
+      return { success: false, error: "Biometric authentication is not enabled on this device." };
+    }
+
+    const authenticated = await biometricService.authenticate();
+    if (!authenticated) {
+      return { success: false, error: "Biometric verification failed or was cancelled." };
+    }
+
+    const storedToken = await secureStorage.getAccessToken();
+    const storedUser = await secureStorage.getActiveUser();
+
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(storedUser);
+      return {
+        success: true,
+        defaultRoute: resolveRoleRoute(storedUser.role),
+      };
+    }
+
+    return {
+      success: false,
+      error: "No active session found. Please log in with your password to enroll.",
+    };
+  }, [biometricCapability, isBiometricEnabled]);
+
+  const logout = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    try {
+      await authApi.logout();
+    } finally {
+      setUser(null);
+      setToken(null);
+      setIsLoading(false);
+    }
+  }, []);
+
+  const setBiometricPreference = useCallback(async (enabled: boolean): Promise<void> => {
+    await biometricService.setBiometricEnabled(enabled);
+    setIsBiometricEnabled(enabled);
+  }, []);
+
+  const refreshSession = useCallback(async (): Promise<void> => {
+    try {
+      const liveUser = await authApi.getMe();
+      if (liveUser) {
+        setUser(liveUser);
+      }
+    } catch {
+      // Interceptors handle session revocation
+    }
+  }, []);
+
+  const value: AuthContextType = {
+    user,
+    token,
+    isLoading,
+    isAuthenticated: Boolean(token && user),
+    biometricCapability,
+    isBiometricEnabled,
+    login,
+    loginWithBiometrics,
+    logout,
+    setBiometricPreference,
+    refreshSession,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};

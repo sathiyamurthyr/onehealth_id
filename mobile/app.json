@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "OneHealth ID",
+    "slug": "ohid-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "ohid",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sathus.ohid",
+      "infoPlist": {
+        "NSCameraUsageDescription": "OneHealth ID requires camera access to scan patient Zero-Knowledge QR passes for OPD check-in and clinical intake.",
+        "NSFaceIDUsageDescription": "OneHealth ID uses biometric authentication to securely unlock your digital health identity and clinical workstation."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.sathus.ohid",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "OneHealth ID requires camera access to scan patient Zero-Knowledge QR passes."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow OneHealth ID to use Face ID for biometric authentication."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

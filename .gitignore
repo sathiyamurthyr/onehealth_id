@@ -27,17 +27,24 @@ htmlcov/
 *.swp
 *.swo
 
-# Node / Frontend
+# Node / Frontend & Mobile
 node_modules/
 frontend/node_modules/
+mobile/node_modules/
 .next/
 frontend/.next/
+mobile/.expo/
+mobile/dist/
 playwright-report/
 frontend/playwright-report/
 test-results/
 frontend/test-results/
 *.webm
 *.png
+!frontend/public/**/*.png
+!frontend/public/*.png
+!mobile/assets/*.png
+!mobile/android/app/src/main/res/**/*.png
 .env.local
 frontend/.env.local
 scratch/
@@ -63,6 +70,6 @@ artifacts/
 
 # Local document storage
 backend/storage/
-storage/
+/storage/
 
 
