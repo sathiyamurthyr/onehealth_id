@@ -20,8 +20,8 @@ import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from "@/compo
 
 export default function SettingsPage() {
   const [hospitalSettings, setHospitalSettings] = useState({
-    hospital_name: "Apollo Speciality Hospital Greams Road",
-    facility_code: "APOLLO-CHE-01",
+    hospital_name: "City Healthcare Centre",
+    facility_code: "CITY-CHE-01",
     gstin: "33AAAAA0000A1Z5",
     state_code: "33 (Tamil Nadu)",
     currency: "INR (₹)",

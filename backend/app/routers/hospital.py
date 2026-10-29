@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Query, HTTPException, Depends, Body, Path
+from fastapi import APIRouter, Query, HTTPException, Depends, Body, Path, Request
 from typing import Dict, Any, Optional, List
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -1531,6 +1531,33 @@ def register_reception_walk_in(
 # PUBLIC HOSPITAL & CLINIC REGISTRATION & APPLICATION TRACKING
 # =============================================================================
 
+class OnboardingSessionCreateRequest(BaseModel):
+    mobile_number: Optional[str] = None
+    email_address: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+class OnboardingMobileOtpRequest(BaseModel):
+    session_id: str = Field(..., min_length=4)
+    mobile_number: str = Field(..., min_length=10)
+
+class OnboardingMobileOtpVerifyRequest(BaseModel):
+    session_id: str = Field(..., min_length=4)
+    otp_code: str = Field(..., min_length=6, max_length=6)
+    mobile_number: Optional[str] = None
+
+class OnboardingEmailOtpRequest(BaseModel):
+    session_id: str = Field(..., min_length=4)
+    email_address: str = Field(..., min_length=5)
+    org_name: Optional[str] = "Healthcare Organization"
+
+class OnboardingEmailOtpVerifyRequest(BaseModel):
+    session_id: str = Field(..., min_length=4)
+    otp_code: str = Field(..., min_length=6, max_length=6)
+    email_address: Optional[str] = None
+
+class ApplicationStatusQueryRequest(BaseModel):
+    contact: Optional[str] = None
+
 class FacilityRegistrationRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=128, description="Official Facility or Hospital/Clinic Name")
     facility_type: str = Field("HOSPITAL", description="HOSPITAL or CLINIC")
@@ -1555,6 +1582,8 @@ class FacilityRegistrationRequest(BaseModel):
     rep_email: str = Field(..., min_length=5, description="Authorized representative email")
     rep_phone: str = Field(..., min_length=10, description="Authorized representative phone")
     supporting_documents: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Uploaded license certificates, accreditation, or statutory documents")
+    session_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 class FacilityApplicationUpdateRequest(BaseModel):
     address: Optional[str] = None
@@ -1566,12 +1595,100 @@ class FacilityApplicationUpdateRequest(BaseModel):
     rep_phone: Optional[str] = None
     supporting_documents: Optional[List[Dict[str, Any]]] = None
 
+@router.post("/onboarding/session")
+def create_or_get_onboarding_session_endpoint(payload: OnboardingSessionCreateRequest, request: Request):
+    try:
+        ip = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+        res = sp_repository.create_or_get_onboarding_session(
+            mobile_number=payload.mobile_number,
+            email_address=payload.email_address,
+            idempotency_key=payload.idempotency_key,
+            ip_address=ip,
+            user_agent=user_agent
+        )
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error creating onboarding session: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/onboarding/mobile/request-otp")
+def request_onboarding_mobile_otp_endpoint(payload: OnboardingMobileOtpRequest, request: Request):
+    try:
+        ip = request.client.host if request.client else None
+        res = sp_repository.request_onboarding_mobile_otp(
+            session_id=payload.session_id,
+            mobile_number=payload.mobile_number,
+            ip_address=ip
+        )
+        return {"status": "success", "data": res, "message": res.get("message", "OTP sent via WhatsApp")}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error requesting mobile OTP: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/onboarding/mobile/verify-otp")
+def verify_onboarding_mobile_otp_endpoint(payload: OnboardingMobileOtpVerifyRequest):
+    try:
+        res = sp_repository.verify_onboarding_mobile_otp(
+            session_id=payload.session_id,
+            otp_code=payload.otp_code,
+            mobile_number=payload.mobile_number
+        )
+        return {"status": "success", "data": res, "message": "Mobile number verified successfully"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error verifying mobile OTP: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/onboarding/email/request-otp")
+def request_onboarding_email_otp_endpoint(payload: OnboardingEmailOtpRequest, request: Request):
+    try:
+        ip = request.client.host if request.client else None
+        res = sp_repository.request_onboarding_email_otp(
+            session_id=payload.session_id,
+            email_address=payload.email_address,
+            org_name=payload.org_name or "Healthcare Organization",
+            ip_address=ip
+        )
+        return {"status": "success", "data": res, "message": res.get("message", "OTP sent to email")}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error requesting email OTP: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/onboarding/email/verify-otp")
+def verify_onboarding_email_otp_endpoint(payload: OnboardingEmailOtpVerifyRequest):
+    try:
+        res = sp_repository.verify_onboarding_email_otp(
+            session_id=payload.session_id,
+            otp_code=payload.otp_code,
+            email_address=payload.email_address
+        )
+        return {"status": "success", "data": res, "message": "Email address verified successfully"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error verifying email OTP: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/onboarding/{session_id}/status")
+def get_onboarding_session_status_endpoint(session_id: str):
+    res = sp_repository.get_onboarding_session_status(session_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+    return {"status": "success", "data": res}
+
 @router.post("/register")
 def register_facility_public(payload: FacilityRegistrationRequest):
     """
     Public self-registration for hospitals and clinics.
     Application defaults to SUBMITTED and remains strictly blocked from platform access
     until Super Admin approval.
+    Requires verified mobile & email session.
     """
     try:
         data = payload.model_dump()
@@ -1614,6 +1731,29 @@ def get_facility_application_status_public(application_ref: str):
         logger.error(f"Error fetching application {application_ref}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/applications/{application_ref}/status")
+def get_secure_facility_application_status_public(application_ref: str, payload: Optional[ApplicationStatusQueryRequest] = None):
+    """
+    Secure status verification endpoint requiring official contact match.
+    """
+    try:
+        verify_contact = payload.contact if payload else None
+        app_status = sp_repository.get_facility_application_by_ref(application_ref, verify_contact=verify_contact)
+        if not app_status:
+            raise HTTPException(status_code=404, detail="Application reference not found")
+        return {
+            "status": "success",
+            "data": app_status,
+            "message": "Application status loaded"
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=403, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching application {application_ref}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/applications/{application_ref}/update")
 def update_facility_application_public(application_ref: str, payload: FacilityApplicationUpdateRequest):
     """
@@ -1641,6 +1781,13 @@ def update_facility_application_public(application_ref: str, payload: FacilityAp
 
 # Secondary router for plural /hospitals route prefix
 hospitals_router = APIRouter(prefix="/hospitals", tags=["Hospitals & Clinics Registration"])
+hospitals_router.add_api_route("/onboarding/session", create_or_get_onboarding_session_endpoint, methods=["POST"])
+hospitals_router.add_api_route("/onboarding/mobile/request-otp", request_onboarding_mobile_otp_endpoint, methods=["POST"])
+hospitals_router.add_api_route("/onboarding/mobile/verify-otp", verify_onboarding_mobile_otp_endpoint, methods=["POST"])
+hospitals_router.add_api_route("/onboarding/email/request-otp", request_onboarding_email_otp_endpoint, methods=["POST"])
+hospitals_router.add_api_route("/onboarding/email/verify-otp", verify_onboarding_email_otp_endpoint, methods=["POST"])
+hospitals_router.add_api_route("/onboarding/{session_id}/status", get_onboarding_session_status_endpoint, methods=["GET"])
 hospitals_router.add_api_route("/register", register_facility_public, methods=["POST"])
 hospitals_router.add_api_route("/applications/{application_ref}", get_facility_application_status_public, methods=["GET"])
+hospitals_router.add_api_route("/applications/{application_ref}/status", get_secure_facility_application_status_public, methods=["POST"])
 hospitals_router.add_api_route("/applications/{application_ref}/update", update_facility_application_public, methods=["POST"])

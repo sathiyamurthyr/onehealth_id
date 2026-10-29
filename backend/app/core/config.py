@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() in ("true", "1", "yes")
     SUPER_ADMIN_SUPPORT_EMAIL: str = os.getenv("SUPER_ADMIN_SUPPORT_EMAIL", "security-support@ohid.online")
     TESTING_EMAIL_BACKEND: bool = os.getenv("TESTING_EMAIL_BACKEND", "true").lower() in ("true", "1", "yes")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://ohid.online")
+
+    # WhatsApp Business API / Dispatcher Configuration
+    WHATSAPP_API_URL: str = os.getenv("WHATSAPP_API_URL", "")
+    WHATSAPP_API_TOKEN: str = os.getenv("WHATSAPP_API_TOKEN", "")
+    WHATSAPP_PHONE_NUMBER_ID: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+    TESTING_WHATSAPP_BACKEND: bool = os.getenv("TESTING_WHATSAPP_BACKEND", "true").lower() in ("true", "1", "yes")
     
     # CORS - Explicit origin allowlist (Strictly forbids '*' wildcard with credentials)
     CORS_ORIGINS: List[str] = [

@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Building2,
   ShieldCheck,
   Lock,
   ArrowRight,
-  Sparkles,
   Phone,
   Mail,
   MapPin,
@@ -26,7 +25,11 @@ import {
   Info,
   RefreshCw,
   Plus,
-  Trash2
+  Trash2,
+  MessageSquare,
+  KeyRound,
+  Send,
+  Sparkles
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -79,6 +82,19 @@ export default function FacilityRegistrationPage() {
   const [newDocType, setNewDocType] = useState("ACCREDITATION");
   const [newDocFileName, setNewDocFileName] = useState("");
 
+  // Live Dual Verification (Mobile WhatsApp + Email OTP)
+  const [sessionId, setSessionId] = useState<string>("");
+  const [mobileOtp, setMobileOtp] = useState<string>("");
+  const [emailOtp, setEmailOtp] = useState<string>("");
+  const [mobileVerified, setMobileVerified] = useState<boolean>(false);
+  const [emailVerified, setEmailVerified] = useState<boolean>(false);
+  const [mobileOtpSent, setMobileOtpSent] = useState<boolean>(false);
+  const [emailOtpSent, setEmailOtpSent] = useState<boolean>(false);
+  const [mobileCooldown, setMobileCooldown] = useState<number>(0);
+  const [emailCooldown, setEmailCooldown] = useState<number>(0);
+  const [otpLoading, setOtpLoading] = useState<"mobile_send" | "mobile_verify" | "email_send" | "email_verify" | null>(null);
+  const [otpNotice, setOtpNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -94,11 +110,12 @@ export default function FacilityRegistrationPage() {
 
   // Status Tracking State
   const [searchRef, setSearchRef] = useState("");
+  const [searchContact, setSearchContact] = useState("");
   const [trackLoading, setTrackLoading] = useState(false);
   const [trackError, setTrackError] = useState("");
   const [trackedStatus, setTrackedStatus] = useState<any | null>(null);
 
-  // Additional Information submission state
+  // Additional Information submission state (when ON_HOLD)
   const [updateAddress, setUpdateAddress] = useState("");
   const [updatePhone, setUpdatePhone] = useState("");
   const [updateDocTitle, setUpdateDocTitle] = useState("");
@@ -106,6 +123,178 @@ export default function FacilityRegistrationPage() {
   const [updateDocFile, setUpdateDocFile] = useState("");
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
   const [updateSuccessMsg, setUpdateSuccessMsg] = useState("");
+
+  // Deep-linking from notification emails & WhatsApp links
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      const refParam = params.get("ref");
+      if (tabParam === "status" || tabParam === "track") {
+        setActiveTab("track");
+      }
+      if (refParam) {
+        setSearchRef(refParam);
+        api.hospital.getApplicationStatus(refParam).then((res) => {
+          if (res?.data) {
+            setTrackedStatus(res.data);
+            setUpdateAddress(res.data.address || "");
+            setUpdatePhone(res.data.phone || "");
+          }
+        }).catch(() => {});
+      }
+    }
+  }, []);
+
+  // Cooldown timer countdowns
+  useEffect(() => {
+    if (mobileCooldown <= 0) return;
+    const timer = setInterval(() => setMobileCooldown((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [mobileCooldown]);
+
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = setInterval(() => setEmailCooldown((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [emailCooldown]);
+
+  // Input Handlers with Security Invalidation of Verification
+  const handlePhoneChange = (val: string) => {
+    setPhone(val);
+    if (mobileVerified || mobileOtpSent) {
+      setMobileVerified(false);
+      setMobileOtpSent(false);
+      setMobileOtp("");
+      setOtpNotice({
+        type: "error",
+        text: "Mobile number changed. Please re-verify via WhatsApp OTP."
+      });
+    }
+  };
+
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    if (emailVerified || emailOtpSent) {
+      setEmailVerified(false);
+      setEmailOtpSent(false);
+      setEmailOtp("");
+      setOtpNotice({
+        type: "error",
+        text: "Organization email changed. Please re-verify via Email OTP."
+      });
+    }
+  };
+
+  // Secure Onboarding Session Initialization
+  const ensureSession = async (): Promise<string> => {
+    if (sessionId) return sessionId;
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await api.hospital.createOnboardingSession({
+      mobile_number: cleanPhone || undefined,
+      email_address: cleanEmail || undefined,
+    });
+    if (res?.data?.session_id) {
+      setSessionId(res.data.session_id);
+      return res.data.session_id;
+    }
+    throw new Error("Unable to initialize secure onboarding session.");
+  };
+
+  // WhatsApp OTP handlers
+  const handleSendMobileOtp = async () => {
+    setOtpNotice(null);
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    if (cleanPhone.length !== 10) {
+      setOtpNotice({
+        type: "error",
+        text: "Please enter a valid 10-digit registered mobile number before requesting WhatsApp OTP."
+      });
+      return;
+    }
+    try {
+      setOtpLoading("mobile_send");
+      const sid = await ensureSession();
+      const res = await api.hospital.requestMobileOtp(sid, cleanPhone);
+      setMobileOtpSent(true);
+      setMobileCooldown(60);
+      setOtpNotice({
+        type: "success",
+        text: res.message || "OTP code dispatched to your WhatsApp number. Valid for 10 minutes."
+      });
+    } catch (err: any) {
+      setOtpNotice({ type: "error", text: err.message || "Failed to dispatch WhatsApp OTP." });
+    } finally {
+      setOtpLoading(null);
+    }
+  };
+
+  const handleVerifyMobileOtp = async () => {
+    setOtpNotice(null);
+    if (!mobileOtp.trim() || mobileOtp.trim().length !== 6) {
+      setOtpNotice({ type: "error", text: "Please enter the 6-digit OTP code received on WhatsApp." });
+      return;
+    }
+    try {
+      setOtpLoading("mobile_verify");
+      const sid = sessionId || (await ensureSession());
+      await api.hospital.verifyMobileOtp(sid, mobileOtp.trim());
+      setMobileVerified(true);
+      setOtpNotice({ type: "success", text: "Mobile number verified successfully via WhatsApp!" });
+    } catch (err: any) {
+      setOtpNotice({ type: "error", text: err.message || "Invalid or expired WhatsApp OTP code." });
+    } finally {
+      setOtpLoading(null);
+    }
+  };
+
+  // Email OTP handlers
+  const handleSendEmailOtp = async () => {
+    setOtpNotice(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setOtpNotice({
+        type: "error",
+        text: "Please enter a valid official registered organization email before requesting Email OTP."
+      });
+      return;
+    }
+    try {
+      setOtpLoading("email_send");
+      const sid = await ensureSession();
+      const res = await api.hospital.requestEmailOtp(sid, cleanEmail, name.trim() || "Healthcare Organization");
+      setEmailOtpSent(true);
+      setEmailCooldown(60);
+      setOtpNotice({
+        type: "success",
+        text: res.message || "OTP code dispatched to your email address. Valid for 10 minutes."
+      });
+    } catch (err: any) {
+      setOtpNotice({ type: "error", text: err.message || "Failed to dispatch Email OTP." });
+    } finally {
+      setOtpLoading(null);
+    }
+  };
+
+  const handleVerifyEmailOtp = async () => {
+    setOtpNotice(null);
+    if (!emailOtp.trim() || emailOtp.trim().length !== 6) {
+      setOtpNotice({ type: "error", text: "Please enter the 6-digit OTP code received in your email." });
+      return;
+    }
+    try {
+      setOtpLoading("email_verify");
+      const sid = sessionId || (await ensureSession());
+      await api.hospital.verifyEmailOtp(sid, emailOtp.trim());
+      setEmailVerified(true);
+      setOtpNotice({ type: "success", text: "Official organization email verified successfully!" });
+    } catch (err: any) {
+      setOtpNotice({ type: "error", text: err.message || "Invalid or expired Email OTP code." });
+    } finally {
+      setOtpLoading(null);
+    }
+  };
 
   const handleAddDocument = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +323,11 @@ export default function FacilityRegistrationPage() {
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!mobileVerified || !emailVerified) {
+      setError("Mandatory security check: Both Mobile (WhatsApp) and Official Email must be verified before submission.");
+      return;
+    }
 
     if (!name.trim() || name.trim().length < 2) {
       setError("Please provide a valid facility or hospital name (minimum 2 characters).");
@@ -186,7 +380,8 @@ export default function FacilityRegistrationPage() {
         rep_designation: repDesignation.trim(),
         rep_email: repEmail.trim().toLowerCase() || email.trim().toLowerCase(),
         rep_phone: cleanRepPhone.slice(-10),
-        supporting_documents: documents
+        supporting_documents: documents,
+        session_id: sessionId || undefined
       };
 
       const res = await api.hospital.registerFacility(payload);
@@ -208,19 +403,25 @@ export default function FacilityRegistrationPage() {
     setUpdateSuccessMsg("");
     const ref = searchRef.trim();
     if (!ref) {
-      setTrackError("Please enter your Application Reference Number (e.g. APP-2026-XXXXXX).");
+      setTrackError("Please enter your Application Tracking Identifier (e.g. OHID-ORG-2026-XXXXXXXX).");
       return;
     }
 
     try {
       setTrackLoading(true);
-      const res = await api.hospital.getApplicationStatus(ref);
+      let res;
+      if (searchContact.trim()) {
+        res = await api.hospital.getSecureApplicationStatus(ref, searchContact.trim());
+      } else {
+        res = await api.hospital.getApplicationStatus(ref);
+      }
+
       if (res && res.data) {
         setTrackedStatus(res.data);
         setUpdateAddress(res.data.address || "");
         setUpdatePhone(res.data.phone || "");
       } else {
-        setTrackError("Application reference not found. Please verify the code.");
+        setTrackError("Application reference not found. Please verify the identifier and official contact details.");
         setTrackedStatus(null);
       }
     } catch (err: any) {
@@ -251,14 +452,13 @@ export default function FacilityRegistrationPage() {
         supporting_documents: docsToAppend
       };
 
-      const res = await api.hospital.updateApplication(trackedStatus.application_ref, payload);
-      setUpdateSuccessMsg("Additional information and documents submitted! Application transitioned back for Super Admin review.");
+      await api.hospital.updateApplication(trackedStatus.application_ref, payload);
+      setUpdateSuccessMsg("Corrections and supporting documents submitted successfully! Application transitioned back for Super Admin review.");
       setUpdateDocTitle("");
       setUpdateDocFile("");
-      // Refresh status
       await handleTrackSubmit();
     } catch (err: any) {
-      setTrackError(err.message || "Failed to submit additional information.");
+      setTrackError(err.message || "Failed to submit corrections.");
     } finally {
       setUpdateSubmitting(false);
     }
@@ -286,7 +486,7 @@ export default function FacilityRegistrationPage() {
                   Enterprise
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium">Hospital & Clinic Registration Portal</p>
+              <p className="text-[11px] text-slate-500 font-medium">Hospital &amp; Clinic Registration Portal</p>
             </div>
           </Link>
 
@@ -295,58 +495,55 @@ export default function FacilityRegistrationPage() {
               href="/login"
               className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              Staff & Clinician Login
+              Staff &amp; Clinician Login
             </Link>
             <Link
-              href="/register"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+              href="/verify"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
             >
-              Citizen Sign Up
+              Verify Patient Pass
             </Link>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
-        {/* Banner */}
-        <div className="mb-8 text-center max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-full mb-3 shadow-xs">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
-            <span>Strict Regulatory Verification & Super Admin Approval</span>
+      <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 flex-1">
+        {/* Navigation Tabs */}
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+              {activeTab === "register" ? "Healthcare Organization Registration" : "Application Status & Compliance"}
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {activeTab === "register"
+                ? "Self-registration workflow with live dual-channel verification for hospital and clinic networks."
+                : "Real-time audit status tracking for submitted healthcare organization applications."}
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-            Register Your Healthcare Organization
-          </h1>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Hospitals and clinics must register statutory credentials and await explicit Super Admin review and authorization before accessing protected clinical workspaces, staff provisioning, and patient health records.
-          </p>
-        </div>
 
-        {/* Tab Switcher */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex p-1 bg-slate-200/80 rounded-xl border border-slate-300 shadow-inner">
+          <div className="flex items-center gap-2 bg-slate-200/80 p-1 rounded-xl">
             <button
+              type="button"
               onClick={() => setActiveTab("register")}
-              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 activeTab === "register"
-                  ? "bg-white text-blue-700 shadow-sm"
+                  ? "bg-white text-blue-700 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Building2 className="w-4 h-4" />
-              New Organization Registration
+              Register Facility
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("track")}
-              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 activeTab === "track"
-                  ? "bg-white text-blue-700 shadow-sm"
+                  ? "bg-white text-blue-700 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Search className="w-4 h-4" />
-              Track Application Status
+              Track Application
             </button>
           </div>
         </div>
@@ -365,13 +562,13 @@ export default function FacilityRegistrationPage() {
             )}
 
             <form onSubmit={handleRegisterSubmit} className="space-y-8">
-              {/* Step 1: Facility Type & Basic Profile */}
+              {/* Step 1: Organization Identity & Facility Type */}
               <div>
                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
                   <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                     1
                   </div>
-                  <h2 className="text-base font-bold text-slate-900">Organization Identity & Facility Type</h2>
+                  <h2 className="text-base font-bold text-slate-900">Organization Identity &amp; Classification</h2>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -390,7 +587,7 @@ export default function FacilityRegistrationPage() {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900">Hospital / Medical Center</h4>
-                      <p className="text-xs text-slate-500">Multi-department facility with IPD, ICU, OT & OPD</p>
+                      <p className="text-xs text-slate-500">Multi-department facility with IPD, ICU, OT &amp; OPD</p>
                     </div>
                   </div>
 
@@ -422,7 +619,7 @@ export default function FacilityRegistrationPage() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Apollo Healthcare / Kedar Clinic"
+                      placeholder="e.g. Example Healthcare Centre"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -435,7 +632,7 @@ export default function FacilityRegistrationPage() {
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Apollo Hospitals Enterprise Ltd"
+                      placeholder="e.g. Example Healthcare Services Pvt. Ltd."
                       value={legalName}
                       onChange={(e) => setLegalName(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -451,39 +648,13 @@ export default function FacilityRegistrationPage() {
                       onChange={(e) => setOwnershipType(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none bg-white"
                     >
-                      <option value="PRIVATE">Private / Corporate</option>
-                      <option value="TRUST">Trust / Non-Profit</option>
-                      <option value="GOVERNMENT">Government / Public Health</option>
-                      <option value="PARTNERSHIP">Partnership / Individual</option>
+                      <option value="PRIVATE">Private Limited / Commercial</option>
+                      <option value="TRUST">Charitable Trust / NGO</option>
+                      <option value="GOVERNMENT">Government / Autonomous Body</option>
+                      <option value="CORPORATE">Corporate Healthcare Chain</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Official Organization Email <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="admin@hospitaldomain.org"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 2: Statutory Registration & Licensing Details */}
-              <div>
-                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
-                  <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                    2
-                  </div>
-                  <h2 className="text-base font-bold text-slate-900">Licensing & Regulatory Compliance</h2>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Clinical Establishment / License Number <span className="text-red-500">*</span>
@@ -491,7 +662,7 @@ export default function FacilityRegistrationPage() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. TN-CEA-2024-8921"
+                      placeholder="e.g. TN-CEA-2026-REG-8492"
                       value={registrationNumber}
                       onChange={(e) => setRegistrationNumber(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none font-mono"
@@ -511,50 +682,266 @@ export default function FacilityRegistrationPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      License Registration Date
-                    </label>
-                    <input
-                      type="date"
-                      value={registrationDate}
-                      onChange={(e) => setRegistrationDate(e.target.value)}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      License Expiry / Renewal Date
-                    </label>
-                    <input
-                      type="date"
-                      value={registrationExpiry}
-                      onChange={(e) => setRegistrationExpiry(e.target.value)}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Issue Date
+                      </label>
+                      <input
+                        type="date"
+                        value={registrationDate}
+                        onChange={(e) => setRegistrationDate(e.target.value)}
+                        className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        value={registrationExpiry}
+                        onChange={(e) => setRegistrationExpiry(e.target.value)}
+                        className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Step 3: Location & Contact Details */}
+              {/* Step 2: Contact Verification & Live Dual-Channel OTP Authentication */}
+              <div>
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                      2
+                    </div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Live Verification (WhatsApp &amp; Email Authentication)
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold ${
+                      mobileVerified ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {mobileVerified ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-slate-400" />}
+                      Mobile {mobileVerified ? "Verified" : "Unverified"}
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold ${
+                      emailVerified ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {emailVerified ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-slate-400" />}
+                      Email {emailVerified ? "Verified" : "Unverified"}
+                    </span>
+                  </div>
+                </div>
+
+                {otpNotice && (
+                  <div className={`mb-4 p-3 rounded-xl text-xs flex items-center gap-2 ${
+                    otpNotice.type === "success"
+                      ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border border-red-200 text-red-700"
+                  }`}>
+                    {otpNotice.type === "success" ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    )}
+                    <span>{otpNotice.text}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Channel A: WhatsApp Mobile OTP Card */}
+                  <div className={`p-5 rounded-2xl border-2 transition-all ${
+                    mobileVerified
+                      ? "border-emerald-300 bg-emerald-50/30"
+                      : "border-slate-200 bg-white"
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                          <MessageSquare className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900">WhatsApp Mobile Verification</h4>
+                          <p className="text-[11px] text-slate-500">Official registered 10-digit mobile</p>
+                        </div>
+                      </div>
+                      {mobileVerified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          <Check className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Official Registered Mobile (10-Digit) <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="tel"
+                            required
+                            placeholder="e.g. 9876543210"
+                            value={phone}
+                            onChange={(e) => handlePhoneChange(e.target.value)}
+                            className="flex-1 text-xs px-3.5 py-2 rounded-lg border border-slate-300 focus:border-blue-600 outline-none font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSendMobileOtp}
+                            disabled={mobileCooldown > 0 || otpLoading === "mobile_send"}
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 shrink-0 flex items-center gap-1 cursor-pointer"
+                          >
+                            {otpLoading === "mobile_send" ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            {mobileCooldown > 0 ? `Resend (${mobileCooldown}s)` : "Send OTP"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {mobileOtpSent && !mobileVerified && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                          <label className="block text-[11px] font-semibold text-slate-700">
+                            Enter 6-Digit WhatsApp Code
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              placeholder="123456"
+                              value={mobileOtp}
+                              onChange={(e) => setMobileOtp(e.target.value)}
+                              className="flex-1 text-sm tracking-widest text-center px-3 py-1.5 rounded-lg border border-slate-300 focus:border-emerald-600 outline-none font-mono font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleVerifyMobileOtp}
+                              disabled={otpLoading === "mobile_verify"}
+                              className="px-4 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                            >
+                              {otpLoading === "mobile_verify" ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                "Verify"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Channel B: Official Email OTP Card */}
+                  <div className={`p-5 rounded-2xl border-2 transition-all ${
+                    emailVerified
+                      ? "border-blue-300 bg-blue-50/30"
+                      : "border-slate-200 bg-white"
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900">Official Organization Email</h4>
+                          <p className="text-[11px] text-slate-500">Official registered domain email</p>
+                        </div>
+                      </div>
+                      {emailVerified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                          <Check className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Official Registered Email <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            required
+                            placeholder="e.g. admin@example.org"
+                            value={email}
+                            onChange={(e) => handleEmailChange(e.target.value)}
+                            className="flex-1 text-xs px-3.5 py-2 rounded-lg border border-slate-300 focus:border-blue-600 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSendEmailOtp}
+                            disabled={emailCooldown > 0 || otpLoading === "email_send"}
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 shrink-0 flex items-center gap-1 cursor-pointer"
+                          >
+                            {otpLoading === "email_send" ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            {emailCooldown > 0 ? `Resend (${emailCooldown}s)` : "Send OTP"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {emailOtpSent && !emailVerified && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                          <label className="block text-[11px] font-semibold text-slate-700">
+                            Enter 6-Digit Email Code
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              placeholder="123456"
+                              value={emailOtp}
+                              onChange={(e) => setEmailOtp(e.target.value)}
+                              className="flex-1 text-sm tracking-widest text-center px-3 py-1.5 rounded-lg border border-slate-300 focus:border-blue-600 outline-none font-mono font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleVerifyEmailOtp}
+                              disabled={otpLoading === "email_verify"}
+                              className="px-4 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                            >
+                              {otpLoading === "email_verify" ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                "Verify"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3: Location & Premises Operations */}
               <div>
                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
                   <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                     3
                   </div>
-                  <h2 className="text-base font-bold text-slate-900">Physical Address & Operations</h2>
+                  <h2 className="text-base font-bold text-slate-900">Physical Address &amp; Premises</h2>
                 </div>
 
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Registered Facility Address <span className="text-red-500">*</span>
+                      Registered Premises Street Address <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="Street address, building number, landmark"
+                      placeholder="e.g. 100 Health Avenue, Anna Salai"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -598,20 +985,18 @@ export default function FacilityRegistrationPage() {
                         placeholder="600001"
                         value={pinCode}
                         onChange={(e) => setPinCode(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                        className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none font-mono"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Official Phone (10-Digit) <span className="text-red-500">*</span>
+                        Country
                       </label>
                       <input
-                        type="tel"
-                        required
-                        placeholder="9876543210"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        type="text"
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
                         className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
                       />
                     </div>
@@ -624,7 +1009,7 @@ export default function FacilityRegistrationPage() {
                       </label>
                       <input
                         type="url"
-                        placeholder="https://hospital.org"
+                        placeholder="https://example.org"
                         value={website}
                         onChange={(e) => setWebsite(e.target.value)}
                         className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -633,11 +1018,11 @@ export default function FacilityRegistrationPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        24x7 Emergency Contact
+                        24x7 Emergency Contact Telephone
                       </label>
                       <input
                         type="text"
-                        placeholder="044-28290000 / 1066"
+                        placeholder="044-28290000"
                         value={emergencyContact}
                         onChange={(e) => setEmergencyContact(e.target.value)}
                         className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -664,7 +1049,7 @@ export default function FacilityRegistrationPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Dr. Senthil Nathan"
+                      placeholder="e.g. Dr. Jane Doe"
                       value={repName}
                       onChange={(e) => setRepName(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -686,12 +1071,12 @@ export default function FacilityRegistrationPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Representative Official Email <span className="text-red-500">*</span>
+                      Representative Work Email <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="email"
                       required
-                      placeholder="senthil.nathan@hospital.org"
+                      placeholder="e.g. jane.doe@example.org"
                       value={repEmail}
                       onChange={(e) => setRepEmail(e.target.value)}
                       className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
@@ -705,10 +1090,10 @@ export default function FacilityRegistrationPage() {
                     <input
                       type="tel"
                       required
-                      placeholder="9840123456"
+                      placeholder="e.g. 9840123456"
                       value={repPhone}
                       onChange={(e) => setRepPhone(e.target.value)}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                      className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none font-mono"
                     />
                   </div>
                 </div>
@@ -720,7 +1105,7 @@ export default function FacilityRegistrationPage() {
                   <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                     5
                   </div>
-                  <h2 className="text-base font-bold text-slate-900">Supporting Statutory Credentials & Documents</h2>
+                  <h2 className="text-base font-bold text-slate-900">Supporting Statutory Credentials &amp; Documents</h2>
                 </div>
 
                 <div className="space-y-3 mb-4">
@@ -741,7 +1126,7 @@ export default function FacilityRegistrationPage() {
                       <button
                         type="button"
                         onClick={() => handleRemoveDoc(idx)}
-                        className="text-slate-400 hover:text-red-600 p-1.5 transition-colors"
+                        className="text-slate-400 hover:text-red-600 p-1.5 transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -785,7 +1170,7 @@ export default function FacilityRegistrationPage() {
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. nabh_certificate_2025.pdf"
+                      placeholder="e.g. nabh_certificate_2026.pdf"
                       value={newDocFileName}
                       onChange={(e) => setNewDocFileName(e.target.value)}
                       className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none font-mono"
@@ -795,7 +1180,7 @@ export default function FacilityRegistrationPage() {
                   <button
                     type="button"
                     onClick={handleAddDocument}
-                    className="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shrink-0"
+                    className="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shrink-0 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Attach
@@ -803,7 +1188,7 @@ export default function FacilityRegistrationPage() {
                 </div>
               </div>
 
-              {/* Security & Access Statement */}
+              {/* Security Release Gate & Access Notice */}
               <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-3">
                 <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
@@ -812,12 +1197,26 @@ export default function FacilityRegistrationPage() {
                 </div>
               </div>
 
-              {/* Submit Button */}
-              <div className="flex justify-end pt-4">
+              {/* Verification Gate & Submit Button */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
+                <div className="text-xs">
+                  {(!mobileVerified || !emailVerified) ? (
+                    <div className="flex items-center gap-2 text-amber-700 font-semibold">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Submission locked: Complete Mobile &amp; Email OTP verification in Step 2.</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Security checks passed: Verified Mobile &amp; Email. Ready for submission.</span>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  disabled={loading || !mobileVerified || !emailVerified}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {loading ? (
                     <>
@@ -850,10 +1249,10 @@ export default function FacilityRegistrationPage() {
               Your organization registration is recorded and has entered the <strong>SUBMITTED</strong> stage. It is now awaiting independent Super Admin credential and statutory verification.
             </p>
 
-            {/* Reference Number Box */}
+            {/* Tracking ID Box */}
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-6 text-left">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                Official Application Reference
+                Official Application Tracking Identifier
               </span>
               <div className="flex items-center justify-between">
                 <span className="text-xl font-mono font-extrabold text-blue-700">
@@ -861,10 +1260,10 @@ export default function FacilityRegistrationPage() {
                 </span>
                 <button
                   onClick={() => copyRefToClipboard(submittedApp.application_ref)}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copied ? "Copied" : "Copy Reference"}
+                  {copied ? "Copied" : "Copy Tracking ID"}
                 </button>
               </div>
 
@@ -883,13 +1282,13 @@ export default function FacilityRegistrationPage() {
               </div>
             </div>
 
-            {/* Security Notice */}
+            {/* Security Notice & Timeline */}
             <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left mb-6 flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
               <div>
-                <strong>Next Steps:</strong>
+                <strong>Audit &amp; Review Timeline:</strong>
                 <p className="text-slate-600 mt-1">
-                  A Super Admin will review your registration and supporting documents. Once approved, the authorized representative will receive activation instructions. You can use your application reference above to track progress at any time.
+                  A Super Admin will review your registration and supporting credentials within 24 to 48 business hours. Once approved, the authorized representative will receive single-use workspace activation instructions via verified email and WhatsApp.
                 </p>
               </div>
             </div>
@@ -902,7 +1301,7 @@ export default function FacilityRegistrationPage() {
                   setSubmittedApp(null);
                   handleTrackSubmit();
                 }}
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors"
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors cursor-pointer"
               >
                 Track Live Application Status
               </button>
@@ -912,9 +1311,11 @@ export default function FacilityRegistrationPage() {
                   setSubmittedApp(null);
                   setName("");
                   setRegistrationNumber("");
+                  setMobileVerified(false);
+                  setEmailVerified(false);
                   setDocuments([]);
                 }}
-                className="px-6 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
+                className="px-6 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
               >
                 Register Another Facility
               </button>
@@ -929,25 +1330,47 @@ export default function FacilityRegistrationPage() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-6">
               <h3 className="text-base font-bold text-slate-900 mb-2">Track Your Organization Application</h3>
               <p className="text-xs text-slate-500 mb-4">
-                Enter the reference number assigned when your application was submitted.
+                Enter your Tracking Identifier (e.g. OHID-ORG-2026-XXXXXXXX) and your verified contact to review live audit progress.
               </p>
 
-              <form onSubmit={handleTrackSubmit} className="flex gap-3">
-                <input
-                  type="text"
-                  placeholder="e.g. APP-2026-XXXXXX"
-                  value={searchRef}
-                  onChange={(e) => setSearchRef(e.target.value)}
-                  className="flex-1 text-sm px-4 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none font-mono"
-                />
-                <button
-                  type="submit"
-                  disabled={trackLoading}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {trackLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  Check Status
-                </button>
+              <form onSubmit={handleTrackSubmit} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Tracking Identifier <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. OHID-ORG-2026-XXXXXXXX"
+                      value={searchRef}
+                      onChange={(e) => setSearchRef(e.target.value)}
+                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Verified Contact (Email or Mobile)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. admin@example.org or 9876543210"
+                      value={searchContact}
+                      onChange={(e) => setSearchContact(e.target.value)}
+                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={trackLoading}
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    {trackLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    Check Live Status
+                  </button>
+                </div>
               </form>
 
               {trackError && (
@@ -965,7 +1388,7 @@ export default function FacilityRegistrationPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Application Reference
+                      Application Tracking Identifier
                     </span>
                     <h3 className="text-xl font-extrabold text-slate-900 font-mono">
                       {trackedStatus.application_ref}
@@ -976,7 +1399,7 @@ export default function FacilityRegistrationPage() {
                     {trackedStatus.lifecycle_status === "APPROVED" && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        APPROVED & ACTIVATED
+                        APPROVED &amp; ACTIVATED
                       </span>
                     )}
                     {trackedStatus.lifecycle_status === "UNDER_REVIEW" && (
@@ -991,10 +1414,10 @@ export default function FacilityRegistrationPage() {
                         SUBMITTED (QUEUED)
                       </span>
                     )}
-                    {trackedStatus.lifecycle_status === "NEEDS_INFORMATION" && (
+                    {(trackedStatus.lifecycle_status === "ON_HOLD" || trackedStatus.lifecycle_status === "NEEDS_INFORMATION") && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-orange-100 text-orange-800">
                         <AlertTriangle className="w-4 h-4 text-orange-600" />
-                        ADDITIONAL INFORMATION REQUIRED
+                        ACTION REQUIRED (ON HOLD)
                       </span>
                     )}
                     {trackedStatus.lifecycle_status === "REJECTED" && (
@@ -1003,38 +1426,32 @@ export default function FacilityRegistrationPage() {
                         APPLICATION REJECTED
                       </span>
                     )}
-                    {trackedStatus.lifecycle_status === "SUSPENDED" && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-rose-100 text-rose-800">
-                        <Lock className="w-4 h-4 text-rose-600" />
-                        ORGANIZATION SUSPENDED
-                      </span>
-                    )}
                   </div>
                 </div>
 
-                {/* Lifecycle Progress Stepper */}
+                {/* Progress Stepper */}
                 <div className="py-2">
                   <div className="grid grid-cols-3 gap-2 text-center text-xs">
                     <div className={`p-3 rounded-xl border ${
-                      ["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFORMATION", "APPROVED"].includes(trackedStatus.lifecycle_status)
+                      ["SUBMITTED", "UNDER_REVIEW", "ON_HOLD", "NEEDS_INFORMATION", "APPROVED"].includes(trackedStatus.lifecycle_status)
                         ? "bg-blue-50 border-blue-200 text-blue-900 font-bold"
                         : "bg-slate-50 border-slate-200 text-slate-500"
                     }`}>
                       <div className="flex items-center justify-center gap-1.5 mb-1">
                         <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                        <span>Step 1: Submitted</span>
+                        <span>1. Verified &amp; Submitted</span>
                       </div>
-                      <p className="text-[11px] font-normal text-slate-500">Credentials recorded</p>
+                      <p className="text-[11px] font-normal text-slate-500">Contact verified</p>
                     </div>
 
                     <div className={`p-3 rounded-xl border ${
-                      ["UNDER_REVIEW", "NEEDS_INFORMATION", "APPROVED"].includes(trackedStatus.lifecycle_status)
+                      ["UNDER_REVIEW", "ON_HOLD", "NEEDS_INFORMATION", "APPROVED"].includes(trackedStatus.lifecycle_status)
                         ? "bg-blue-50 border-blue-200 text-blue-900 font-bold"
                         : "bg-slate-50 border-slate-200 text-slate-500"
                     }`}>
                       <div className="flex items-center justify-center gap-1.5 mb-1">
                         <RefreshCw className={`w-4 h-4 ${trackedStatus.lifecycle_status === "UNDER_REVIEW" ? "animate-spin text-blue-600" : "text-slate-400"}`} />
-                        <span>Step 2: Under Review</span>
+                        <span>2. Admin Review</span>
                       </div>
                       <p className="text-[11px] font-normal text-slate-500">Statutory audit</p>
                     </div>
@@ -1052,108 +1469,89 @@ export default function FacilityRegistrationPage() {
                         ) : trackedStatus.lifecycle_status === "REJECTED" ? (
                           <XCircle className="w-4 h-4 text-red-600" />
                         ) : (
-                          <Lock className="w-4 h-4 text-slate-400" />
+                          <Clock className="w-4 h-4 text-slate-400" />
                         )}
-                        <span>Step 3: Decision</span>
+                        <span>3. Decision &amp; Activation</span>
                       </div>
-                      <p className="text-[11px] font-normal text-slate-500">
-                        {trackedStatus.lifecycle_status === "APPROVED" ? "Approved & Activated" : trackedStatus.lifecycle_status === "REJECTED" ? "Rejected" : "Pending Approval"}
-                      </p>
+                      <p className="text-[11px] font-normal text-slate-500">Workspace ready</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Details Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-50/70 p-4 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-500 block">Facility Name</span>
-                    <strong className="text-slate-800 text-sm">{trackedStatus.name}</strong>
-                    <span className="text-slate-500 block mt-1">Type: {trackedStatus.hospital_type}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 block">License / Registration Number</span>
-                    <strong className="text-slate-800 font-mono text-sm">{trackedStatus.registration_number}</strong>
-                    <span className="text-slate-500 block mt-1">{trackedStatus.registration_authority}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 block">Registered Location</span>
-                    <span className="text-slate-700">{trackedStatus.address}, {trackedStatus.city}, {trackedStatus.state}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 block">Representative Contact</span>
-                    <span className="text-slate-700">{trackedStatus.rep_name} ({trackedStatus.rep_email})</span>
-                  </div>
-                </div>
-
-                {/* Review Notes from Super Admin */}
-                {trackedStatus.review_notes && (
-                  <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs">
-                    <strong className="font-semibold block mb-1">Super Admin Review Notes:</strong>
-                    <p className="text-slate-700">{trackedStatus.review_notes}</p>
-                  </div>
-                )}
-
-                {/* Rejection Reason */}
-                {trackedStatus.rejection_reason && (
-                  <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs">
-                    <strong className="font-semibold block mb-1">Rejection Reason:</strong>
-                    <p className="text-red-700">{trackedStatus.rejection_reason}</p>
-                  </div>
-                )}
-
-                {/* Form to submit additional info when in NEEDS_INFORMATION status */}
-                {trackedStatus.lifecycle_status === "NEEDS_INFORMATION" && (
-                  <div className="p-5 rounded-xl border border-orange-200 bg-orange-50/50 space-y-4">
-                    <div className="flex items-center gap-2 text-orange-900 font-bold text-sm">
-                      <AlertTriangle className="w-4 h-4 text-orange-600" />
-                      Submit Requested Information / Additional Documents
+                {/* ON_HOLD Alert & Update Section */}
+                {(trackedStatus.lifecycle_status === "ON_HOLD" || trackedStatus.lifecycle_status === "NEEDS_INFORMATION") && (
+                  <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-sm font-bold text-amber-950">Action Required: Application Placed On Hold</h4>
+                        <p className="text-xs text-amber-800 mt-1">
+                          The reviewing Super Admin has requested additional details or updated statutory proof:
+                        </p>
+                        <div className="mt-2 p-3 bg-white rounded-xl border border-amber-200 text-xs font-medium text-slate-800">
+                          {trackedStatus.review_notes || "Please supply clearer copies of clinical establishment license and statutory certificates."}
+                        </div>
+                      </div>
                     </div>
 
                     {updateSuccessMsg && (
-                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                      <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        {updateSuccessMsg}
+                        <span>{updateSuccessMsg}</span>
                       </div>
                     )}
 
-                    <form onSubmit={handleUpdateInformation} className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          Clarified Address / Operational Details
-                        </label>
-                        <input
-                          type="text"
-                          value={updateAddress}
-                          onChange={(e) => setUpdateAddress(e.target.value)}
-                          className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none"
-                        />
-                      </div>
-
+                    <form onSubmit={handleUpdateInformation} className="pt-2 border-t border-amber-200/60 space-y-3">
+                      <h5 className="text-xs font-bold text-amber-950">Submit Requested Corrections or Documents</h5>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            Additional Document Title
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Updated Address (if requested)
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g. Renewed Pharmacy License"
-                            value={updateDocTitle}
-                            onChange={(e) => setUpdateDocTitle(e.target.value)}
+                            value={updateAddress}
+                            onChange={(e) => setUpdateAddress(e.target.value)}
+                            placeholder="Updated address"
                             className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            File Name / Attachment Reference
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Updated Phone (if requested)
+                          </label>
+                          <input
+                            type="tel"
+                            value={updatePhone}
+                            onChange={(e) => setUpdatePhone(e.target.value)}
+                            placeholder="Updated phone"
+                            className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Document Title
                           </label>
                           <input
                             type="text"
-                            placeholder="pharmacy_license_renewed.pdf"
+                            value={updateDocTitle}
+                            onChange={(e) => setUpdateDocTitle(e.target.value)}
+                            placeholder="e.g. Renewed Clinical Establishment License"
+                            className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            File Attachment Name
+                          </label>
+                          <input
+                            type="text"
                             value={updateDocFile}
                             onChange={(e) => setUpdateDocFile(e.target.value)}
+                            placeholder="e.g. license_renewal_2026.pdf"
                             className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white outline-none font-mono"
                           />
                         </div>
@@ -1163,15 +1561,77 @@ export default function FacilityRegistrationPage() {
                         <button
                           type="submit"
                           disabled={updateSubmitting}
-                          className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs transition-colors flex items-center gap-2 disabled:opacity-50"
+                          className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                         >
                           {updateSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                          Submit Requested Clarifications
+                          Submit Corrections for Review
                         </button>
                       </div>
                     </form>
                   </div>
                 )}
+
+                {/* APPROVED Banner */}
+                {trackedStatus.lifecycle_status === "APPROVED" && (
+                  <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-bold text-emerald-950">Congratulations! Organization Officially Approved</h4>
+                        <p className="text-xs text-emerald-800 mt-1">
+                          A single-use workspace activation link (valid for 72 hours) has been dispatched to your verified email ({trackedStatus.rep_email || trackedStatus.email}) and WhatsApp.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* REJECTED Banner */}
+                {trackedStatus.lifecycle_status === "REJECTED" && (
+                  <div className="p-5 rounded-2xl bg-red-50 border border-red-200 text-red-900 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <XCircle className="w-6 h-6 text-red-600 shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-bold text-red-950">Application Not Approved</h4>
+                        <p className="text-xs text-red-800 mt-1">
+                          Reason: {trackedStatus.rejection_reason || "Application does not meet platform regulatory requirements."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Facility Summary */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                      Facility Information
+                    </span>
+                    <p><strong>Name:</strong> {trackedStatus.name}</p>
+                    <p><strong>Type:</strong> {trackedStatus.hospital_type || trackedStatus.facility_type}</p>
+                    <p><strong>License:</strong> {trackedStatus.registration_number}</p>
+                    <p><strong>Authority:</strong> {trackedStatus.registration_authority}</p>
+                    <p><strong>Address:</strong> {trackedStatus.address}, {trackedStatus.city}, {trackedStatus.state}</p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                      Authorized Representative
+                    </span>
+                    <p><strong>Name:</strong> {trackedStatus.rep_name || "—"}</p>
+                    <p><strong>Designation:</strong> {trackedStatus.rep_designation || "—"}</p>
+                    <p><strong>Email:</strong> {trackedStatus.rep_email || trackedStatus.email}</p>
+                    <p><strong>Phone:</strong> {trackedStatus.rep_phone || trackedStatus.phone}</p>
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> WhatsApp Verified
+                      </span>
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">
+                        <CheckCircle2 className="w-3 h-3 text-blue-600" /> Email Verified
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1179,8 +1639,8 @@ export default function FacilityRegistrationPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
-        <p>© 2026 OneHealth ID (OH-ID) • Sathus Technology Pvt Ltd. Multi-Tenant Enterprise Health Platform.</p>
+      <footer className="border-t border-slate-200 bg-white py-6 mt-12 text-center text-xs text-slate-500">
+        <p>© 2026 OneHealth ID (OH-ID) Enterprise Hospital Operating System. All rights reserved.</p>
       </footer>
     </div>
   );

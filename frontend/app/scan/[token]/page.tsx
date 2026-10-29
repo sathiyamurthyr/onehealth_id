@@ -213,7 +213,7 @@ export default function ResolveTokenScanPage() {
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">Home Hospital</span>
                   <span className="font-semibold text-white truncate block">
-                    {scanResult.patient_identity.primary_hospital_name || "Apollo Central"}
+                    {scanResult.patient_identity.primary_hospital_name || "City Healthcare Centre"}
                   </span>
                 </div>
                 <div>

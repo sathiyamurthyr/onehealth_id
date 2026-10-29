@@ -38,7 +38,7 @@ export interface FacilityApplication {
   pin_code: string;
   phone: string;
   email: string;
-  lifecycle_status: "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_INFORMATION" | "APPROVED" | "REJECTED" | "SUSPENDED";
+  lifecycle_status: "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_INFORMATION" | "ON_HOLD" | "APPROVED" | "REJECTED" | "SUSPENDED";
   status: string;
   is_active: boolean;
   is_verified: boolean;
@@ -48,6 +48,10 @@ export interface FacilityApplication {
   rep_designation?: string;
   rep_email: string;
   rep_phone: string;
+  mobile_verified?: boolean;
+  email_verified?: boolean;
+  verified_mobile?: string;
+  verified_email?: string;
   supporting_documents?: Array<{
     title: string;
     document_type: string;
@@ -569,6 +573,11 @@ export const superAdminApi = {
 
   rejectApplication: async (hospitalId: string, reason: string): Promise<any> => {
     const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/reject`, { reason });
+    return unwrap<any>(res);
+  },
+
+  holdApplication: async (hospitalId: string, reason: string): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/super-admin/applications/${hospitalId}/hold`, { reason });
     return unwrap<any>(res);
   },
 

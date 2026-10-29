@@ -33,7 +33,7 @@ export default function PatientDataSharingPage() {
   const [showShareModal, setShowShareModal] = useState(false);
 
   // New Share Form
-  const [targetProvider, setTargetProvider] = useState("Apollo Multispeciality Hospital");
+  const [targetProvider, setTargetProvider] = useState("");
   const [purpose, setPurpose] = useState("TREATMENT");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([
     "OPConsultation",
@@ -350,7 +350,7 @@ export default function PatientDataSharingPage() {
                     value={targetProvider}
                     onChange={(e) => setTargetProvider(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-white focus:outline-none focus:border-blue-500"
-                    placeholder="e.g. Apollo Multispeciality Hospital"
+                    placeholder="e.g. City Healthcare Centre"
                   />
                 </div>
 

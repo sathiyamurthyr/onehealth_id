@@ -13,7 +13,7 @@ export default function NetworkReferralsPage() {
   const [direction, setDirection] = useState<"INCOMING" | "OUTGOING">("INCOMING");
   const [referrals, setReferrals] = useState<NetworkReferral[]>([]);
   const [providers, setProviders] = useState<NetworkProvider[]>([]);
-  const [currentProviderId, setCurrentProviderId] = useState("hosp-apollo");
+  const [currentProviderId, setCurrentProviderId] = useState("prov-city-01");
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedReferral, setSelectedReferral] = useState<NetworkReferral | null>(null);
@@ -21,7 +21,7 @@ export default function NetworkReferralsPage() {
 
   // Create Form State
   const [newPatientId, setNewPatientId] = useState("p-dccc29e4");
-  const [targetProviderId, setTargetProviderId] = useState("hosp-apollo");
+  const [targetProviderId, setTargetProviderId] = useState("prov-city-01");
   const [targetSpecialty, setTargetSpecialty] = useState("Neurology");
   const [urgency, setUrgency] = useState("URGENT");
   const [clinicalSummary, setClinicalSummary] = useState("");

@@ -366,7 +366,7 @@ export default function PatientsPage() {
                     <div>
                       <span className="text-slate-400 block mb-0.5">Primary Hospital:</span>
                       <span className="font-semibold text-slate-800 ">
-                        {selectedPatient.hospital_name || "Apollo Central Hospital"}
+                        {selectedPatient.hospital_name || "City Healthcare Centre"}
                       </span>
                     </div>
                   </div>

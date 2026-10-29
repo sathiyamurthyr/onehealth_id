@@ -236,7 +236,7 @@ export default function PatientDetailPage() {
                       <span className="text-slate-400 text-[10px] uppercase font-bold block">Parent Hospital Facility</span>
                       <span className="font-medium text-slate-700  flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                        {patient.hospital_name || "Apollo Speciality Hospital Greams Road"}
+                        {patient.hospital_name || "City Healthcare Centre"}
                       </span>
                     </div>
                   </div>
@@ -254,7 +254,7 @@ export default function PatientDetailPage() {
                       Zero-Knowledge Inter-Hospital Portability
                     </h4>
                     <p className="text-[11px] text-slate-600  mt-1 leading-relaxed">
-                      This QR identity allows any participating Apollo, Fortis, or Government network hospital to verify this patient’s OneHealth identity without exposing raw clinical data in the QR payload.
+                      This QR identity allows any participating network hospital or health system to verify this patient’s OneHealth identity without exposing raw clinical data in the QR payload.
                     </p>
                   </div>
                 </div>

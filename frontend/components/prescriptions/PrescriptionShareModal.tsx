@@ -167,7 +167,7 @@ export function PrescriptionShareModal({
                 type="text"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="e.g. Apollo Pharmacy, Dr. Sharma"
+                placeholder="e.g. City Care Pharmacy, Dr. Sharma"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
               />
             </div>

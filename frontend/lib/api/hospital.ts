@@ -485,8 +485,54 @@ export const hospitalApi = {
     });
   },
 
+  createOnboardingSession: async (payload: { mobile_number?: string; email_address?: string; idempotency_key?: string }) => {
+    return fetchJSON<any>("/api/v1/hospitals/onboarding/session", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  requestMobileOtp: async (sessionId: string, mobileNumber: string) => {
+    return fetchJSON<any>("/api/v1/hospitals/onboarding/mobile/request-otp", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, mobile_number: mobileNumber }),
+    });
+  },
+
+  verifyMobileOtp: async (sessionId: string, otpCode: string) => {
+    return fetchJSON<any>("/api/v1/hospitals/onboarding/mobile/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, otp_code: otpCode }),
+    });
+  },
+
+  requestEmailOtp: async (sessionId: string, emailAddress: string, orgName?: string) => {
+    return fetchJSON<any>("/api/v1/hospitals/onboarding/email/request-otp", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, email_address: emailAddress, org_name: orgName }),
+    });
+  },
+
+  verifyEmailOtp: async (sessionId: string, otpCode: string) => {
+    return fetchJSON<any>("/api/v1/hospitals/onboarding/email/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, otp_code: otpCode }),
+    });
+  },
+
+  getOnboardingSessionStatus: async (sessionId: string) => {
+    return fetchJSON<any>(`/api/v1/hospitals/onboarding/${sessionId}/status`);
+  },
+
   getApplicationStatus: async (applicationRef: string) => {
     return fetchJSON<any>(`/api/v1/hospitals/applications/${applicationRef}`);
+  },
+
+  getSecureApplicationStatus: async (applicationRef: string, contact?: string) => {
+    return fetchJSON<any>(`/api/v1/hospitals/applications/${applicationRef}/status`, {
+      method: "POST",
+      body: JSON.stringify({ contact }),
+    });
   },
 
   updateApplication: async (applicationRef: string, payload: any) => {

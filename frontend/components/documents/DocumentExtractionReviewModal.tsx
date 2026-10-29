@@ -45,7 +45,7 @@ interface FieldDefinition {
 
 const REVIEW_FIELDS: FieldDefinition[] = [
   // Hospital fields
-  { key: "hospital_name", label: "Hospital / Clinic Name", placeholder: "e.g. Kedar Hospital", category: "HOSPITAL" },
+  { key: "hospital_name", label: "Hospital / Clinic Name", placeholder: "e.g. City Healthcare Centre", category: "HOSPITAL" },
   { key: "hospital_reg_no", label: "Hospital Registration No", placeholder: "e.g. TN/MED/2026/0894", category: "HOSPITAL" },
   { key: "hospital_city", label: "City & Location", placeholder: "e.g. Chennai, Tamil Nadu", category: "HOSPITAL" },
 

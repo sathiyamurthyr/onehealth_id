@@ -224,8 +224,8 @@ def get_current_me_profile(current_user: Dict[str, Any] = Depends(get_current_us
         "registration_number": doctor_dict.get("registration_number") if doctor_dict else None,
         "hospital_id": current_hosp_id,
         "hospital_ref_id": current_hosp_id,
-        "hospital_name": ws.get("hospital_name") if ws else "Kedar Hospital",
-        "branch_name": ws.get("branch_name") if ws else "Mugalivakkam Main",
+        "hospital_name": ws.get("hospital_name") if ws else (hospitals[0]["hospital_name"] if hospitals else "City Healthcare Centre"),
+        "branch_name": ws.get("branch_name") if ws else (hospitals[0].get("branch_name") if hospitals else "Main Branch"),
         "authorized_hospitals": [
             {
                 "hospital_id": h["hospital_ref_id"],

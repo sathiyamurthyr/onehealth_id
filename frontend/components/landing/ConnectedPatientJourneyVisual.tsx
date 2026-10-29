@@ -130,7 +130,7 @@ const JOURNEY_STAGES: JourneyStage[] = [
     summary: "Cryptographically signed e-prescriptions with dosage schedules and tamper-evident QR.",
     cardPreview: {
       heading: "Rx: RX-2026-F78996",
-      subheading: "Issued by Kedar Hospital • Validated Schedule",
+      subheading: "Issued by City Healthcare Centre • Validated Schedule",
       metadata: [
         { label: "Digital Seal", value: "SHA-256 Cryptographic Hash", isPill: true },
         { label: "Medication 1", value: "Paracetamol 650 mg (1-0-1)" },
@@ -337,7 +337,7 @@ export function ConnectedPatientJourneyVisual() {
                     <span>Schema Isolated PostgreSQL • HL7 FHIR R4</span>
                   </div>
                   <span className="text-slate-500 font-mono text-[10px]">
-                    Kedar Pilot Verified
+                    Enterprise Pilot Verified
                   </span>
                 </div>
               </div>

@@ -1,0 +1,176 @@
+{
+  "handshake": {
+    "client_public_key_sent": "BM6S7RYLEuz4MaRdc1FvWkttxHAgfhatlMZy43JW5+IPti09xAcSvOmFi0IpVRP/uvBfWzztBIzA7NApJp0K+OI=",
+    "response": {
+      "version": 1,
+      "key_id": "k-sess-f409855f05af",
+      "server_public_key": "BMxMVrxAqfMkHc+8c2iaEK0ukakavmNvjZsFTm88A/yz9s4W+99oGmj7mlSVen6WAIDsGJ61mUvKPBHE9UgrsBE=",
+      "algorithm": "AES-256-GCM",
+      "curve": "P-256",
+      "kdf": "HKDF-SHA256",
+      "expires_at": 1793034914,
+      "timestamp_window_seconds": 60
+    }
+  },
+  "post_login": {
+    "plaintext_request": {
+      "username": "admin",
+      "password": "admin123"
+    },
+    "request_headers": {
+      "Host": "ohid.online",
+      "Content-Type": "application/json",
+      "X-OH-Encrypted": "1",
+      "X-Session-Key-Id": "k-sess-f409855f05af",
+      "Accept": "application/vnd.oh-id.encrypted, application/json"
+    },
+    "request_envelope": {
+      "version": 1,
+      "key_id": "k-sess-f409855f05af",
+      "iv": "OexHz8OXNhF7QRQY",
+      "encrypted_data": "IB+EHjlYOZhHTiYHitoDbD7YLitIYDBk4y8QBDJ+Ua1/mhu2MfYHya8oEOnU",
+      "auth_tag": "/Nuy94jYCdr21g/Cr3AyXA==",
+      "req_id": "req-6d25eca8d9fd",
+      "ts": 1793031300
+    },
+    "response_status": 200,
+    "response_headers": {
+      "Server": "nginx",
+      "Date": "Mon, 26 Oct 2026 16:15:19 GMT",
+      "Content-Type": "application/json",
+      "Content-Length": "1687",
+      "Connection": "keep-alive",
+      "set-cookie": "oh_access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInVpZCI6InVzci1hZG1pbiIsInJvbGUiOiJTVVBFUl9BRE1JTiIsInVzZXJ0eXBlX3JlZl9pZCI6InJvbGUtc3VwZXItYWRtaW4iLCJob3NwaXRhbF9pZCI6Imhvc3Ata2VkYXIiLCJob3NwaXRhbF9yZWZfaWQiOiJob3NwLWtlZGFyIiwianRpIjoiOTc4NmYxMjUtYzg0Zi00NDU0LTgwY2UtM2FhODU5YjI2ZTkxIiwiaWF0IjoxNzkzMDMxMzE5LjYyNjAxMiwiZXhwIjoxNzkzMTE3NzE5fQ.34KQxgI9Vic-FJv0kl7O7Qubd2quCJbdkUylRAGDUJs; HttpOnly; Max-Age=86400; Path=/; SameSite=lax",
+      "x-content-type-options": "nosniff, nosniff",
+      "x-frame-options": "DENY, SAMEORIGIN",
+      "x-xss-protection": "1; mode=block, 1; mode=block",
+      "strict-transport-security": "max-age=31536000; includeSubDomains, max-age=31536000; includeSubDomains",
+      "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      "content-security-policy": "default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none';",
+      "cache-control": "no-store, no-cache, must-revalidate, private",
+      "pragma": "no-cache",
+      "x-oh-encrypted": "1",
+      "vary": "Origin"
+    },
+    "response_envelope": {
+      "version": 1,
+      "key_id": "k-sess-f409855f05af",
+      "iv": "SttPbMERpxS5MJ3b",
+      "encrypted_data": "yHR2bzLoAgTHM3D3pyl8x+g/nmLh9SQa1YOI0JFIhbQpAEG/A54eiRFtZGGVT2X8p7mpqCaAwIztZjMHL1Tqvt6559CfUZX6FLOXv4+H+T6nfVCvBYifI5bJ8iKlPev3/suiP9DgAl0lV0sjl1BN03NMOVOIIrtnLhyeGlSvYnCPvokNlWeHoYs/tLpPU3ep11DLL7glmjt/va+gRbMqnLsixtohe4UtzlNotRl9hbd47nfLVDH87NbuCpifiKRbucPE096GvBjW/S2PrzPtlx6OhDFhQltr0AUQTmI3HED9rTPJq+r9jyjEIfQZ1hjl53FmRtYmsxaqfLi0TluxyuOIUujY+svMOaC6FCzZm3KICq+eWVBvX1ij77ouPjR5h/w5H5ScfftUQ4lxK3lOnZM/vzuo5vM3MxoZdKGZNd+ZJKCOxmDCE+CgE3cyUAwi42ZGQ5ToVwGW04xVIlNEJJkACg8xGsTjfL0fJtDgZlzquVCe3ioSBWrDaZogkiDbt3sMkXqRb0fZV7l/+SNrHe1O4iZi6lV9Bl9zJn16mZScCN84MWRlY1FGCFMfFHF6YheRzIkuz6j4oaEA1xShn3IIJmuD1WB0JlzWFs0cpUWbA9bZ8pl2qXeT77oQfJS2sq/OzFeEopv9pEJEA2Q4JzlZzs3OIbKg4rKfUJC0why3wuR3nLseAa3K4YVjQT+6nlbxbUHa9i4VlNB4M03Mf8w5vav+Q89Y8+JCMbXduL6x+NI4Xd4WDMaTODz+utNOoAeJtoy3JdPwDbg2qfyLwSOn6CbJ6vxgD0G0sY+QHeijw/GQypwml5VlWysLnS8/4YFWek6rwOziTX2EOkhmyIPPZCdjdVteifzYtSvQ+eXjbeEL9jh9mpxILARaA9MJhhxuwipBMY2uJprIvqaIJO3Q3Ta/6Ff4iY96tiiwRrVC+f4Mvcab6wYJlriJYaAdRGnneNRVI+55QHLjRyQFYHF5knrJ/YZxGwsgkw0SaHzemN1iWTm6n+GV1A9jQQKueCk8BIVq904wP2DRNsB2U/Yi7MMM0htFD7qJPiCpCSA7RTtIDNCzNMV+rA33ZNktRFZEmrLxf5QpqFkj2DwHVM7ryByogftZ66+muALImyrCWLax6+qO004WdanMJI9fYu55wOi/Q5bxW922rNXdJ/Nzl+M96GhLE/Bletkb7Fr1LpzuECyD7P3zfKtZsTtzei6ro5c2IkyYFBC51ELn18wGH2hSKoSc72WQ5PoF13Gw2NE4fQvlQ0ePkHOUPOJT1MannO3o/ZUY8QSVJc6GWmKoVliKa00nuS9dW8yNvJfni46vQJLM0jwR900aWwozZmU2c0eyVNydNJQmAH8ilCwa60uQh7OFEhkGB1Yg30bKxIKLGpifIw6DbXfu76GX5CTNhaPdEs8f62iUVhgNQFt9sHaUdWBocfqhzWBiw6nG0DxX886EVSFv6tOllikTbIXmL0TYMhQHIjKYWxyUE9W7dNxl54KH",
+      "auth_tag": "jKrKfpClA3z53dxqmm9Etw==",
+      "req_id": "req-ba344f36ae41",
+      "ts": 1793031319
+    },
+    "decrypted_response": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInVpZCI6InVzci1hZG1pbiIsInJvbGUiOiJTVVBFUl9BRE1JTiIsInVzZXJ0eXBlX3JlZl9pZCI6InJvbGUtc3VwZXItYWRtaW4iLCJob3NwaXRhbF9pZCI6Imhvc3Ata2VkYXIiLCJob3NwaXRhbF9yZWZfaWQiOiJob3NwLWtlZGFyIiwianRpIjoiOTc4NmYxMjUtYzg0Zi00NDU0LTgwY2UtM2FhODU5YjI2ZTkxIiwiaWF0IjoxNzkzMDMxMzE5LjYyNjAxMiwiZXhwIjoxNzkzMTE3NzE5fQ.34KQxgI9Vic-FJv0kl7O7Qubd2quCJbdkUylRAGDUJs",
+      "token_type": "bearer",
+      "user": {
+        "id": "usr-admin",
+        "user_ref_id": "usr-admin",
+        "username": "admin",
+        "name": "Dr. Kedar Administrator",
+        "role": "SUPER_ADMIN",
+        "usertype_ref_id": "role-super-admin",
+        "email": "admin@hospital.org",
+        "hospital_id": "hosp-kedar",
+        "hospital_ref_id": "hosp-kedar",
+        "hospital_name": "Kedar Hospital",
+        "tenant_name": "Kedar Hospital Network",
+        "roles": [
+          "SUPER_ADMIN"
+        ],
+        "permissions": [
+          "audit.read",
+          "dashboard.view",
+          "hospital.admin",
+          "hospital.read",
+          "hospital.update",
+          "organization.read",
+          "organization.update",
+          "permission.assign",
+          "permission.read",
+          "role.create",
+          "role.delete",
+          "role.manage",
+          "role.read",
+          "role.update",
+          "system.manage",
+          "user.create",
+          "user.disable",
+          "user.manage",
+          "user.read",
+          "user.update"
+        ]
+      },
+      "workspace": null
+    }
+  },
+  "get_hospitals": {
+    "request_headers": {
+      "Host": "ohid.online",
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInVpZCI6InVzci1hZG1pbiIsInJvbGUiOiJTVVBFUl9BRE1JTiIsInVzZXJ0eXBlX3JlZl9pZCI6InJvbGUtc3VwZXItYWRtaW4iLCJob3NwaXRhbF9pZCI6Imhvc3Ata2VkYXIiLCJob3NwaXRhbF9yZWZfaWQiOiJob3NwLWtlZGFyIiwianRpIjoiOTc4NmYxMjUtYzg0Zi00NDU0LTgwY2UtM2FhODU5YjI2ZTkxIiwiaWF0IjoxNzkzMDMxMzE5LjYyNjAxMiwiZXhwIjoxNzkzMTE3NzE5fQ.34KQxgI9Vic-FJv0kl7O7Qubd2quCJbdkUylRAGDUJs",
+      "X-OH-Encrypted": "1",
+      "X-Session-Key-Id": "k-sess-f409855f05af",
+      "Accept": "application/vnd.oh-id.encrypted, application/json"
+    },
+    "response_status": 200,
+    "response_headers": {
+      "Server": "nginx",
+      "Date": "Mon, 26 Oct 2026 16:15:24 GMT",
+      "Content-Type": "application/json",
+      "Content-Length": "951",
+      "Connection": "keep-alive",
+      "x-content-type-options": "nosniff, nosniff",
+      "x-frame-options": "DENY, SAMEORIGIN",
+      "x-xss-protection": "1; mode=block, 1; mode=block",
+      "strict-transport-security": "max-age=31536000; includeSubDomains, max-age=31536000; includeSubDomains",
+      "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      "content-security-policy": "default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none';",
+      "cache-control": "no-store, no-cache, must-revalidate, private",
+      "pragma": "no-cache",
+      "x-oh-encrypted": "1",
+      "vary": "Origin"
+    },
+    "response_envelope": {
+      "version": 1,
+      "key_id": "k-sess-f409855f05af",
+      "iv": "XoTdmN2cRB+y3C5H",
+      "encrypted_data": "aA7yFP7bepE0Gx+EY0EoTX2XDGkc3quoK68b/FM4ki+oSpdYsIW0G6fdOwGNOwEz1mfWPAoFBTmHq17tw53anZcEhxj/J7kUWF11lln2wPJpQZrWc9JTkXEv71otsWgkVt+CG78+fUZyMXo3hJPYVf6c0r9/9cFi0CfevktBJH7GVs0vDCH2dNcqVyc9MvcGE9L3PWlhq/XvGbM1iybOdd1v2+RNbjyZXZUjmTLezc9nt/syP4MwHTj6kgBHYTLuSA1n0Evk/3Wa1vgbWOQkxV/7BN0LNZv9iqm2IqahmBVLLEVB68Fgt0euafbjqf0mhfMgkx6v6gIVHG/e4Q2Fq2NJuCYUn4vY0OmexkjpS4zrkYTkOdYKRc8Blk03kVsDAtkKyUL7cHhArIq+IxTZbIFORLhNHt27AqtYKKu0YXJQVJkSyp9BKELiweeprU+/oAldRVhOMQKuStEZGjNoPd6FReaUWy9GiKIlKO/1Yzy3Y+flHTwCv0EoQMatpVqO67FymZ731JcN9GwesYsuuKVbHeE0tlZnGb3lmmObLNGX9foaoT0eU4/DeCSL3FbZBBcHkIY/0D325Axg1stIGtb4xs0h4QBfOdD3yubgKSbD71++7JH/adk/X8RWgXpnLWjjmf0y/bnr/BgPkrRN99BtWiKb6QCRLxOBjng8/q7FBjlYLrJPFEgPW0Bd2Fo5AJWW7vr8tbAM9kUZGbi/o3xJ8e1IFKYZC1bBQZ20QFWLUTFGENhzqMk0/Pr8eMNY",
+      "auth_tag": "8oI+2BaK3FE4kNk5Y4gdIQ==",
+      "req_id": "req-f030bf34bd6b",
+      "ts": 1793031324
+    },
+    "decrypted_response": [
+      {
+        "hospital_id": "hosp-kedar",
+        "hospital_ref_id": "hosp-kedar",
+        "hospital_name": "Kedar Hospital",
+        "hospital_code": "KEDAR-MUG-01",
+        "hospital_city": "Chennai",
+        "branch_id": null,
+        "branch_ref_id": null,
+        "branch_name": null,
+        "department_id": null,
+        "department_name": null,
+        "is_current": true,
+        "is_primary": true
+      },
+      {
+        "hospital_id": "hosp-kedar",
+        "hospital_ref_id": "hosp-kedar",
+        "hospital_name": "Kedar Hospital",
+        "hospital_code": "KEDAR-MUG-01",
+        "hospital_city": "Chennai",
+        "branch_id": null,
+        "branch_ref_id": null,
+        "branch_name": null,
+        "department_id": null,
+        "department_name": null,
+        "is_current": true,
+        "is_primary": false
+      }
+    ]
+  }
+}

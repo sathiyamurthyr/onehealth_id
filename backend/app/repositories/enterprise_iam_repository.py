@@ -13,14 +13,20 @@ Implements production-grade database operations for:
 8. Non-Destructive User Lifecycle Transitions & Session Invalidation
 """
 
+import re
 import json
 import uuid
 import secrets
 import logging
+import hmac
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 
 from backend.app.database.session import get_db_cursor, get_readonly_cursor
+from backend.app.core.config import settings
+from backend.app.services.email_service import email_service
+from backend.app.services.whatsapp_service import whatsapp_service
 
 logger = logging.getLogger("ohid.enterprise_iam_repository")
 
@@ -963,11 +969,438 @@ class EnterpriseIAMRepository:
     # 2.1 HOSPITAL & CLINIC PUBLIC REGISTRATION & SUPER ADMIN APPROVAL WORKFLOW
     # =========================================================================
 
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        if not phone:
+            return ""
+        digits = "".join(filter(str.isdigit, phone))
+        if len(digits) == 10:
+            return f"+91{digits}"
+        elif len(digits) == 12 and digits.startswith("91"):
+            return f"+{digits}"
+        elif len(digits) > 10:
+            return f"+{digits}"
+        return digits
+
+    @staticmethod
+    def _normalize_email(email: str) -> str:
+        return (email or "").strip().lower()
+
+    @staticmethod
+    def _hash_otp(otp: str, salt: str = "") -> str:
+        secret = settings.SECRET_KEY.encode("utf-8")
+        data = f"{salt}:{otp.strip()}".encode("utf-8")
+        return hmac.new(secret, data, hashlib.sha256).hexdigest()
+
+    def _record_outbox_event(
+        self,
+        cur,
+        hospital_id: Optional[str],
+        application_ref: Optional[str],
+        event_type: str,
+        channel: str,
+        recipient: str,
+        masked_recipient: str,
+        subject_or_template: str,
+        payload: Dict[str, Any],
+        dispatch_fn
+    ) -> str:
+        outbox_id = f"outbox-{uuid.uuid4().hex[:12]}"
+        cur.execute("""
+            INSERT INTO oh_id.notification_outbox (
+                id, event_type, channel, recipient, masked_recipient, subject_or_template,
+                payload, delivery_status, retry_count, hospital_id, application_ref,
+                created_at, sent_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s,
+                %s, 'PENDING', 0, %s, %s,
+                CURRENT_TIMESTAMP, NULL
+            );
+        """, (
+            outbox_id, event_type, channel, recipient, masked_recipient, subject_or_template,
+            json.dumps(payload), hospital_id, application_ref
+        ))
+        try:
+            res = dispatch_fn()
+            status = res.get("status", "DELIVERED") if isinstance(res, dict) else "DELIVERED"
+            error_msg = res.get("error") if isinstance(res, dict) else None
+            cur.execute("""
+                UPDATE oh_id.notification_outbox
+                SET delivery_status = %s, error_message = %s, sent_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (status, error_msg, outbox_id))
+        except Exception as exc:
+            cur.execute("""
+                UPDATE oh_id.notification_outbox
+                SET delivery_status = 'FAILED', error_message = %s
+                WHERE id = %s;
+            """, (str(exc), outbox_id))
+        return outbox_id
+
+    def create_or_get_onboarding_session(
+        self,
+        session_id: Optional[str] = None,
+        mobile_number: Optional[str] = None,
+        email_address: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Initializes or retrieves an active organization registration onboarding session.
+        """
+        with get_db_cursor() as cur:
+            if session_id:
+                cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+                existing = cur.fetchone()
+                if existing:
+                    return {
+                        "session_id": existing["id"],
+                        "mobile_verified": bool(existing.get("mobile_verified")),
+                        "email_verified": bool(existing.get("email_verified")),
+                        "mobile_number": existing.get("mobile_number"),
+                        "email_address": existing.get("email_address"),
+                        "status": existing.get("status", "IN_PROGRESS"),
+                        "created_at": existing["created_at"].isoformat() if existing.get("created_at") else None
+                    }
+
+            new_session_id = f"obs-{uuid.uuid4().hex[:12]}"
+            cur.execute("""
+                INSERT INTO oh_id.organization_onboarding_sessions (
+                    id, mobile_number, email_address, ip_address, user_agent, status, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, 'IN_PROGRESS', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id;
+            """, (new_session_id, mobile_number, email_address, ip_address, user_agent))
+            return {
+                "session_id": new_session_id,
+                "mobile_verified": False,
+                "email_verified": False,
+                "mobile_number": mobile_number,
+                "email_address": email_address,
+                "status": "IN_PROGRESS"
+            }
+
+    def request_onboarding_mobile_otp(
+        self,
+        session_id: str,
+        mobile_number: str,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Dispatches a 6-digit WhatsApp OTP to verify applicant mobile number.
+        Enforces 60-second cooldown and 10-minute validity.
+        """
+        clean_phone = self._normalize_phone(mobile_number)
+        digits_only = clean_phone.replace("+", "")
+        if len(digits_only) < 10:
+            raise ValueError("Valid 10-digit mobile number with international/country code is required.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            session = cur.fetchone()
+            if not session:
+                raise ValueError("Invalid or expired onboarding session.")
+
+            # Cooldown check: 60 seconds (applied when requesting for the same number)
+            if session.get("mobile_number") == clean_phone and session.get("mobile_last_sent_at"):
+                elapsed = (datetime.now(timezone.utc) - session["mobile_last_sent_at"]).total_seconds()
+                if elapsed < 60:
+                    remaining = int(60 - elapsed)
+                    raise ValueError(f"Please wait {remaining} seconds before requesting a new WhatsApp verification code.")
+
+            # Generate 6-digit secure numeric OTP
+            otp_code = f"{secrets.randbelow(900000) + 100000}"
+            otp_hash = self._hash_otp(otp_code, salt=session_id)
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+            # Update session record
+            cur.execute("""
+                UPDATE oh_id.organization_onboarding_sessions
+                SET 
+                    mobile_number = %s,
+                    mobile_otp_hash = %s,
+                    mobile_verified = FALSE,
+                    mobile_attempts_count = 0,
+                    mobile_last_sent_at = CURRENT_TIMESTAMP,
+                    mobile_expires_at = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (clean_phone, otp_hash, expires_at, session_id))
+
+            # Dispatch via WhatsApp service and record in notification outbox
+            masked_phone = whatsapp_service._mask_phone(clean_phone)
+            self._record_outbox_event(
+                cur=cur,
+                hospital_id=None,
+                application_ref=None,
+                event_type="ONBOARDING_MOBILE_OTP",
+                channel="WHATSAPP",
+                recipient=clean_phone,
+                masked_recipient=masked_phone,
+                subject_or_template="ONBOARDING_MOBILE_OTP",
+                payload={"session_id": session_id, "masked_phone": masked_phone},
+                dispatch_fn=lambda: whatsapp_service.send_onboarding_otp(clean_phone, otp_code, expires_in_minutes=10)
+            )
+
+            return {
+                "success": True,
+                "message": f"Verification code dispatched via WhatsApp to {masked_phone}.",
+                "masked_phone": masked_phone,
+                "expires_in_seconds": 600,
+                "cooldown_seconds": 60
+            }
+
+    def verify_onboarding_mobile_otp(
+        self,
+        session_id: str,
+        otp_code: str,
+        mobile_number: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Validates the submitted 6-digit WhatsApp OTP with attempt limit (max 5) and replay prevention.
+        """
+        clean_otp = (otp_code or "").strip()
+        if len(clean_otp) != 6 or not clean_otp.isdigit():
+            raise ValueError("Verification code must be exactly 6 digits.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            session = cur.fetchone()
+            if not session:
+                raise ValueError("Invalid onboarding session.")
+
+            session_phone = session.get("mobile_number")
+            if not session_phone:
+                raise ValueError("No mobile number associated with this session. Please request OTP first.")
+
+            if mobile_number:
+                clean_phone = self._normalize_phone(mobile_number)
+                if session_phone != clean_phone:
+                    raise ValueError("Mobile number does not match requested verification session.")
+            else:
+                clean_phone = session_phone
+
+            if session.get("mobile_verified"):
+                return {"success": True, "message": "Mobile number is already verified."}
+
+            if not session.get("mobile_otp_hash"):
+                raise ValueError("No active OTP found. Please request a new verification code.")
+
+            now = datetime.now(timezone.utc)
+            if session.get("mobile_expires_at") and session["mobile_expires_at"] < now:
+                raise ValueError("Verification code has expired. Please request a new code.")
+
+            attempts = session.get("mobile_attempts_count", 0)
+            if attempts >= 5:
+                cur.execute("""
+                    UPDATE oh_id.organization_onboarding_sessions
+                    SET mobile_otp_hash = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (session_id,))
+                cur.connection.commit()
+                raise ValueError("Maximum verification attempts exceeded. Please request a new code.")
+
+            expected_hash = self._hash_otp(clean_otp, salt=session_id)
+            if not hmac.compare_digest(session["mobile_otp_hash"], expected_hash):
+                new_attempts = attempts + 1
+                cur.execute("""
+                    UPDATE oh_id.organization_onboarding_sessions
+                    SET mobile_attempts_count = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (new_attempts, session_id))
+                cur.connection.commit()
+                remaining = max(0, 5 - new_attempts)
+                raise ValueError(f"Invalid verification code. {remaining} attempts remaining.")
+
+            # Mark verified and invalidate hash
+            cur.execute("""
+                UPDATE oh_id.organization_onboarding_sessions
+                SET 
+                    mobile_verified = TRUE,
+                    mobile_verified_at = CURRENT_TIMESTAMP,
+                    mobile_otp_hash = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (session_id,))
+
+            return {
+                "success": True,
+                "verified": True,
+                "message": "Mobile number successfully verified via WhatsApp.",
+                "mobile_number": clean_phone
+            }
+
+    def request_onboarding_email_otp(
+        self,
+        session_id: str,
+        email_address: str,
+        org_name: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Dispatches a 6-digit Email OTP to verify official organization email.
+        Enforces 60-second cooldown and 10-minute validity.
+        """
+        clean_email = self._normalize_email(email_address)
+        if not clean_email or "@" not in clean_email:
+            raise ValueError("Valid official organization email is required.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            session = cur.fetchone()
+            if not session:
+                raise ValueError("Invalid or expired onboarding session.")
+
+            # Cooldown check: 60 seconds (applied when requesting for the same email)
+            if session.get("email_address") == clean_email and session.get("email_last_sent_at"):
+                elapsed = (datetime.now(timezone.utc) - session["email_last_sent_at"]).total_seconds()
+                if elapsed < 60:
+                    remaining = int(60 - elapsed)
+                    raise ValueError(f"Please wait {remaining} seconds before requesting a new email verification code.")
+
+            otp_code = f"{secrets.randbelow(900000) + 100000}"
+            otp_hash = self._hash_otp(otp_code, salt=session_id)
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+            cur.execute("""
+                UPDATE oh_id.organization_onboarding_sessions
+                SET 
+                    email_address = %s,
+                    email_otp_hash = %s,
+                    email_verified = FALSE,
+                    email_attempts_count = 0,
+                    email_last_sent_at = CURRENT_TIMESTAMP,
+                    email_expires_at = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (clean_email, otp_hash, expires_at, session_id))
+
+            masked_email = email_service._mask_email(clean_email)
+            self._record_outbox_event(
+                cur=cur,
+                hospital_id=None,
+                application_ref=None,
+                event_type="ONBOARDING_EMAIL_OTP",
+                channel="EMAIL",
+                recipient=clean_email,
+                masked_recipient=masked_email,
+                subject_or_template="ONBOARDING_EMAIL_OTP",
+                payload={"session_id": session_id, "masked_email": masked_email},
+                dispatch_fn=lambda: email_service.send_organization_onboarding_otp(
+                    clean_email, org_name or "Healthcare Facility", otp_code, expires_in_minutes=10
+                )
+            )
+
+            return {
+                "success": True,
+                "message": f"Verification code dispatched to {masked_email}.",
+                "masked_email": masked_email,
+                "expires_in_seconds": 600,
+                "cooldown_seconds": 60
+            }
+
+    def verify_onboarding_email_otp(
+        self,
+        session_id: str,
+        otp_code: str,
+        email_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Validates the submitted 6-digit Email OTP with attempt limit (max 5) and replay prevention.
+        """
+        clean_otp = (otp_code or "").strip()
+        if len(clean_otp) != 6 or not clean_otp.isdigit():
+            raise ValueError("Verification code must be exactly 6 digits.")
+
+        with get_db_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            session = cur.fetchone()
+            if not session:
+                raise ValueError("Invalid onboarding session.")
+
+            session_email = session.get("email_address")
+            if not session_email:
+                raise ValueError("No email address associated with this session. Please request OTP first.")
+
+            if email_address:
+                clean_email = self._normalize_email(email_address)
+                if session_email != clean_email:
+                    raise ValueError("Email address does not match requested verification session.")
+            else:
+                clean_email = session_email
+
+            if session.get("email_verified"):
+                return {"success": True, "message": "Email address is already verified."}
+
+            if not session.get("email_otp_hash"):
+                raise ValueError("No active OTP found. Please request a new verification code.")
+
+            now = datetime.now(timezone.utc)
+            if session.get("email_expires_at") and session["email_expires_at"] < now:
+                raise ValueError("Verification code has expired. Please request a new code.")
+
+            attempts = session.get("email_attempts_count", 0)
+            if attempts >= 5:
+                cur.execute("""
+                    UPDATE oh_id.organization_onboarding_sessions
+                    SET email_otp_hash = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (session_id,))
+                cur.connection.commit()
+                raise ValueError("Maximum verification attempts exceeded. Please request a new code.")
+
+            expected_hash = self._hash_otp(clean_otp, salt=session_id)
+            if not hmac.compare_digest(session["email_otp_hash"], expected_hash):
+                new_attempts = attempts + 1
+                cur.execute("""
+                    UPDATE oh_id.organization_onboarding_sessions
+                    SET email_attempts_count = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (new_attempts, session_id))
+                cur.connection.commit()
+                remaining = max(0, 5 - new_attempts)
+                raise ValueError(f"Invalid verification code. {remaining} attempts remaining.")
+
+            cur.execute("""
+                UPDATE oh_id.organization_onboarding_sessions
+                SET 
+                    email_verified = TRUE,
+                    email_verified_at = CURRENT_TIMESTAMP,
+                    email_otp_hash = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (session_id,))
+
+            return {
+                "success": True,
+                "verified": True,
+                "message": "Official email successfully verified.",
+                "email_address": clean_email
+            }
+
+    def get_onboarding_session_status(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Returns verification state for an onboarding session."""
+        with get_readonly_cursor() as cur:
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "session_id": row["id"],
+                "mobile_verified": bool(row.get("mobile_verified")),
+                "email_verified": bool(row.get("email_verified")),
+                "mobile_number": row.get("mobile_number"),
+                "email_address": row.get("email_address"),
+                "status": row.get("status", "IN_PROGRESS"),
+                "application_ref": row.get("application_ref")
+            }
+
     def register_facility_application(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Public self-registration for Hospitals and Clinics.
-        Stores application in oh_id.hospitals with SUBMITTED status and is_active=FALSE.
-        Enforces server-side validation, duplicate prevention, and strips client-supplied privileged roles.
+        Strictly requires valid onboarding_session_id with BOTH mobile_verified and email_verified.
+        Generates unique, non-sequential tracking ID (format: OHID-ORG-2026-XXXXXXXX).
+        Persists submission notifications in transactional outbox.
         """
         name = (data.get("name") or "").strip()
         if not name or len(name) < 2:
@@ -977,27 +1410,93 @@ class EnterpriseIAMRepository:
         if facility_type not in ("HOSPITAL", "CLINIC"):
             facility_type = "HOSPITAL"
 
-        official_email = (data.get("email") or "").strip().lower()
+        official_email = self._normalize_email(data.get("email"))
         if not official_email or "@" not in official_email:
             raise ValueError("Valid official organization email is required.")
 
         phone = (data.get("phone") or "").strip()
-        digits = "".join(filter(str.isdigit, phone))
-        clean_phone = digits[-10:] if len(digits) >= 10 else digits
-        if len(clean_phone) != 10:
-            raise ValueError("Valid 10-digit registered phone number is required.")
+        clean_phone = self._normalize_phone(phone)
+        if len(clean_phone.replace("+", "")) < 10:
+            raise ValueError("Valid registered telephone or 10-digit mobile number is required.")
 
         reg_number = (data.get("registration_number") or "").strip()
         if not reg_number:
             raise ValueError("Statutory registration / license number is required.")
 
         rep_name = (data.get("rep_name") or "").strip()
-        rep_email = (data.get("rep_email") or "").strip().lower()
-        rep_phone = (data.get("rep_phone") or "").strip()
+        rep_email = self._normalize_email(data.get("rep_email") or official_email)
+        rep_phone = self._normalize_phone(data.get("rep_phone") or clean_phone)
         if not rep_name:
             raise ValueError("Authorized representative name is required.")
 
+        session_id = data.get("session_id")
+        idempotency_key = data.get("idempotency_key") or data.get("client_mutation_id")
+
         with get_db_cursor() as cur:
+            # 1. Verification Enforcement: Check Onboarding Session
+            if not session_id:
+                raise ValueError("Active onboarding session required. Please complete mobile and email verification.")
+
+            cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE id = %s;", (session_id,))
+            session = cur.fetchone()
+            if not session:
+                raise ValueError("Onboarding session not found or expired. Please re-verify.")
+
+            # Idempotency check: if session is already submitted or idempotency key exists
+            if session.get("status") == "SUBMITTED" and session.get("application_ref"):
+                cur.execute("SELECT * FROM oh_id.hospitals WHERE application_ref = %s;", (session["application_ref"],))
+                existing_hosp = cur.fetchone()
+                if existing_hosp:
+                    return {
+                        "success": True,
+                        "application_ref": existing_hosp["application_ref"],
+                        "hospital_id": existing_hosp["id"],
+                        "name": existing_hosp["name"],
+                        "facility_type": existing_hosp.get("hospital_type", facility_type),
+                        "status": existing_hosp.get("lifecycle_status", "SUBMITTED"),
+                        "lifecycle_status": existing_hosp.get("lifecycle_status", "SUBMITTED"),
+                        "is_active": existing_hosp.get("is_active", False),
+                        "is_verified": existing_hosp.get("is_verified", False),
+                        "message": "Hospital/Clinic application previously submitted successfully (idempotent)."
+                    }
+
+            if idempotency_key:
+                cur.execute("SELECT * FROM oh_id.organization_onboarding_sessions WHERE idempotency_key = %s;", (idempotency_key,))
+                idem_session = cur.fetchone()
+                if idem_session and idem_session.get("application_ref"):
+                    cur.execute("SELECT * FROM oh_id.hospitals WHERE application_ref = %s;", (idem_session["application_ref"],))
+                    existing_hosp = cur.fetchone()
+                    if existing_hosp:
+                        return {
+                            "success": True,
+                            "application_ref": existing_hosp["application_ref"],
+                            "hospital_id": existing_hosp["id"],
+                            "name": existing_hosp["name"],
+                            "facility_type": existing_hosp.get("hospital_type", facility_type),
+                            "status": existing_hosp.get("lifecycle_status", "SUBMITTED"),
+                            "lifecycle_status": existing_hosp.get("lifecycle_status", "SUBMITTED"),
+                            "is_active": existing_hosp.get("is_active", False),
+                            "is_verified": existing_hosp.get("is_verified", False),
+                            "message": "Hospital/Clinic application previously submitted successfully (idempotent)."
+                        }
+
+            if not session.get("mobile_verified"):
+                raise ValueError("Mobile number verification via WhatsApp OTP is required before submission.")
+
+            if not session.get("email_verified"):
+                raise ValueError("Official email verification via OTP is required before submission.")
+
+            # Validate contacts match verified values
+            session_mobile = session.get("mobile_number")
+            session_email = session.get("email_address")
+            if session_mobile != clean_phone and session_mobile != rep_phone:
+                cur.execute("UPDATE oh_id.organization_onboarding_sessions SET mobile_verified = FALSE WHERE id = %s;", (session_id,))
+                raise ValueError("Submitted mobile number does not match verified number. Please re-verify.")
+
+            if session_email != official_email and session_email != rep_email:
+                cur.execute("UPDATE oh_id.organization_onboarding_sessions SET email_verified = FALSE WHERE id = %s;", (session_id,))
+                raise ValueError("Submitted email address does not match verified email. Please re-verify.")
+
             # Duplicate prevention check
             cur.execute("""
                 SELECT id, name, code, lifecycle_status, registration_number, email
@@ -1005,7 +1504,7 @@ class EnterpriseIAMRepository:
                 WHERE LOWER(registration_number) = LOWER(%s)
                    OR LOWER(email) = LOWER(%s)
                    OR LOWER(rep_email) = LOWER(%s);
-            """, (reg_number, official_email, rep_email or official_email))
+            """, (reg_number, official_email, rep_email))
             existing = cur.fetchone()
             if existing:
                 raise ValueError(
@@ -1015,7 +1514,10 @@ class EnterpriseIAMRepository:
             hospital_id = f"hosp-{uuid.uuid4().hex[:8]}"
             prefix = "CLN" if facility_type == "CLINIC" else "HOSP"
             code = f"{prefix}-{uuid.uuid4().hex[:6].upper()}"
-            application_ref = f"APP-2026-{uuid.uuid4().hex[:6].upper()}"
+            
+            # Mandated tracking ID format: OHID-ORG-2026-XXXXXXXX (unique, non-sequential)
+            tracking_code = secrets.token_hex(4).upper()
+            application_ref = f"OHID-ORG-2026-{tracking_code}"
 
             display_name = data.get("display_name") or name
             city = (data.get("city") or "Chennai").strip()
@@ -1032,7 +1534,7 @@ class EnterpriseIAMRepository:
             if not isinstance(docs, list):
                 docs = []
 
-            # 1. Insert Hospital in non-approved SUBMITTED status
+            # 2. Insert Hospital record in SUBMITTED status with verified badges
             cur.execute("""
                 INSERT INTO oh_id.hospitals (
                     id, name, display_name, code, hospital_type, ownership_type,
@@ -1041,7 +1543,8 @@ class EnterpriseIAMRepository:
                     phone, email, website, emergency_contact,
                     lifecycle_status, status, is_active, is_verified, verification_status, booking_enabled,
                     application_ref, rep_name, rep_designation, rep_email, rep_phone,
-                    supporting_documents, created_at, updated_at
+                    supporting_documents, onboarding_session_id, mobile_verified, email_verified,
+                    verified_mobile, verified_email, created_at, updated_at
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
@@ -1049,7 +1552,8 @@ class EnterpriseIAMRepository:
                     %s, %s, %s, %s,
                     'SUBMITTED', 'PENDING_APPROVAL', FALSE, FALSE, 'PENDING', FALSE,
                     %s, %s, %s, %s, %s,
-                    %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    %s, %s, TRUE, TRUE,
+                    %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 ) RETURNING id;
             """, (
                 hospital_id, name, display_name, code, facility_type, data.get("ownership_type", "PRIVATE"),
@@ -1057,11 +1561,23 @@ class EnterpriseIAMRepository:
                 address, city, state, country, pin_code,
                 clean_phone, official_email, website, emergency_contact,
                 application_ref, rep_name, data.get("rep_designation", "Authorized Signatory"),
-                rep_email or official_email, rep_phone or clean_phone,
-                json.dumps(docs)
+                rep_email, rep_phone,
+                json.dumps(docs), session_id,
+                clean_phone, official_email
             ))
 
-            # 2. Insert into hospital_verifications
+            # 3. Update session status
+            cur.execute("""
+                UPDATE oh_id.organization_onboarding_sessions
+                SET 
+                    status = 'SUBMITTED',
+                    application_ref = %s,
+                    idempotency_key = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (application_ref, idempotency_key, session_id))
+
+            # 4. Insert into hospital_verifications
             verif_id = f"verif-{uuid.uuid4().hex[:8]}"
             cur.execute("""
                 INSERT INTO oh_id.hospital_verifications (
@@ -1073,14 +1589,14 @@ class EnterpriseIAMRepository:
                 );
             """, (verif_id, hospital_id, reg_number, reg_authority))
 
-            # 3. Insert platform audit log
+            # 5. Insert platform audit log
             cur.execute("""
                 INSERT INTO oh_id.platform_audit_logs (
                     id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
                     new_value, reason, created_at
                 ) VALUES (
                     %s, NULL, 'public_applicant', 'FACILITY_APPLICATION_SUBMITTED', 'HOSPITAL', %s, %s,
-                    %s, 'Public organization registration application submitted', CURRENT_TIMESTAMP
+                    %s, 'Organization registration application submitted with verified WhatsApp and Email', CURRENT_TIMESTAMP
                 );
             """, (
                 f"audit-{uuid.uuid4().hex[:12]}", hospital_id, name,
@@ -1088,13 +1604,51 @@ class EnterpriseIAMRepository:
                     "application_ref": application_ref,
                     "facility_type": facility_type,
                     "registration_number": reg_number,
-                    "rep_email": rep_email or official_email
+                    "rep_email": rep_email,
+                    "mobile_verified": True,
+                    "email_verified": True
                 })
             ))
+
+            # 6. Transactional Outbox Dispatches (Email & WhatsApp)
+            status_url = f"https://ohid.online/register/facility?tab=track&ref={application_ref}"
+            
+            # Email confirmation
+            self._record_outbox_event(
+                cur=cur,
+                hospital_id=hospital_id,
+                application_ref=application_ref,
+                event_type="APPLICATION_SUBMITTED",
+                channel="EMAIL",
+                recipient=official_email,
+                masked_recipient=email_service._mask_email(official_email),
+                subject_or_template="APPLICATION_SUBMITTED",
+                payload={"application_ref": application_ref, "tracking_id": application_ref, "org_name": name, "status_url": status_url},
+                dispatch_fn=lambda: email_service.send_application_submitted_notification(
+                    official_email, name, application_ref, status_url
+                )
+            )
+
+            # WhatsApp confirmation
+            self._record_outbox_event(
+                cur=cur,
+                hospital_id=hospital_id,
+                application_ref=application_ref,
+                event_type="APPLICATION_SUBMITTED",
+                channel="WHATSAPP",
+                recipient=clean_phone,
+                masked_recipient=whatsapp_service._mask_phone(clean_phone),
+                subject_or_template="APPLICATION_SUBMITTED",
+                payload={"application_ref": application_ref, "tracking_id": application_ref, "org_name": name, "status_url": status_url},
+                dispatch_fn=lambda: whatsapp_service.send_application_submitted_alert(
+                    clean_phone, name, application_ref, status_url
+                )
+            )
 
             return {
                 "success": True,
                 "application_ref": application_ref,
+                "tracking_id": application_ref,
                 "hospital_id": hospital_id,
                 "name": name,
                 "facility_type": facility_type,
@@ -1105,10 +1659,15 @@ class EnterpriseIAMRepository:
                 "message": "Hospital/Clinic application submitted successfully. It is currently locked and blocked from accessing protected functionality until a Super Admin reviews and approves it."
             }
 
-    def get_facility_application_by_ref(self, application_ref: str) -> Optional[Dict[str, Any]]:
+    def get_facility_application_by_ref(
+        self,
+        application_ref: str,
+        verify_contact: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Public lookup for application status and tracking.
-        Sanitizes sensitive internal administrator audit data.
+        When verify_contact is supplied, requires matching official email or phone
+        before exposing sensitive application information.
         """
         with get_readonly_cursor() as cur:
             cur.execute("""
@@ -1117,7 +1676,7 @@ class EnterpriseIAMRepository:
                     phone, email, registration_number, registration_authority, application_ref,
                     rep_name, rep_designation, rep_email, rep_phone,
                     lifecycle_status, status, is_active, review_notes, rejection_reason, reviewed_at, created_at,
-                    supporting_documents
+                    supporting_documents, mobile_verified, email_verified
                 FROM oh_id.hospitals
                 WHERE application_ref = %s;
             """, (application_ref,))
@@ -1125,21 +1684,45 @@ class EnterpriseIAMRepository:
             if not row:
                 return None
             res = dict(row)
+
+            # Security: If verify_contact is specified, enforce match against registered contacts
+            if verify_contact:
+                target = verify_contact.strip().lower()
+                clean_target_phone = "".join(filter(str.isdigit, target))
+                clean_phone = "".join(filter(str.isdigit, res.get("phone") or ""))
+                clean_rep_phone = "".join(filter(str.isdigit, res.get("rep_phone") or ""))
+
+                matched = (
+                    target == (res.get("email") or "").strip().lower()
+                    or target == (res.get("rep_email") or "").strip().lower()
+                    or (clean_target_phone and clean_target_phone in clean_phone)
+                    or (clean_target_phone and clean_target_phone in clean_rep_phone)
+                )
+                if not matched:
+                    raise ValueError("Verification contact does not match official application records.")
+
             if isinstance(res.get("supporting_documents"), str):
                 try:
                     res["supporting_documents"] = json.loads(res["supporting_documents"])
                 except Exception:
                     res["supporting_documents"] = []
+            if "review_notes" in res:
+                res["reviewer_notes"] = res.get("review_notes")
             return res
 
-    def update_facility_application_by_ref(self, application_ref: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    def update_facility_application_by_ref(
+        self,
+        application_ref: str,
+        updates: Dict[str, Any],
+        verify_contact: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Allows applicant to update submitted details or upload requested additional information.
-        Cannot alter approval status. If current status is NEEDS_INFORMATION, moves back to SUBMITTED.
+        Cannot alter approval status. If current status is NEEDS_INFORMATION or ON_HOLD, moves back to SUBMITTED.
         """
         with get_db_cursor() as cur:
             cur.execute("""
-                SELECT id, name, lifecycle_status, supporting_documents
+                SELECT id, name, email, phone, rep_email, rep_phone, verified_email, verified_mobile, lifecycle_status, supporting_documents
                 FROM oh_id.hospitals
                 WHERE application_ref = %s;
             """, (application_ref,))
@@ -1147,8 +1730,25 @@ class EnterpriseIAMRepository:
             if not hosp:
                 raise ValueError("Application reference not found.")
 
+            if verify_contact:
+                clean_contact = verify_contact.strip().lower()
+                clean_phone = re.sub(r"[^\d]", "", verify_contact)
+                valid_contacts = {
+                    (hosp.get("email") or "").strip().lower(),
+                    (hosp.get("rep_email") or "").strip().lower(),
+                    (hosp.get("verified_email") or "").strip().lower(),
+                }
+                phone_contacts = {
+                    re.sub(r"[^\d]", "", hosp.get("phone") or ""),
+                    re.sub(r"[^\d]", "", hosp.get("rep_phone") or ""),
+                    re.sub(r"[^\d]", "", hosp.get("verified_mobile") or "")
+                }
+                matched = clean_contact in valid_contacts or (clean_phone and any(p and (p == clean_phone or p.endswith(clean_phone) or clean_phone.endswith(p)) for p in phone_contacts))
+                if not matched:
+                    raise ValueError("Verification contact does not match official application records.")
+
             current_status = hosp.get("lifecycle_status")
-            if current_status not in ("SUBMITTED", "NEEDS_INFORMATION", "UNDER_REVIEW"):
+            if current_status not in ("SUBMITTED", "NEEDS_INFORMATION", "ON_HOLD", "UNDER_REVIEW"):
                 raise ValueError(f"Cannot update application in '{current_status}' status.")
 
             existing_docs = hosp.get("supporting_documents") or []
@@ -1161,7 +1761,7 @@ class EnterpriseIAMRepository:
             if isinstance(new_docs, list) and new_docs:
                 existing_docs.extend(new_docs)
 
-            new_status = "SUBMITTED" if current_status == "NEEDS_INFORMATION" else current_status
+            new_status = "SUBMITTED" if current_status in ("NEEDS_INFORMATION", "ON_HOLD") else current_status
 
             cur.execute("""
                 UPDATE oh_id.hospitals
@@ -1207,6 +1807,7 @@ class EnterpriseIAMRepository:
                 "success": True,
                 "application_ref": application_ref,
                 "status": new_status,
+                "lifecycle_status": new_status,
                 "message": "Application details and documents updated successfully."
             }
 
@@ -1356,18 +1957,38 @@ class EnterpriseIAMRepository:
                 "message": "Application status updated to UNDER_REVIEW."
             }
 
+    def _resolve_audit_admin_id(self, cur, admin_user_id: Optional[str] = None, admin_username: Optional[str] = None):
+        if admin_user_id:
+            cur.execute("SELECT id, username FROM oh_id.users WHERE id = %s;", (admin_user_id,))
+            admin_user_row = cur.fetchone()
+            if admin_user_row:
+                return admin_user_row["id"], admin_user_row.get("username") or admin_username or "superadmin"
+        # Fallback to an existing super admin user
+        cur.execute("SELECT id, username FROM oh_id.users WHERE role = 'SUPER_ADMIN' LIMIT 1;")
+        fallback_row = cur.fetchone()
+        if fallback_row:
+            return fallback_row["id"], fallback_row.get("username") or admin_username or "superadmin"
+        return None, admin_username or "superadmin"
+
     def approve_facility_application_super_admin(
         self,
         hospital_id: str,
         admin_user_id: str = "usr-admin",
         admin_username: str = "superadmin",
-        decision_notes: str = "Application approved by Super Admin after verification."
+        decision_notes: str = "Application approved by Super Admin after verification.",
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Atomically approves hospital/clinic application.
         Transitions lifecycle_status to APPROVED, is_active=TRUE, is_verified=TRUE.
-        Provisions default main branch, activates verification record, and logs audit event.
+        Provisions default main branch, activates verification record, provisions initial
+        administrator account with single-use 72h invitation token, enqueues transactional
+        outbox notifications, and logs audit event.
         """
+        if "admin_id" in kwargs and kwargs["admin_id"]:
+            admin_user_id = kwargs["admin_id"]
+        if "notes" in kwargs and kwargs["notes"]:
+            decision_notes = kwargs["notes"]
         with get_db_cursor() as cur:
             cur.execute("SELECT * FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
             hosp = cur.fetchone()
@@ -1382,6 +2003,9 @@ class EnterpriseIAMRepository:
                     "status": "APPROVED",
                     "message": "Hospital is already approved and active."
                 }
+
+            # Resolve valid admin user from users table for audit log FK integrity
+            audit_admin_id, audit_admin_username = self._resolve_audit_admin_id(cur, admin_user_id, admin_username)
 
             # 1. Update hospital record
             cur.execute("""
@@ -1398,13 +2022,13 @@ class EnterpriseIAMRepository:
                     review_notes = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
-            """, (admin_user_id, decision_notes, hosp["id"]))
+            """, (audit_admin_id, decision_notes, hosp["id"]))
 
             # 2. Provision default main branch if none exists
             cur.execute("SELECT id FROM oh_id.hospital_branches WHERE hospital_id = %s LIMIT 1;", (hosp["id"],))
             branch = cur.fetchone()
+            branch_id = branch["id"] if branch else f"br-{uuid.uuid4().hex[:8]}"
             if not branch:
-                branch_id = f"br-{uuid.uuid4().hex[:8]}"
                 branch_code = f"BR-{hosp['code']}-01"
                 branch_name = f"{hosp.get('display_name') or hosp['name']} Main Campus"
                 cur.execute("""
@@ -1429,9 +2053,165 @@ class EnterpriseIAMRepository:
                     reviewed_at = CURRENT_TIMESTAMP,
                     review_notes = %s
                 WHERE hospital_id = %s;
-            """, (admin_user_id, decision_notes, hosp["id"]))
+            """, (audit_admin_id, decision_notes, hosp["id"]))
 
-            # 4. Audit Log
+            # 4. Provision Initial Administrator User & 72-Hour Activation Invitation Token
+            admin_email = (hosp.get("rep_email") or hosp.get("email") or hosp.get("verified_email") or "").strip().lower()
+            admin_phone = (hosp.get("rep_phone") or hosp.get("phone") or hosp.get("verified_mobile") or "").strip()
+            rep_name = hosp.get("rep_name") or f"{hosp.get('display_name') or hosp['name']} Administrator"
+            rep_designation = hosp.get("rep_designation") or "Hospital Administrator"
+
+            # Check if user already exists
+            cur.execute("""
+                SELECT id, email, username FROM oh_id.users
+                WHERE (email = %s AND %s != '') OR (phone = %s AND %s != '')
+                LIMIT 1;
+            """, (admin_email, admin_email, admin_phone, admin_phone))
+            existing_user = cur.fetchone()
+
+            if existing_user:
+                resolved_user_id = existing_user["id"]
+                # Update user with hospital_id and HOSPITAL_ADMIN role if needed
+                cur.execute("""
+                    UPDATE oh_id.users
+                    SET hospital_id = COALESCE(hospital_id, %s), role = 'HOSPITAL_ADMIN'
+                    WHERE id = %s;
+                """, (hosp["id"], resolved_user_id))
+            else:
+                resolved_user_id = f"usr-{uuid.uuid4().hex[:10]}"
+                username_base = admin_email.split("@")[0] if "@" in admin_email else f"admin_{hosp['code'].lower()}"
+                username = f"{username_base}_{uuid.uuid4().hex[:4]}"
+                cur.execute("""
+                    INSERT INTO oh_id.users (
+                        id, username, email, phone, mobile, full_name, role, hospital_id,
+                        password_hash, is_active, is_verified, must_change_password, created_at
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, 'HOSPITAL_ADMIN', %s,
+                        '$2b$12$uninitialized_invite_token_hash', TRUE, FALSE, TRUE, CURRENT_TIMESTAMP
+                    );
+                """, (resolved_user_id, username, admin_email, admin_phone, admin_phone, rep_name, hosp["id"]))
+
+            # Provision staff membership record
+            membership_id = f"mem-{uuid.uuid4().hex[:8]}"
+            rep_parts = (rep_name or "Hospital Administrator").strip().split(" ", 1)
+            first_name = rep_parts[0] if rep_parts else "Hospital"
+            last_name = rep_parts[1] if len(rep_parts) > 1 else "Administrator"
+            cur.execute("""
+                INSERT INTO oh_id.hospital_staff_memberships (
+                    id, user_id, hospital_id, first_name, last_name, full_name, mobile, email,
+                    designation, employment_type, employment_status, role_code, verification_status,
+                    is_primary, is_active, login_enabled, mfa_enabled, failed_login_attempts
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, 'FULL_TIME', 'ACTIVE', 'HOSPITAL_ADMIN', 'VERIFIED',
+                    TRUE, TRUE, TRUE, FALSE, 0
+                )
+                ON CONFLICT DO NOTHING;
+            """, (
+                membership_id, resolved_user_id, hosp["id"], first_name, last_name, rep_name,
+                admin_phone, admin_email, rep_designation
+            ))
+
+            # Provision user role mapping
+            role_map_id = f"ur-{uuid.uuid4().hex[:8]}"
+            cur.execute("""
+                INSERT INTO oh_id.user_roles (
+                    id, user_id, role_id, hospital_id, is_active
+                ) VALUES (
+                    %s, %s, 'role-hospital-admin', %s, TRUE
+                )
+                ON CONFLICT DO NOTHING;
+            """, (role_map_id, resolved_user_id, hosp["id"]))
+
+            # Generate Cryptographic Single-Use 72-Hour Invitation Token
+            invite_token = secrets.token_urlsafe(32)
+            invite_expires = datetime.now(timezone.utc) + timedelta(hours=72)
+
+            # Invalidate any prior unused invitations for this user
+            cur.execute("""
+                UPDATE oh_id.user_invitations
+                SET is_revoked = TRUE, status = 'REVOKED'
+                WHERE user_id = %s AND is_used = FALSE;
+            """, (resolved_user_id,))
+
+            invite_id = f"inv-{uuid.uuid4().hex[:8]}"
+            cur.execute("""
+                INSERT INTO oh_id.user_invitations (
+                    id, invitation_token, token, user_id, role_id, email, mobile, full_name,
+                    hospital_id, branch_id, role_code, designation, employment_type,
+                    invited_by, invited_by_name, status, expires_at, is_used, is_revoked
+                ) VALUES (
+                    %s, %s, %s, %s, 'role-hospital-admin', %s, %s, %s,
+                    %s, %s, 'HOSPITAL_ADMIN', %s, 'FULL_TIME',
+                    %s, %s, 'PENDING', %s, FALSE, FALSE
+                );
+            """, (
+                invite_id, invite_token, invite_token, resolved_user_id,
+                admin_email, admin_phone, rep_name,
+                hosp["id"], branch_id, rep_designation,
+                admin_user_id, admin_username, invite_expires
+            ))
+
+            # 5. Outbox Notifications (Email & WhatsApp)
+            frontend_url = getattr(settings, "FRONTEND_URL", "https://ohid.online").rstrip("/")
+            activation_url = f"{frontend_url}/invite?token={invite_token}"
+            login_url = f"{frontend_url}/login"
+            tracking_id = hosp.get("application_ref") or hosp["id"]
+            org_display_name = hosp.get("display_name") or hosp["name"]
+
+            if admin_email:
+                email_service.send_application_approved_notification(
+                    recipient_email=admin_email,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    activation_url=activation_url,
+                    login_url=login_url
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_APPROVED', 'EMAIL', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_email,
+                    email_service._mask_email(admin_email),
+                    "OneHealth ID — Organization Approved: Complete Account Activation",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "activation_url": activation_url,
+                        "login_url": login_url,
+                        "expires_at": invite_expires.isoformat()
+                    })
+                ))
+
+            if admin_phone:
+                whatsapp_service.send_application_approved_alert(
+                    recipient_phone=admin_phone,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    activation_url=activation_url
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_APPROVED', 'WHATSAPP', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_phone,
+                    whatsapp_service._mask_phone(admin_phone),
+                    "APPLICATION_APPROVED_ALERT",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "activation_url": activation_url,
+                        "expires_at": invite_expires.isoformat()
+                    })
+                ))
+
+            # 6. Audit Log
             cur.execute("""
                 INSERT INTO oh_id.platform_audit_logs (
                     id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
@@ -1441,8 +2221,8 @@ class EnterpriseIAMRepository:
                     %s, %s, %s, CURRENT_TIMESTAMP
                 );
             """, (
-                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
-                json.dumps({"status": old_status}), json.dumps({"status": "APPROVED", "is_active": True}),
+                f"audit-{uuid.uuid4().hex[:12]}", audit_admin_id, audit_admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "APPROVED", "is_active": True, "admin_user_id": resolved_user_id}),
                 decision_notes
             ))
 
@@ -1454,7 +2234,144 @@ class EnterpriseIAMRepository:
                 "lifecycle_status": "APPROVED",
                 "is_active": True,
                 "is_verified": True,
-                "message": f"Facility '{hosp['name']}' has been officially APPROVED and activated."
+                "admin_user_id": resolved_user_id,
+                "invite_token": invite_token,
+                "invitation_token": invite_token,
+                "activation_url": activation_url,
+                "expires_at": invite_expires.isoformat(),
+                "message": f"Facility '{hosp['name']}' has been officially APPROVED and activation dispatched."
+            }
+
+    def hold_facility_application_super_admin(
+        self,
+        hospital_id: str,
+        admin_user_id: str = "usr-admin",
+        admin_username: str = "superadmin",
+        reason: str = "Clarification and additional documentation required.",
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Places hospital/clinic application ON_HOLD pending applicant clarifications or documents.
+        Enqueues transactional outbox alerts via Email and WhatsApp.
+        """
+        if "admin_id" in kwargs and kwargs["admin_id"]:
+            admin_user_id = kwargs["admin_id"]
+        if not reason or len(reason.strip()) < 5:
+            raise ValueError("Mandatory hold reason must be at least 5 characters.")
+
+        with get_db_cursor() as cur:
+            audit_admin_id, audit_admin_username = self._resolve_audit_admin_id(cur, admin_user_id, admin_username)
+            cur.execute("SELECT * FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            hosp = cur.fetchone()
+            if not hosp:
+                raise ValueError("Hospital not found")
+
+            old_status = hosp.get("lifecycle_status")
+            cur.execute("""
+                UPDATE oh_id.hospitals
+                SET 
+                    lifecycle_status = 'ON_HOLD',
+                    status = 'ON_HOLD',
+                    review_notes = %s,
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (reason, audit_admin_id, hosp["id"]))
+
+            cur.execute("""
+                UPDATE oh_id.hospital_verifications
+                SET 
+                    status = 'NEEDS_INFORMATION',
+                    reviewed_by = %s,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_notes = %s
+                WHERE hospital_id = %s;
+            """, (audit_admin_id, reason, hosp["id"]))
+
+            # Audit Log
+            cur.execute("""
+                INSERT INTO oh_id.platform_audit_logs (
+                    id, admin_user_id, admin_username, action, entity_type, entity_id, entity_name,
+                    previous_value, new_value, reason, created_at
+                ) VALUES (
+                    %s, %s, %s, 'FACILITY_APPLICATION_ON_HOLD', 'HOSPITAL', %s, %s,
+                    %s, %s, %s, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"audit-{uuid.uuid4().hex[:12]}", audit_admin_id, audit_admin_username, hosp["id"], hosp["name"],
+                json.dumps({"status": old_status}), json.dumps({"status": "ON_HOLD"}),
+                reason
+            ))
+
+            # Outbox Notifications
+            admin_email = (hosp.get("rep_email") or hosp.get("email") or hosp.get("verified_email") or "").strip().lower()
+            admin_phone = (hosp.get("rep_phone") or hosp.get("phone") or hosp.get("verified_mobile") or "").strip()
+            tracking_id = hosp.get("application_ref") or hosp["id"]
+            org_display_name = hosp.get("display_name") or hosp["name"]
+            frontend_url = getattr(settings, "FRONTEND_URL", "https://ohid.online").rstrip("/")
+            status_url = f"{frontend_url}/register/facility?tab=status&ref={tracking_id}"
+
+            if admin_email:
+                email_service.send_application_on_hold_notification(
+                    recipient_email=admin_email,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    reason=reason,
+                    status_url=status_url
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_ON_HOLD', 'EMAIL', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_email,
+                    email_service._mask_email(admin_email),
+                    f"OneHealth ID — Action Required: Application On Hold ({tracking_id})",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "reason": reason,
+                        "status_url": status_url
+                    })
+                ))
+
+            if admin_phone:
+                whatsapp_service.send_application_on_hold_alert(
+                    recipient_phone=admin_phone,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    reason=reason,
+                    status_url=status_url
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_ON_HOLD', 'WHATSAPP', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_phone,
+                    whatsapp_service._mask_phone(admin_phone),
+                    "APPLICATION_ON_HOLD_ALERT",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "reason": reason,
+                        "status_url": status_url
+                    })
+                ))
+
+            return {
+                "success": True,
+                "hospital_id": hosp["id"],
+                "status": "ON_HOLD",
+                "lifecycle_status": "ON_HOLD",
+                "reviewer_notes": reason,
+                "review_notes": reason,
+                "message": f"Facility application '{hosp['name']}' has been placed ON_HOLD. Applicant notified."
             }
 
     def reject_facility_application_super_admin(
@@ -1462,16 +2379,21 @@ class EnterpriseIAMRepository:
         hospital_id: str,
         admin_user_id: str = "usr-admin",
         admin_username: str = "superadmin",
-        reason: str = "Application does not meet platform regulatory requirements."
+        reason: str = "Application does not meet platform regulatory requirements.",
+        **kwargs
     ) -> Dict[str, Any]:
         """
-        Rejects hospital/clinic application with mandatory reason.
+        Rejects hospital/clinic application with mandatory reason and enqueues outbox alerts.
         """
+        if "admin_id" in kwargs and kwargs["admin_id"]:
+            admin_user_id = kwargs["admin_id"]
+
         if not reason or len(reason.strip()) < 5:
             raise ValueError("Mandatory rejection reason must be at least 5 characters.")
 
         with get_db_cursor() as cur:
-            cur.execute("SELECT id, name, lifecycle_status FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
+            audit_admin_id, audit_admin_username = self._resolve_audit_admin_id(cur, admin_user_id, admin_username)
+            cur.execute("SELECT * FROM oh_id.hospitals WHERE id = %s OR code = %s;", (hospital_id, hospital_id))
             hosp = cur.fetchone()
             if not hosp:
                 raise ValueError("Hospital not found")
@@ -1489,7 +2411,7 @@ class EnterpriseIAMRepository:
                     reviewed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
-            """, (reason, admin_user_id, hosp["id"]))
+            """, (reason, audit_admin_id, hosp["id"]))
 
             cur.execute("""
                 UPDATE oh_id.hospital_verifications
@@ -1499,7 +2421,61 @@ class EnterpriseIAMRepository:
                     reviewed_at = CURRENT_TIMESTAMP,
                     review_notes = %s
                 WHERE hospital_id = %s;
-            """, (admin_user_id, reason, hosp["id"]))
+            """, (audit_admin_id, reason, hosp["id"]))
+
+            # Outbox Notifications
+            admin_email = (hosp.get("rep_email") or hosp.get("email") or hosp.get("verified_email") or "").strip().lower()
+            admin_phone = (hosp.get("rep_phone") or hosp.get("phone") or hosp.get("verified_mobile") or "").strip()
+            tracking_id = hosp.get("application_ref") or hosp["id"]
+            org_display_name = hosp.get("display_name") or hosp["name"]
+
+            if admin_email:
+                email_service.send_application_rejected_notification(
+                    recipient_email=admin_email,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    reason=reason
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_REJECTED', 'EMAIL', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_email,
+                    email_service._mask_email(admin_email),
+                    f"OneHealth ID — Application Decision ({tracking_id})",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "reason": reason
+                    })
+                ))
+
+            if admin_phone:
+                whatsapp_service.send_application_rejected_alert(
+                    recipient_phone=admin_phone,
+                    org_name=org_display_name,
+                    tracking_id=tracking_id,
+                    reason=reason
+                )
+                cur.execute("""
+                    INSERT INTO oh_id.notification_outbox (
+                        id, event_type, channel, recipient, masked_recipient,
+                        subject_or_template, payload, delivery_status
+                    ) VALUES (%s, 'APPLICATION_REJECTED', 'WHATSAPP', %s, %s, %s, %s, 'SENT');
+                """, (
+                    f"out-{uuid.uuid4().hex[:12]}",
+                    admin_phone,
+                    whatsapp_service._mask_phone(admin_phone),
+                    "APPLICATION_REJECTED_ALERT",
+                    json.dumps({
+                        "org_name": org_display_name,
+                        "tracking_id": tracking_id,
+                        "reason": reason
+                    })
+                ))
 
             cur.execute("""
                 INSERT INTO oh_id.platform_audit_logs (
@@ -1510,7 +2486,7 @@ class EnterpriseIAMRepository:
                     %s, %s, %s, CURRENT_TIMESTAMP
                 );
             """, (
-                f"audit-{uuid.uuid4().hex[:12]}", admin_user_id, admin_username, hosp["id"], hosp["name"],
+                f"audit-{uuid.uuid4().hex[:12]}", audit_admin_id, audit_admin_username, hosp["id"], hosp["name"],
                 json.dumps({"status": old_status}), json.dumps({"status": "REJECTED"}),
                 reason
             ))

@@ -155,8 +155,8 @@ def get_fhir_provenance(
     return FHIRMapper.to_fhir_provenance(
         target_resource_type="DiagnosticReport",
         target_resource_id=id,
-        source_system="APOLLO_LIS",
-        source_facility="Apollo Specialty Diagnostics"
+        source_system="CITY_LIS",
+        source_facility="City Specialty Diagnostics"
     )
 
 @router.get("/Consent/{id}", response_model=Dict[str, Any])
@@ -169,7 +169,7 @@ def get_fhir_consent(
         "consent_id": id,
         "consent_status": "GRANTED",
         "data_categories": ["OPConsultation", "Prescription", "DiagnosticReport"],
-        "requester_name": "Apollo Hospitals",
+        "requester_name": "City Healthcare Centre",
         "purpose_code": "CARETREAT"
     }
     return FHIRMapper.to_fhir_consent(consent_dict, patient_id="pat-default")

@@ -44,7 +44,7 @@ export default function SuperAdminApplicationsPage() {
 
   // Action Modals State
   const [actionModal, setActionModal] = useState<{
-    type: "APPROVE" | "REJECT" | "REQUEST_INFO" | "START_REVIEW";
+    type: "APPROVE" | "REJECT" | "REQUEST_INFO" | "START_REVIEW" | "HOLD";
     app: FacilityApplication;
   } | null>(null);
   const [decisionNotes, setDecisionNotes] = useState("");
@@ -88,12 +88,14 @@ export default function SuperAdminApplicationsPage() {
   };
 
   const handleOpenActionModal = (
-    type: "APPROVE" | "REJECT" | "REQUEST_INFO" | "START_REVIEW",
+    type: "APPROVE" | "REJECT" | "REQUEST_INFO" | "START_REVIEW" | "HOLD",
     app: FacilityApplication
   ) => {
     setActionModal({ type, app });
     if (type === "APPROVE") {
       setDecisionNotes("Approved by Super Admin after verifying statutory registration, license, and authorized representative credentials.");
+    } else if (type === "HOLD") {
+      setDecisionNotes("Application placed on hold pending verification of clinical registration certificates and premises audit.");
     } else if (type === "REJECT") {
       setDecisionNotes("");
     } else if (type === "REQUEST_INFO") {
@@ -108,7 +110,7 @@ export default function SuperAdminApplicationsPage() {
     if (!actionModal) return;
 
     const { type, app } = actionModal;
-    if ((type === "REJECT" || type === "REQUEST_INFO") && (!decisionNotes.trim() || decisionNotes.trim().length < 5)) {
+    if ((type === "REJECT" || type === "REQUEST_INFO" || type === "HOLD") && (!decisionNotes.trim() || decisionNotes.trim().length < 5)) {
       alert("Please provide mandatory notes/reason (minimum 5 characters).");
       return;
     }
@@ -122,7 +124,10 @@ export default function SuperAdminApplicationsPage() {
         setSuccessMsg(`Application for '${app.name}' transitioned to UNDER_REVIEW.`);
       } else if (type === "APPROVE") {
         await api.superAdmin.approveApplication(app.id, decisionNotes);
-        setSuccessMsg(`Facility '${app.name}' has been APPROVED and activated on the platform!`);
+        setSuccessMsg(`Facility '${app.name}' has been APPROVED and activated on the platform! Activation token dispatched.`);
+      } else if (type === "HOLD") {
+        await api.superAdmin.holdApplication(app.id, decisionNotes);
+        setSuccessMsg(`Facility application for '${app.name}' has been placed ON_HOLD. Applicant alerted.`);
       } else if (type === "REJECT") {
         await api.superAdmin.rejectApplication(app.id, decisionNotes);
         setSuccessMsg(`Facility application for '${app.name}' has been REJECTED.`);
@@ -254,6 +259,7 @@ export default function SuperAdminApplicationsPage() {
               <option value="ALL">All Application States</option>
               <option value="SUBMITTED">SUBMITTED (New / Queued)</option>
               <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+              <option value="ON_HOLD">ON_HOLD (Action Requested)</option>
               <option value="NEEDS_INFORMATION">NEEDS_INFORMATION</option>
               <option value="APPROVED">APPROVED (Active)</option>
               <option value="REJECTED">REJECTED</option>
@@ -357,10 +363,10 @@ export default function SuperAdminApplicationsPage() {
                             SUBMITTED
                           </span>
                         )}
-                        {app.lifecycle_status === "NEEDS_INFORMATION" && (
+                        {(app.lifecycle_status === "ON_HOLD" || app.lifecycle_status === "NEEDS_INFORMATION") && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-orange-100 text-orange-800">
                             <AlertTriangle className="w-3 h-3 text-orange-600" />
-                            NEEDS_INFO
+                            {app.lifecycle_status === "ON_HOLD" ? "ON_HOLD" : "NEEDS_INFO"}
                           </span>
                         )}
                         {app.lifecycle_status === "REJECTED" && (
@@ -400,7 +406,7 @@ export default function SuperAdminApplicationsPage() {
                             </button>
                           )}
 
-                          {["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFORMATION"].includes(app.lifecycle_status) && (
+                          {["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFORMATION", "ON_HOLD"].includes(app.lifecycle_status) && (
                             <>
                               <button
                                 onClick={() => handleOpenActionModal("APPROVE", app)}
@@ -409,11 +415,11 @@ export default function SuperAdminApplicationsPage() {
                                 Approve
                               </button>
                               <button
-                                onClick={() => handleOpenActionModal("REQUEST_INFO", app)}
-                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] transition"
-                                title="Request additional information"
+                                onClick={() => handleOpenActionModal("HOLD", app)}
+                                className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 font-bold text-[11px] transition"
+                                title="Place application on hold"
                               >
-                                Request Info
+                                Put On Hold
                               </button>
                               <button
                                 onClick={() => handleOpenActionModal("REJECT", app)}
@@ -603,11 +609,13 @@ export default function SuperAdminApplicationsPage() {
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   {actionModal.type === "APPROVE" && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+                  {actionModal.type === "HOLD" && <AlertTriangle className="w-5 h-5 text-orange-600" />}
                   {actionModal.type === "REJECT" && <XCircle className="w-5 h-5 text-red-600" />}
                   {actionModal.type === "REQUEST_INFO" && <AlertTriangle className="w-5 h-5 text-orange-600" />}
                   {actionModal.type === "START_REVIEW" && <RefreshCw className="w-5 h-5 text-blue-600" />}
                   <h3 className="font-extrabold text-slate-900 text-base">
                     {actionModal.type === "APPROVE" && "Confirm Organization Approval"}
+                    {actionModal.type === "HOLD" && "Put Application On Hold"}
                     {actionModal.type === "REJECT" && "Confirm Application Rejection"}
                     {actionModal.type === "REQUEST_INFO" && "Request Additional Information"}
                     {actionModal.type === "START_REVIEW" && "Start Application Review"}
@@ -625,12 +633,17 @@ export default function SuperAdminApplicationsPage() {
                 You are performing an administrative decision for <strong>{actionModal.app.name}</strong> ({actionModal.app.application_ref}).
                 {actionModal.type === "APPROVE" && (
                   <p className="mt-2 text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
-                    <strong>Effect:</strong> Transitions organization to <strong>APPROVED</strong>, sets <code>is_active = TRUE</code>, activates the main campus branch, and enables verified staff onboarding.
+                    <strong>Effect:</strong> Transitions organization to <strong>APPROVED</strong>, sets <code>is_active = TRUE</code>, provisions initial administrator user with 72h single-use activation invitation, and sends outbox notifications.
+                  </p>
+                )}
+                {actionModal.type === "HOLD" && (
+                  <p className="mt-2 text-orange-800 bg-orange-50 p-2.5 rounded-lg border border-orange-200">
+                    <strong>Effect:</strong> Transitions organization to <strong>ON_HOLD</strong>. Applicant receives real-time email &amp; WhatsApp alerts with your remarks and can supply requested documents on the tracking portal.
                   </p>
                 )}
                 {actionModal.type === "REJECT" && (
                   <p className="mt-2 text-red-800 bg-red-50 p-2.5 rounded-lg border border-red-200">
-                    <strong>Effect:</strong> Transitions organization to <strong>REJECTED</strong>. The applicant remains blocked from protected endpoints.
+                    <strong>Effect:</strong> Transitions organization to <strong>REJECTED</strong>. The applicant remains blocked from protected endpoints. Outbox alerts are sent.
                   </p>
                 )}
               </div>
@@ -639,13 +652,14 @@ export default function SuperAdminApplicationsPage() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     {actionModal.type === "APPROVE" && "Approval Decision Notes (Logged to Audit Trail)"}
+                    {actionModal.type === "HOLD" && "Mandatory Reason / Information Required *"}
                     {actionModal.type === "REJECT" && "Mandatory Rejection Reason *"}
                     {actionModal.type === "REQUEST_INFO" && "Information / Documents Needed *"}
                     {actionModal.type === "START_REVIEW" && "Review Notes"}
                   </label>
                   <textarea
                     rows={3}
-                    required={actionModal.type === "REJECT" || actionModal.type === "REQUEST_INFO"}
+                    required={actionModal.type === "REJECT" || actionModal.type === "REQUEST_INFO" || actionModal.type === "HOLD"}
                     value={decisionNotes}
                     onChange={(e) => setDecisionNotes(e.target.value)}
                     placeholder="Enter audit notes or statutory rationale..."
@@ -668,10 +682,10 @@ export default function SuperAdminApplicationsPage() {
                     className={`px-5 py-2 rounded-xl text-white font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-50 ${
                       actionModal.type === "APPROVE"
                         ? "bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20"
+                        : actionModal.type === "HOLD" || actionModal.type === "REQUEST_INFO"
+                        ? "bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-500/20"
                         : actionModal.type === "REJECT"
                         ? "bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/20"
-                        : actionModal.type === "REQUEST_INFO"
-                        ? "bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-500/20"
                         : "bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20"
                     }`}
                   >

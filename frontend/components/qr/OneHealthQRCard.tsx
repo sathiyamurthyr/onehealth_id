@@ -94,7 +94,7 @@ export const OneHealthQRCard: React.FC<OneHealthQRCardProps> = ({ patient }) => 
             <div className="bg-white/5 border border-white/10 rounded-xl p-3">
               <span className="text-[11px] text-slate-400 block uppercase">Primary Hospital</span>
               <span className="text-sm font-semibold text-slate-100 truncate block">
-                {patient.hospital_name || "Apollo Central"}
+                {patient.hospital_name || "City Healthcare Centre"}
               </span>
             </div>
           </div>

@@ -17,7 +17,7 @@ export default function PatientConsentManagerPage() {
   const [showGrantModal, setShowGrantModal] = useState(false);
 
   // Grant Form
-  const [targetProviderId, setTargetProviderId] = useState("hosp-apollo");
+  const [targetProviderId, setTargetProviderId] = useState("prov-city-01");
   const [consentScope, setConsentScope] = useState("ALL_RECORDS");
   const [purpose, setPurpose] = useState("CARE_TREATMENT");
   const [validDays, setValidDays] = useState(30);

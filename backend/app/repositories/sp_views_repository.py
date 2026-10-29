@@ -8378,7 +8378,7 @@ class SPViewsRepository(
             req_doc_id = payload.get("requester_doctor_id", "doc-k-01")
             req_name = payload.get("requester_name", "Dr. Senthil Nathan")
             prov_hosp_id = payload.get("provider_hospital_id", "hosp-001")
-            prov_hosp_name = payload.get("provider_hospital_name", "Apollo City Hospital - Chennai Central")
+            prov_hosp_name = payload.get("provider_hospital_name", "City Healthcare Centre")
             purpose_code = payload.get("purpose_code", "CARETREAT")
             purpose_text = payload.get("purpose_text", "Direct patient consultation and cross-hospital medical history review")
             data_categories = payload.get("data_categories", ["OPConsultation", "Prescription", "DiagnosticReport", "DischargeSummary"])
@@ -9404,9 +9404,9 @@ class SPViewsRepository(
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
         return enterprise_iam_repo.get_facility_application_by_ref(application_ref)
 
-    def update_facility_application_by_ref(self, application_ref: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    def update_facility_application_by_ref(self, application_ref: str, updates: Dict[str, Any], verify_contact: Optional[str] = None) -> Dict[str, Any]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
-        return enterprise_iam_repo.update_facility_application_by_ref(application_ref, updates)
+        return enterprise_iam_repo.update_facility_application_by_ref(application_ref, updates, verify_contact=verify_contact)
 
     def list_facility_applications_super_admin(self, status: Optional[str] = None, search: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
@@ -9428,9 +9428,44 @@ class SPViewsRepository(
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
         return enterprise_iam_repo.reject_facility_application_super_admin(hospital_id, admin_user_id, admin_username, reason)
 
+    def hold_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", reason: str = "Clarification needed") -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.hold_facility_application_super_admin(hospital_id, admin_user_id, admin_username, reason)
+
     def request_info_facility_application_super_admin(self, hospital_id: str, admin_user_id: str = "usr-admin", admin_username: str = "superadmin", notes: str = "Additional info requested") -> Dict[str, Any]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
         return enterprise_iam_repo.request_info_facility_application_super_admin(hospital_id, admin_user_id, admin_username, notes)
+
+    def create_or_get_onboarding_session(self, session_id: Optional[str] = None, mobile_number: Optional[str] = None, email_address: Optional[str] = None, idempotency_key: Optional[str] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.create_or_get_onboarding_session(
+            session_id=session_id,
+            mobile_number=mobile_number,
+            email_address=email_address,
+            idempotency_key=idempotency_key,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+    def request_onboarding_mobile_otp(self, session_id: str, mobile_number: str, ip_address: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.request_onboarding_mobile_otp(session_id, mobile_number, ip_address)
+
+    def verify_onboarding_mobile_otp(self, session_id: str, otp_code: str, mobile_number: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.verify_onboarding_mobile_otp(session_id=session_id, otp_code=otp_code, mobile_number=mobile_number)
+
+    def request_onboarding_email_otp(self, session_id: str, email_address: str, org_name: str = "Healthcare Organization", ip_address: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.request_onboarding_email_otp(session_id, email_address, org_name, ip_address)
+
+    def verify_onboarding_email_otp(self, session_id: str, otp_code: str, email_address: Optional[str] = None) -> Dict[str, Any]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.verify_onboarding_email_otp(session_id=session_id, otp_code=otp_code, email_address=email_address)
+
+    def get_onboarding_session_status(self, session_id: str) -> Optional[Dict[str, Any]]:
+        from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo
+        return enterprise_iam_repo.get_onboarding_session_status(session_id)
 
     def get_hospital_approval_status(self, hospital_id: str) -> Optional[Dict[str, Any]]:
         from backend.app.repositories.enterprise_iam_repository import enterprise_iam_repo

@@ -32,6 +32,9 @@ class ApplicationRejectRequest(BaseModel):
 class ApplicationRequestInfoRequest(BaseModel):
     notes: str = Field(..., min_length=5, description="Mandatory details of what information/documents are required")
 
+class ApplicationHoldRequest(BaseModel):
+    reason: str = Field(..., min_length=5, description="Mandatory details of why application is placed on hold")
+
 class ApplicationReviewRequest(BaseModel):
     notes: Optional[str] = "Review started by Super Admin"
 
@@ -370,6 +373,30 @@ def reject_facility_application(
         return success_response(data=res, message=res.get("message", "Facility application rejected"))
     except Exception as e:
         logger.error(f"Error rejecting facility {hospital_id}: {e}")
+        return error_response(message=str(e), status_code=400)
+
+@router.post("/applications/{hospital_id}/hold")
+def hold_facility_application(
+    hospital_id: str,
+    payload: ApplicationHoldRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Super Admin places application ON_HOLD with mandatory reason.
+    Dispatches outbox alerts to applicant via email and WhatsApp.
+    """
+    try:
+        admin_user_id = current_user.get("user_ref_id") or current_user.get("id") or "usr-admin"
+        admin_username = current_user.get("username") or "admin"
+        res = sp_repository.hold_facility_application_super_admin(
+            hospital_id=hospital_id,
+            admin_user_id=admin_user_id,
+            admin_username=admin_username,
+            reason=payload.reason
+        )
+        return success_response(data=res, message=res.get("message", "Facility application placed ON_HOLD"))
+    except Exception as e:
+        logger.error(f"Error placing facility {hospital_id} on hold: {e}")
         return error_response(message=str(e), status_code=400)
 
 @router.post("/applications/{hospital_id}/request-info")

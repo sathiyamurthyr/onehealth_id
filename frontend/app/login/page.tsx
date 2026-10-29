@@ -241,7 +241,7 @@ export default function LoginPage() {
         <div className="hidden lg:flex lg:col-span-5 2xl:col-span-5 relative overflow-hidden flex-col justify-between p-6 2xl:p-10 text-white h-full">
           {/* Hero Photorealistic Clinical Background Image */}
           <Image
-            src="/images/kedar_smart_hospital_hero.jpg"
+            src="/images/smart_hospital_hero.jpg"
             alt="OneHealth Smart Clinical Command Center"
             fill
             priority

@@ -27,6 +27,7 @@ class EmailService:
         self._lock = threading.Lock()
         # In-memory delivery history for test assertions and monitoring (correlation_id -> delivery metadata)
         self._delivery_log: List[Dict[str, Any]] = []
+        self._outbox_log = self._delivery_log
 
     def clear_test_inbox(self):
         """Resets the testing delivery history (useful in automated tests)."""
@@ -154,6 +155,263 @@ class EmailService:
             meta={"category": "SUPER_ADMIN_ALERT", "ticket_number": ticket_number}
         )
 
+    def send_organization_onboarding_otp(
+        self,
+        recipient_email: str,
+        org_name: str,
+        otp_code: str,
+        expires_in_minutes: int = 10,
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Transmits 6-digit email OTP for organization registration verification."""
+        corr_id = correlation_id or f"corr-em-{uuid.uuid4().hex[:12]}"
+        masked_email = self._mask_email(recipient_email)
+        subject = f"OneHealth ID (OH-ID) — Official Email Verification Code ({otp_code})"
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #155EEF 0%, #123B75 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 700;">OneHealth ID Organization Registration</h1>
+                </div>
+                <div style="padding: 28px 24px;">
+                    <p>Dear Representative of <strong>{org_name or 'Healthcare Facility'}</strong>,</p>
+                    <p>Please use the official email verification code below to complete your organization onboarding:</p>
+                    <div style="background: #eff6ff; border: 2px dashed #93c5fd; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0;">
+                        <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #155eef; font-family: monospace;">{otp_code}</span>
+                    </div>
+                    <p><strong>This code will expire in {expires_in_minutes} minutes.</strong></p>
+                    <p style="font-size: 13px; color: #64748b;">If you did not initiate this organization onboarding request, please ignore this email or notify security-support@ohid.online.</p>
+                </div>
+                <div style="padding: 16px 24px; background: #f1f5f9; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; text-align: center;">
+                    OneHealth ID Security • Ref: {corr_id}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        plain_text = (
+            f"OneHealth ID (OH-ID) Organization Email Verification\n\n"
+            f"Organization: {org_name}\n"
+            f"Your verification code is: {otp_code}\n"
+            f"This code will expire in {expires_in_minutes} minutes.\n\n"
+            f"Correlation ID: {corr_id}\n"
+        )
+        return self._dispatch(
+            to_email=recipient_email,
+            subject=subject,
+            plain_text=plain_text,
+            html_body=html_body,
+            correlation_id=corr_id,
+            meta={"category": "ONBOARDING_EMAIL_OTP", "masked_email": masked_email}
+        )
+
+    def send_application_submitted_notification(
+        self,
+        recipient_email: str,
+        org_name: str,
+        tracking_id: str,
+        status_url: str
+    ) -> Dict[str, Any]:
+        """Notifies applicant that registration has been successfully submitted."""
+        corr_id = f"corr-sub-{uuid.uuid4().hex[:12]}"
+        masked_email = self._mask_email(recipient_email)
+        subject = f"OneHealth ID — Application Submitted ({tracking_id})"
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #155EEF 0%, #123B75 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Registration Submitted Successfully</h1>
+                </div>
+                <div style="padding: 28px 24px;">
+                    <p>Dear Authorized Representative,</p>
+                    <p>Your registration application for <strong>{org_name}</strong> has been received and entered the <strong>SUBMITTED</strong> stage.</p>
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0;">
+                        <p style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700;">Application Tracking Identifier</p>
+                        <p style="margin: 0; font-size: 20px; font-family: monospace; font-weight: 800; color: #155eef;">{tracking_id}</p>
+                    </div>
+                    <p><strong>Status:</strong> Submitted — Awaiting Super Admin Review</p>
+                    <p>You can check the status of your application anytime using your tracking identifier and verified credentials at:</p>
+                    <p><a href="{status_url}" style="color: #155eef; font-weight: 600;">{status_url}</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        plain_text = (
+            f"OneHealth ID Application Submitted\n\n"
+            f"Organization: {org_name}\n"
+            f"Tracking ID: {tracking_id}\n"
+            f"Status: Submitted — Pending Super Admin Review\n"
+            f"Status Portal: {status_url}\n"
+        )
+        return self._dispatch(
+            to_email=recipient_email,
+            subject=subject,
+            plain_text=plain_text,
+            html_body=html_body,
+            correlation_id=corr_id,
+            meta={"category": "APPLICATION_SUBMITTED", "tracking_id": tracking_id}
+        )
+
+    def send_application_on_hold_notification(
+        self,
+        recipient_email: str,
+        org_name: str,
+        tracking_id: str,
+        reason: str,
+        status_url: str
+    ) -> Dict[str, Any]:
+        """Notifies applicant that their application has been placed on hold."""
+        corr_id = f"corr-hld-{uuid.uuid4().hex[:12]}"
+        masked_email = self._mask_email(recipient_email)
+        subject = f"OneHealth ID — Action Required: Application On Hold ({tracking_id})"
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Action Required: Application On Hold</h1>
+                </div>
+                <div style="padding: 28px 24px;">
+                    <p>Dear Authorized Representative,</p>
+                    <p>During regulatory verification of <strong>{org_name}</strong> (Tracking ID: <strong>{tracking_id}</strong>), the reviewing Super Admin requested additional details:</p>
+                    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #d97706; padding: 14px; margin: 16px 0; border-radius: 6px;">
+                        <strong>Review Remarks:</strong><br/>
+                        {reason}
+                    </div>
+                    <p>Please visit the tracking portal to upload the requested certificates or update your details:</p>
+                    <p><a href="{status_url}" style="color: #155eef; font-weight: 600;">{status_url}</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        plain_text = (
+            f"OneHealth ID Application On Hold\n\n"
+            f"Organization: {org_name}\n"
+            f"Tracking ID: {tracking_id}\n"
+            f"Review Remarks: {reason}\n"
+            f"Track & Update URL: {status_url}\n"
+        )
+        return self._dispatch(
+            to_email=recipient_email,
+            subject=subject,
+            plain_text=plain_text,
+            html_body=html_body,
+            correlation_id=corr_id,
+            meta={"category": "APPLICATION_ON_HOLD", "tracking_id": tracking_id}
+        )
+
+    def send_application_rejected_notification(
+        self,
+        recipient_email: str,
+        org_name: str,
+        tracking_id: str,
+        reason: str
+    ) -> Dict[str, Any]:
+        """Notifies applicant that application was rejected."""
+        corr_id = f"corr-rej-{uuid.uuid4().hex[:12]}"
+        masked_email = self._mask_email(recipient_email)
+        subject = f"OneHealth ID — Application Decision ({tracking_id})"
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Application Review Decision</h1>
+                </div>
+                <div style="padding: 28px 24px;">
+                    <p>Dear Authorized Representative,</p>
+                    <p>The registration application for <strong>{org_name}</strong> (Tracking ID: <strong>{tracking_id}</strong>) has been reviewed and <strong>not approved</strong>.</p>
+                    <div style="background: #fef2f2; border: 1px solid #fee2e2; border-left: 4px solid #dc2626; padding: 14px; margin: 16px 0; border-radius: 6px;">
+                        <strong>Decision Reason:</strong><br/>
+                        {reason}
+                    </div>
+                    <p style="font-size: 13px; color: #64748b;">If you believe this decision was made in error or would like to submit an appeal, please contact security-support@ohid.online.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        plain_text = (
+            f"OneHealth ID Application Rejected\n\n"
+            f"Organization: {org_name}\n"
+            f"Tracking ID: {tracking_id}\n"
+            f"Reason: {reason}\n"
+        )
+        return self._dispatch(
+            to_email=recipient_email,
+            subject=subject,
+            plain_text=plain_text,
+            html_body=html_body,
+            correlation_id=corr_id,
+            meta={"category": "APPLICATION_REJECTED", "tracking_id": tracking_id}
+        )
+
+    def send_application_approved_notification(
+        self,
+        recipient_email: str,
+        org_name: str,
+        tracking_id: str,
+        activation_url: str,
+        login_url: str
+    ) -> Dict[str, Any]:
+        """Notifies applicant of approval and provides single-use secure activation link."""
+        corr_id = f"corr-app-{uuid.uuid4().hex[:12]}"
+        masked_email = self._mask_email(recipient_email)
+        subject = f"OneHealth ID — Organization Approved: Complete Account Activation ({tracking_id})"
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Congratulations! Organization Approved</h1>
+                </div>
+                <div style="padding: 28px 24px;">
+                    <p>Dear Authorized Representative,</p>
+                    <p>We are pleased to inform you that <strong>{org_name}</strong> (Tracking ID: <strong>{tracking_id}</strong>) has been officially <strong>APPROVED</strong> by Super Admin after regulatory review.</p>
+                    <p>To initialize your organization administrator credentials, please complete your single-use account activation:</p>
+                    <div style="text-align: center; margin: 24px 0;">
+                        <a href="{activation_url}" style="display: inline-block; background: #059669; color: #ffffff; font-weight: 700; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-size: 14px;">Complete Account Activation</a>
+                    </div>
+                    <p style="font-size: 12px; color: #64748b;">This secure activation link will expire in 72 hours and can be used once. After setting your password, you will be redirected to the OneHealth ID Login Portal ({login_url}).</p>
+                </div>
+                <div style="padding: 16px 24px; background: #f1f5f9; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; text-align: center;">
+                    OneHealth ID Security • Ref: {corr_id}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        plain_text = (
+            f"OneHealth ID Organization Approved!\n\n"
+            f"Organization: {org_name}\n"
+            f"Tracking ID: {tracking_id}\n\n"
+            f"Please complete your administrator account activation here:\n{activation_url}\n\n"
+            f"This link expires in 72 hours.\n"
+            f"Login URL: {login_url}\n"
+        )
+        return self._dispatch(
+            to_email=recipient_email,
+            subject=subject,
+            plain_text=plain_text,
+            html_body=html_body,
+            correlation_id=corr_id,
+            meta={"category": "APPLICATION_APPROVED", "tracking_id": tracking_id}
+        )
+
     def _dispatch(
         self,
         to_email: str,
@@ -173,8 +431,10 @@ class EmailService:
             record = {
                 "correlation_id": correlation_id,
                 "recipient": to_email,
+                "to_email": to_email,
                 "masked_recipient": masked_recipient,
                 "subject": subject,
+                "body": plain_text,
                 "body_snippet": plain_text[:80],
                 "status": "DELIVERED",
                 "backend": "TEST_ISOLATED",

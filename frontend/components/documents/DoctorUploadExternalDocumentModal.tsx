@@ -188,7 +188,7 @@ export const DoctorUploadExternalDocumentModal: React.FC<DoctorUploadExternalDoc
                   type="text"
                   value={externalHospital}
                   onChange={(e) => setExternalHospital(e.target.value)}
-                  placeholder="e.g. Apollo Diagnostics"
+                  placeholder="e.g. City Diagnostic Laboratory"
                   className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-teal-500 outline-hidden"
                   required
                 />
