@@ -10,6 +10,8 @@ npm-debug.*
 *.key
 *.mobileprovision
 *.orig.*
+*.aab
+*.apk
 
 # Environment variable overrides
 .env.local
