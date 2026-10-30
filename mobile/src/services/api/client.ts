@@ -12,6 +12,7 @@
  * Sathus Technology Pvt Ltd - Enterprise DevSecOps Architecture
  */
 
+import { Platform } from "react-native";
 import {
   payloadCrypto,
   isRouteExcluded,
@@ -21,10 +22,23 @@ import { EncryptedPayloadEnvelope } from "../../crypto/types";
 import { secureStorage } from "../storage/secure_store";
 
 export const getApiBaseUrl = (): string => {
-  return (
-    process.env.EXPO_PUBLIC_API_URL ||
-    "https://ohid.online/api/v1"
-  );
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+
+  // In local web preview (e.g. localhost:8081), ensure requests target the local dev backend
+  // to avoid CORS preflight rejections from remote production deployments.
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const isLocalWeb =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (isLocalWeb) {
+      if (envUrl && (envUrl.includes("localhost") || envUrl.includes("127.0.0.1"))) {
+        return envUrl;
+      }
+      return "http://localhost:8008/api/v1";
+    }
+  }
+
+  return envUrl || "https://ohid.online/api/v1";
 };
 
 export interface FetchOptions extends RequestInit {
@@ -137,9 +151,12 @@ export async function fetchJSON<T>(
       headers,
     });
   } catch (netErr: any) {
+    const isLocal = API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1");
     throw new Error(
       netErr?.message?.includes("Failed to fetch") || netErr?.message?.includes("Network request failed")
-        ? "Unable to connect to OneHealth ID server. Please check your network connection."
+        ? isLocal
+          ? "Unable to reach OneHealth ID server (http://localhost:8008). Please ensure the backend is running."
+          : "Unable to connect to OneHealth ID server. Please check your network connection."
         : netErr?.message || "A network error occurred."
     );
   }
