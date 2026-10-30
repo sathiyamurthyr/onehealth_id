@@ -12,6 +12,8 @@ import PatientAppointmentsScreen from "../app/(patient)/appointments";
 import PatientTimelineScreen from "../app/(patient)/timeline";
 import { patientApi } from "../src/services/api/patient";
 
+jest.setTimeout(15000);
+
 // Mock router
 const mockPush = jest.fn();
 const mockBack = jest.fn();

@@ -110,7 +110,7 @@ function RouteGuardNavigator() {
         name="(patient)/index"
         options={{
           title: "Patient Portal",
-          headerShown: true,
+          headerShown: false,
         }}
       />
       <Stack.Screen
