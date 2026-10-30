@@ -166,3 +166,4 @@ describe("OH-ID Mobile — Role Registration & Onboarding Gate", () => {
     expect(mockReplace).toHaveBeenCalledWith("/(auth)/login");
   });
 });
+

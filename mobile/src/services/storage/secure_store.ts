@@ -10,6 +10,12 @@ import { UserProfile } from "../../types/auth";
 const TOKEN_KEY = "oh_mobile_jwt";
 const HOSPITAL_KEY = "oh_mobile_active_hospital";
 const USER_KEY = "oh_mobile_user_profile";
+const REMEMBERED_MOBILE_KEY = "oh_mobile_remembered_phone";
+const REMEMBERED_NAME_KEY = "oh_mobile_remembered_name";
+const PIN_VERIFIER_KEY = "oh_mobile_pin_verifier";
+const PIN_SALT_KEY = "oh_mobile_pin_salt";
+const PIN_ATTEMPTS_KEY = "oh_mobile_pin_attempts";
+const PIN_LOCKOUT_UNTIL_KEY = "oh_mobile_pin_lockout_until";
 
 // Volatile in-memory fallback for test harnesses
 const inMemoryCache: Record<string, string> = {};
@@ -90,6 +96,69 @@ class SecureSessionStore {
       await this.deleteItem(USER_KEY);
     } else {
       await this.setItem(USER_KEY, JSON.stringify(user));
+      if (user.username) {
+        await this.setRememberedUser(user.username, user.name || user.full_name || undefined);
+      }
+    }
+  }
+
+  // Remembered user credentials for fast returning-user sign-in
+  public async getRememberedUser(): Promise<{ phone: string | null; name: string | null }> {
+    const phone = await this.getItem(REMEMBERED_MOBILE_KEY);
+    const name = await this.getItem(REMEMBERED_NAME_KEY);
+    return { phone, name };
+  }
+
+  public async setRememberedUser(phone: string, name?: string): Promise<void> {
+    await this.setItem(REMEMBERED_MOBILE_KEY, phone);
+    if (name) {
+      await this.setItem(REMEMBERED_NAME_KEY, name);
+    }
+  }
+
+  public async clearRememberedUser(): Promise<void> {
+    await this.deleteItem(REMEMBERED_MOBILE_KEY);
+    await this.deleteItem(REMEMBERED_NAME_KEY);
+  }
+
+  // Secure PIN credentials & lockout state
+  public async getPinCredentials(): Promise<{ verifier: string | null; salt: string | null }> {
+    const verifier = await this.getItem(PIN_VERIFIER_KEY);
+    const salt = await this.getItem(PIN_SALT_KEY);
+    return { verifier, salt };
+  }
+
+  public async setPinCredentials(verifier: string, salt: string): Promise<void> {
+    await this.setItem(PIN_VERIFIER_KEY, verifier);
+    await this.setItem(PIN_SALT_KEY, salt);
+  }
+
+  public async clearPinCredentials(): Promise<void> {
+    await this.deleteItem(PIN_VERIFIER_KEY);
+    await this.deleteItem(PIN_SALT_KEY);
+    await this.deleteItem(PIN_ATTEMPTS_KEY);
+    await this.deleteItem(PIN_LOCKOUT_UNTIL_KEY);
+  }
+
+  public async getPinAttempts(): Promise<number> {
+    const val = await this.getItem(PIN_ATTEMPTS_KEY);
+    return val ? parseInt(val, 10) : 0;
+  }
+
+  public async setPinAttempts(attempts: number): Promise<void> {
+    await this.setItem(PIN_ATTEMPTS_KEY, attempts.toString());
+  }
+
+  public async getPinLockoutUntil(): Promise<number | null> {
+    const val = await this.getItem(PIN_LOCKOUT_UNTIL_KEY);
+    return val ? parseInt(val, 10) : null;
+  }
+
+  public async setPinLockoutUntil(timestamp: number | null): Promise<void> {
+    if (timestamp === null) {
+      await this.deleteItem(PIN_LOCKOUT_UNTIL_KEY);
+    } else {
+      await this.setItem(PIN_LOCKOUT_UNTIL_KEY, timestamp.toString());
     }
   }
 

@@ -12,6 +12,7 @@ import { UserProfile } from "../types/auth";
 import { secureStorage } from "../services/storage/secure_store";
 import { authApi } from "../services/api/auth";
 import { biometricService, BiometricCapability } from "../services/auth/biometrics";
+import { pinService, PinVerificationResult } from "../services/auth/pin_service";
 
 export interface AuthContextType {
   user: UserProfile | null;
@@ -22,8 +23,14 @@ export interface AuthContextType {
   availableRoles: string[];
   biometricCapability: BiometricCapability;
   isBiometricEnabled: boolean;
+  hasConfiguredPin: boolean;
+  rememberedPhone: string | null;
+  rememberedName: string | null;
   login: (username: string, password: string) => Promise<{ success: boolean; defaultRoute: string; error?: string }>;
   loginWithBiometrics: () => Promise<{ success: boolean; defaultRoute?: string; error?: string }>;
+  loginWithPin: (pin: string) => Promise<PinVerificationResult & { defaultRoute?: string }>;
+  setupAppPin: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  clearAppPin: () => Promise<void>;
   logout: () => Promise<void>;
   switchRole: (role: string) => Promise<string>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
@@ -70,6 +77,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     biometricType: "None",
   });
   const [isBiometricEnabled, setIsBiometricEnabled] = useState<boolean>(false);
+  const [hasConfiguredPin, setHasConfiguredPin] = useState<boolean>(false);
+  const [rememberedPhone, setRememberedPhone] = useState<string | null>(null);
+  const [rememberedName, setRememberedName] = useState<string | null>(null);
 
   // Initialize session state on app bootstrap
   useEffect(() => {
@@ -77,17 +87,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     async function initializeSession() {
       try {
-        const [storedToken, storedUser, bioCap, bioPref] = await Promise.all([
+        const [storedToken, storedUser, bioCap, bioPref, hasPin, remembered] = await Promise.all([
           secureStorage.getAccessToken(),
           secureStorage.getActiveUser(),
           biometricService.getCapability(),
           biometricService.isBiometricEnabled(),
+          pinService.hasConfiguredPin(),
+          secureStorage.getRememberedUser(),
         ]);
 
         if (!isMounted) return;
 
         setBiometricCapability(bioCap);
         setIsBiometricEnabled(bioPref);
+        setHasConfiguredPin(hasPin);
+        setRememberedPhone(remembered.phone);
+        setRememberedName(remembered.name);
 
         if (storedToken && storedUser) {
           setToken(storedToken);
@@ -133,6 +148,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(resolvedUser);
         setToken(accessToken);
         setActiveRole(resolvedUser.role);
+        setRememberedPhone(resolvedUser.username);
+        setRememberedName(resolvedUser.name || resolvedUser.full_name || null);
 
         // Fetch authoritative workspace route if available
         let targetRoute = resolveRoleRoute(resolvedUser.role);
@@ -197,6 +214,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [biometricCapability, isBiometricEnabled]);
 
+  const loginWithPin = useCallback(
+    async (
+      pin: string
+    ): Promise<PinVerificationResult & { defaultRoute?: string }> => {
+      const pinResult = await pinService.verifyPin(pin);
+      if (!pinResult.success) {
+        return pinResult;
+      }
+
+      const storedToken = await secureStorage.getAccessToken();
+      const storedUser = await secureStorage.getActiveUser();
+
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        setUser(storedUser);
+        setActiveRole(storedUser.role);
+        return {
+          success: true,
+          defaultRoute: resolveRoleRoute(storedUser.role),
+        };
+      }
+
+      return {
+        success: false,
+        error: "Session expired or unavailable. Please authenticate with Mobile OTP.",
+      };
+    },
+    []
+  );
+
+  const setupAppPin = useCallback(
+    async (pin: string): Promise<{ success: boolean; error?: string }> => {
+      const res = await pinService.setupPin(pin);
+      if (res.success) {
+        setHasConfiguredPin(true);
+      }
+      return res;
+    },
+    []
+  );
+
+  const clearAppPin = useCallback(async (): Promise<void> => {
+    await pinService.clearPin();
+    setHasConfiguredPin(false);
+  }, []);
+
   const switchRole = useCallback(async (newRole: string): Promise<string> => {
     if (!user) throw new Error("No active authenticated session.");
     const validRoles = Array.from(new Set([user.role, ...(user.roles || [])].filter(Boolean)));
@@ -252,8 +315,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     availableRoles,
     biometricCapability,
     isBiometricEnabled,
+    hasConfiguredPin,
+    rememberedPhone,
+    rememberedName,
     login,
     loginWithBiometrics,
+    loginWithPin,
+    setupAppPin,
+    clearAppPin,
     logout,
     switchRole,
     setBiometricPreference,
