@@ -18,11 +18,14 @@ export interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  activeRole: string | null;
+  availableRoles: string[];
   biometricCapability: BiometricCapability;
   isBiometricEnabled: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; defaultRoute: string; error?: string }>;
   loginWithBiometrics: () => Promise<{ success: boolean; defaultRoute?: string; error?: string }>;
   logout: () => Promise<void>;
+  switchRole: (role: string) => Promise<string>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -35,9 +38,13 @@ export const resolveRoleRoute = (role?: string): string => {
       return "/(patient)";
     case "DOCTOR":
     case "PHYSICIAN":
+    case "NURSE":
+    case "CLINICAL_STAFF":
       return "/(doctor)";
     case "RECEPTIONIST":
     case "FRONT_DESK":
+    case "CASHIER":
+    case "STAFF":
       return "/(reception)";
     case "HOSPITAL_ADMIN":
     case "ADMIN":
@@ -56,6 +63,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [activeRole, setActiveRole] = useState<string | null>(null);
   const [biometricCapability, setBiometricCapability] = useState<BiometricCapability>({
     hasHardware: false,
     isEnrolled: false,
@@ -84,10 +92,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (storedToken && storedUser) {
           setToken(storedToken);
           setUser(storedUser);
+          setActiveRole(storedUser.role);
           // Non-blocking background verification of active token
           authApi.getMe().then((liveProfile) => {
             if (isMounted && liveProfile) {
               setUser(liveProfile);
+              setActiveRole(liveProfile.role);
             }
           }).catch(() => {
             // Silently retain cached session if offline; 401 interceptor handles revocation
@@ -122,6 +132,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         setUser(resolvedUser);
         setToken(accessToken);
+        setActiveRole(resolvedUser.role);
 
         // Fetch authoritative workspace route if available
         let targetRoute = resolveRoleRoute(resolvedUser.role);
@@ -173,6 +184,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(storedUser);
+      setActiveRole(storedUser.role);
       return {
         success: true,
         defaultRoute: resolveRoleRoute(storedUser.role),
@@ -185,6 +197,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [biometricCapability, isBiometricEnabled]);
 
+  const switchRole = useCallback(async (newRole: string): Promise<string> => {
+    if (!user) throw new Error("No active authenticated session.");
+    const validRoles = Array.from(new Set([user.role, ...(user.roles || [])].filter(Boolean)));
+    if (!validRoles.includes(newRole)) {
+      throw new Error(`Unauthorized role switch to ${newRole}`);
+    }
+    const updatedUser = { ...user, role: newRole };
+    setUser(updatedUser);
+    setActiveRole(newRole);
+    await secureStorage.setActiveUser(updatedUser);
+    return resolveRoleRoute(newRole);
+  }, [user]);
+
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
@@ -192,6 +217,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setUser(null);
       setToken(null);
+      setActiveRole(null);
       setIsLoading(false);
     }
   }, []);
@@ -206,22 +232,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const liveUser = await authApi.getMe();
       if (liveUser) {
         setUser(liveUser);
+        setActiveRole(liveUser.role);
       }
     } catch {
       // Interceptors handle session revocation
     }
   }, []);
 
+  const availableRoles = user
+    ? Array.from(new Set([user.role, ...(user.roles || [])].filter(Boolean)))
+    : [];
+
   const value: AuthContextType = {
     user,
     token,
     isLoading,
     isAuthenticated: Boolean(token && user),
+    activeRole: activeRole || user?.role || null,
+    availableRoles,
     biometricCapability,
     isBiometricEnabled,
     login,
     loginWithBiometrics,
     logout,
+    switchRole,
     setBiometricPreference,
     refreshSession,
   };

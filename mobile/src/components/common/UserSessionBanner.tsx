@@ -1,19 +1,31 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../context/AuthContext";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from "../../theme";
 import { Card } from "./Card";
 import { StatusBadge } from "./StatusBadge";
-import { LogOut, User, Building2 } from "lucide-react-native";
+import { LogOut, User, Building2, RefreshCw } from "lucide-react-native";
 
 export const UserSessionBanner: React.FC = () => {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, availableRoles, switchRole } = useAuth();
+  const [isSwitching, setIsSwitching] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     router.replace("/(auth)/login");
+  };
+
+  const handleRoleSwitch = async (role: string) => {
+    if (role === user?.role || isSwitching) return;
+    setIsSwitching(true);
+    try {
+      const nextRoute = await switchRole(role);
+      router.replace(nextRoute as any);
+    } finally {
+      setIsSwitching(false);
+    }
   };
 
   const displayName = user?.name || user?.full_name || user?.username || "Authenticated User";
@@ -55,6 +67,42 @@ export const UserSessionBanner: React.FC = () => {
           </Text>
         )}
       </View>
+
+      {/* Multi-role Workspace Switcher - Shown ONLY for authorized multi-role accounts */}
+      {(availableRoles?.length ?? 0) > 1 && (
+        <View style={styles.multiRoleSection}>
+          <View style={styles.roleLabelRow}>
+            <RefreshCw size={12} color={COLORS.primary[700]} style={{ marginRight: 4 }} />
+            <Text style={styles.roleLabelText}>Switch Workspace Role:</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleScroll}>
+            {(availableRoles || []).map((r) => {
+              const isSelected = r === displayRole;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  testID={`switch-role-${r}`}
+                  style={[
+                    styles.rolePill,
+                    isSelected && styles.rolePillActive,
+                  ]}
+                  onPress={() => handleRoleSwitch(r)}
+                  disabled={isSwitching}
+                >
+                  <Text
+                    style={[
+                      styles.rolePillText,
+                      isSelected && styles.rolePillTextActive,
+                    ]}
+                  >
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
     </Card>
   );
 };
@@ -131,5 +179,46 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.caption,
     color: COLORS.textMuted,
     fontFamily: "Courier",
+  },
+  multiRoleSection: {
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.neutral[100],
+  },
+  roleLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.xs,
+  },
+  roleLabelText: {
+    ...TYPOGRAPHY.captionBold,
+    color: COLORS.primary[800],
+    fontSize: 11,
+  },
+  roleScroll: {
+    flexDirection: "row",
+  },
+  rolePill: {
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    marginRight: SPACING.xs,
+  },
+  rolePillActive: {
+    backgroundColor: COLORS.primary[600],
+    borderColor: COLORS.primary[600],
+  },
+  rolePillText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    fontSize: 11,
+  },
+  rolePillTextActive: {
+    color: COLORS.neutral.white,
+    fontWeight: "bold",
   },
 });

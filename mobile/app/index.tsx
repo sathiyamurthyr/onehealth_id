@@ -1,230 +1,77 @@
-import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from "react-native";
+/**
+ * ONEHEALTH ID (OH-ID) Mobile — Entry Gateway
+ * 
+ * Clean, lightweight session gateway. Checks authenticated state:
+ * - If unauthenticated -> routes immediately to /(auth)/login.
+ * - If authenticated -> routes to the user's authoritative workspace.
+ * 
+ * Contains NO internal development badges or foundation workspaces.
+ *
+ * Sathus Technology Pvt Ltd - Enterprise DevSecOps Architecture
+ */
+
+import React, { useEffect } from "react";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from "../src/theme";
-import { Header } from "../src/components/common/Header";
-import { StatusBadge } from "../src/components/common/StatusBadge";
-import { Card } from "../src/components/common/Card";
-import {
-  User,
-  Stethoscope,
-  QrCode,
-  Building2,
-  ShieldCheck,
-  LogIn,
-  ChevronRight,
-  Info,
-} from "lucide-react-native";
+import { useAuth, resolveRoleRoute } from "../src/context/AuthContext";
+import { COLORS, TYPOGRAPHY, SPACING } from "../src/theme";
 
-interface RoleLink {
-  title: string;
-  subtitle: string;
-  route: string;
-  badge: "VERIFIED" | "ACTIVE" | "INFO" | "HOLD";
-  icon: React.ReactNode;
-}
-
-export default function HomeScreen() {
+export default function EntryGatewayScreen() {
   const router = useRouter();
+  const { user, isLoading, isAuthenticated } = useAuth();
 
-  const links: RoleLink[] = [
-    {
-      title: "Authentication (Sign In)",
-      subtitle: "Universal entrypoint for Citizen and Clinical Staff",
-      route: "/(auth)/login",
-      badge: "ACTIVE",
-      icon: <LogIn size={22} color={COLORS.primary[600]} />,
-    },
-    {
-      title: "Patient Portal",
-      subtitle: "Digital OH-ID Identity Card, Timeline & PHR",
-      route: "/(patient)",
-      badge: "VERIFIED",
-      icon: <User size={22} color={COLORS.success[600]} />,
-    },
-    {
-      title: "Doctor Workspace",
-      subtitle: "OPD Triage, Consultations & Digital RxPad",
-      route: "/(doctor)",
-      badge: "ACTIVE",
-      icon: <Stethoscope size={22} color={COLORS.primary[600]} />,
-    },
-    {
-      title: "Reception Desk",
-      subtitle: "Universal QR Scanner, Token Check-in & Registration",
-      route: "/(reception)",
-      badge: "INFO",
-      icon: <QrCode size={22} color={COLORS.accent[600]} />,
-    },
-    {
-      title: "Hospital Administrator",
-      subtitle: "Facility Census, Staff Management & Ward Roster",
-      route: "/(admin)",
-      badge: "HOLD",
-      icon: <Building2 size={22} color={COLORS.warning[600]} />,
-    },
-    {
-      title: "Super Administrator",
-      subtitle: "Hospital Approvals, Multi-Tenant Audits & Security",
-      route: "/(super)",
-      badge: "INFO",
-      icon: <ShieldCheck size={22} color={COLORS.primary[800]} />,
-    },
-  ];
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (isAuthenticated && user) {
+      router.replace(resolveRoleRoute(user.role) as any);
+    } else {
+      router.replace("/(auth)/login");
+    }
+  }, [isLoading, isAuthenticated, user, router]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Header
-        title="OneHealth ID"
-        subtitle="Universal Healthcare Identity & Clinical OS"
-      />
-
-      <Card style={styles.bannerCard}>
-        <View style={styles.bannerRow}>
-          <Info size={18} color={COLORS.primary[600]} />
-          <Text style={styles.bannerTitle}>Phase A: Foundation Workspace</Text>
-        </View>
-        <Text style={styles.bannerText}>
-          React Native New Architecture & Expo Router foundation. All 6 platform
-          areas are scaffolded below with strict security boundaries.
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>OneHealth ID</Text>
+        <Text style={styles.subtitle}>
+          One Digital Health Identity. A Connected Healthcare Journey.
         </Text>
-        <View style={styles.badgeRow}>
-          <StatusBadge label="ISO 27001 Ready" variant="VERIFIED" />
-          <View style={{ width: 8 }} />
-          <StatusBadge label="Zero PHI Cache" variant="ACTIVE" />
-        </View>
-      </Card>
-
-      <Text style={styles.sectionTitle}>Platform Role Spaces</Text>
-
-      {links.map((link) => (
-        <TouchableOpacity
-          key={link.route}
-          style={styles.cardTouch}
-          activeOpacity={0.7}
-          onPress={() => router.push(link.route as any)}
-        >
-          <Card style={styles.linkCard}>
-            <View style={styles.iconWrapper}>{link.icon}</View>
-            <View style={styles.textWrapper}>
-              <View style={styles.titleLine}>
-                <Text style={styles.linkTitle}>{link.title}</Text>
-                <StatusBadge label={link.badge} variant={link.badge} />
-              </View>
-              <Text style={styles.linkSubtitle}>{link.subtitle}</Text>
-            </View>
-            <ChevronRight size={18} color={COLORS.textMuted} />
-          </Card>
-        </TouchableOpacity>
-      ))}
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Powered by Sathus Technology Pvt Ltd
-        </Text>
-        <Text style={styles.footerSub}>
-          Enterprise DevSecOps & Healthcare Operating System
-        </Text>
+        <ActivityIndicator
+          size="large"
+          color={COLORS.primary[600]}
+          style={styles.spinner}
+        />
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    padding: SPACING.base,
-    paddingBottom: SPACING.xxxl,
-  },
-  bannerCard: {
-    backgroundColor: COLORS.primary[50],
-    borderColor: COLORS.primary[200],
-    marginBottom: SPACING.lg,
-  },
-  bannerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: SPACING.xs,
-  },
-  bannerTitle: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.primary[900],
-    marginLeft: SPACING.sm,
-  },
-  bannerText: {
-    ...TYPOGRAPHY.callout,
-    color: COLORS.primary[800],
-    marginBottom: SPACING.sm,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sectionTitle: {
-    ...TYPOGRAPHY.h3,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  cardTouch: {
-    marginBottom: SPACING.sm,
-  },
-  linkCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-  },
-  iconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.surface,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: SPACING.md,
+    padding: SPACING.xl,
   },
-  textWrapper: {
-    flex: 1,
-    marginRight: SPACING.xs,
-  },
-  titleLine: {
-    flexDirection: "row",
+  content: {
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 2,
+    maxWidth: 320,
   },
-  linkTitle: {
-    ...TYPOGRAPHY.bodyBold,
-    color: COLORS.textPrimary,
-    flex: 1,
-    marginRight: SPACING.xs,
+  title: {
+    ...TYPOGRAPHY.h2,
+    color: COLORS.primary[900],
+    marginBottom: SPACING.xs,
+    textAlign: "center",
   },
-  linkSubtitle: {
-    ...TYPOGRAPHY.caption,
+  subtitle: {
+    ...TYPOGRAPHY.callout,
     color: COLORS.textSecondary,
+    textAlign: "center",
+    marginBottom: SPACING.xl,
   },
-  footer: {
-    marginTop: SPACING.xl,
-    alignItems: "center",
-    paddingVertical: SPACING.md,
-  },
-  footerText: {
-    ...TYPOGRAPHY.captionBold,
-    color: COLORS.textSecondary,
-  },
-  footerSub: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textMuted,
-    marginTop: 2,
+  spinner: {
+    marginTop: SPACING.base,
   },
 });
