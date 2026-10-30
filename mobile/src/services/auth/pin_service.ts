@@ -178,3 +178,4 @@ class PinAuthService {
 }
 
 export const pinService = new PinAuthService();
+

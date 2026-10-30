@@ -68,12 +68,18 @@ export async function fetchJSON<T>(
     : endpoint;
   const url = `${API_BASE.replace(/\/$/, "")}${cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`}`;
 
-  let canonicalPath: string;
-  try {
-    canonicalPath = new URL(url).pathname;
-  } catch {
-    canonicalPath = cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`;
-  }
+  // Deterministic canonical path for Additional Authenticated Data (AAD)
+  const apiBasePath = (() => {
+    try {
+      const parsed = new URL(API_BASE);
+      return parsed.pathname.replace(/\/$/, "");
+    } catch {
+      return "/api/v1";
+    }
+  })();
+  const canonicalPath = cleanEndpoint.startsWith("/api/v1")
+    ? cleanEndpoint
+    : `${apiBasePath}${cleanEndpoint.startsWith("/") ? cleanEndpoint : `/${cleanEndpoint}`}`;
 
   let requestBody = options?.body;
   const canEncrypt =
@@ -122,12 +128,21 @@ export async function fetchJSON<T>(
     }
   }
 
-  const response = await fetch(url, {
-    ...options,
-    method,
-    body: requestBody,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      method,
+      body: requestBody,
+      headers,
+    });
+  } catch (netErr: any) {
+    throw new Error(
+      netErr?.message?.includes("Failed to fetch") || netErr?.message?.includes("Network request failed")
+        ? "Unable to connect to OneHealth ID server. Please check your network connection."
+        : netErr?.message || "A network error occurred."
+    );
+  }
 
   if (!response.ok) {
     let errorDetail = `HTTP ${response.status} ${response.statusText}`;

@@ -118,10 +118,13 @@ describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
       await fireEvent.changeText(getByTestId("mobile-input"), "9876543210");
       await fireEvent.press(getByTestId("continue-button"));
 
-      expect(getByText("Security Verification")).toBeTruthy();
+      expect(getByText("Sign in to OH-ID")).toBeTruthy();
       expect(getByText("+91 98765 •••••")).toBeTruthy();
       expect(getByTestId("password-input")).toBeTruthy();
+      expect(getByTestId("verify-forgot-password-link")).toBeTruthy();
       expect(getByTestId("login-button")).toBeTruthy();
+      expect(getByText("or sign in with")).toBeTruthy();
+      expect(getByText("Use OTP Instead")).toBeTruthy();
     });
 
     it("allows stepping back from verification to edit mobile number", async () => {

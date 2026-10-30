@@ -139,7 +139,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       username: string,
       password: string
     ): Promise<{ success: boolean; defaultRoute: string; error?: string }> => {
-      setIsLoading(true);
       try {
         const res = await authApi.login(username, password);
         const resolvedUser = res.user;
@@ -174,8 +173,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           defaultRoute: "/(auth)/login",
           error: errorMsg,
         };
-      } finally {
-        setIsLoading(false);
       }
     },
     []

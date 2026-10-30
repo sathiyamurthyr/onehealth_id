@@ -591,27 +591,18 @@ export default function LoginScreen() {
                         setErrorMessage(null);
                       }}
                       style={styles.backButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Return to mobile number screen"
                     >
                       <ArrowLeft size={20} color={COLORS.primary[700]} />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.cardHeading}>Security Verification</Text>
+                      <Text style={styles.cardHeading}>Sign in to OH-ID</Text>
                       <Text style={styles.maskedPhoneText}>{maskedPhone}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.passwordHeaderRow}>
-                    <Text style={styles.inputLabel}>Password</Text>
-                    <TouchableOpacity
-                      testID="verify-forgot-password-link"
-                      onPress={() => router.push("/(auth)/forgot-password" as any)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Forgot Password? Reset your credentials"
-                    >
-                      <Text style={styles.inlineForgotText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-                  </View>
-
+                  <Text style={styles.inputLabel}>Password</Text>
                   <View
                     style={[
                       styles.passwordInputWrapper,
@@ -629,7 +620,7 @@ export default function LoginScreen() {
                         styles.textInput,
                         Platform.OS === "web" && ({ outlineStyle: "none" } as any),
                       ]}
-                      placeholder="Enter your account password"
+                      placeholder="Enter your password"
                       placeholderTextColor={COLORS.textMuted}
                       secureTextEntry={!showPassword}
                       value={password}
@@ -654,10 +645,29 @@ export default function LoginScreen() {
                     </TouchableOpacity>
                   </View>
 
+                  {/* Single Clean Password Recovery Action */}
+                  <View style={styles.forgotPasswordRow}>
+                    <TouchableOpacity
+                      testID="verify-forgot-password-link"
+                      onPress={() => router.push("/(auth)/forgot-password" as any)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Forgot Password? Reset your credentials"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.inlineForgotText}>Forgot Password?</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Primary Submit Button */}
                   <TouchableOpacity
                     testID="login-button"
-                    style={[styles.primaryButton, styles.buttonActive, isSubmitting && { opacity: 0.7 }]}
-                    disabled={isSubmitting}
+                    style={[
+                      styles.primaryButton,
+                      styles.buttonActive,
+                      styles.verifySubmitButton,
+                      isSubmitting && { opacity: 0.7 },
+                    ]}
+                    disabled={isSubmitting || !password.trim()}
                     activeOpacity={0.8}
                     onPress={handleLoginSubmit}
                   >
@@ -668,50 +678,44 @@ export default function LoginScreen() {
                     )}
                   </TouchableOpacity>
 
+                  {/* Alternative Sign-In Options */}
+                  <View style={styles.altDividerRow}>
+                    <View style={styles.altDividerLine} />
+                    <Text style={styles.altDividerText}>or sign in with</Text>
+                    <View style={styles.altDividerLine} />
+                  </View>
+
+                  <TouchableOpacity
+                    testID="otp-request-button"
+                    style={styles.altOptionButton}
+                    onPress={handleRequestOtp}
+                    disabled={resendCooldown > 0}
+                    activeOpacity={0.8}
+                  >
+                    <KeyRound size={18} color={COLORS.primary[700]} style={{ marginRight: SPACING.sm }} />
+                    <Text style={styles.altOptionButtonText}>
+                      {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : "Use OTP Instead"}
+                    </Text>
+                  </TouchableOpacity>
+
                   {canShowBiometrics && (
                     <TouchableOpacity
                       testID="biometric-button"
-                      style={styles.biometricButton}
+                      style={[styles.altOptionButton, { marginTop: SPACING.sm }]}
                       onPress={handleBiometricUnlock}
                       disabled={isSubmitting}
+                      activeOpacity={0.8}
                     >
                       <Fingerprint
-                        size={20}
-                        color={COLORS.primary[600]}
+                        size={18}
+                        color={COLORS.primary[700]}
                         style={{ marginRight: SPACING.sm }}
                       />
-                      <Text style={styles.biometricButtonText}>
+                      <Text style={styles.altOptionButtonText}>
                         Unlock with {biometricCapability.biometricType}
                       </Text>
                     </TouchableOpacity>
                   )}
-
-                  {/* OTP Assistance Section */}
-                  <View style={styles.otpAssistanceContainer}>
-                    <View style={styles.otpDivider} />
-                    <TouchableOpacity
-                      testID="otp-request-button"
-                      style={styles.otpActionRow}
-                      onPress={handleRequestOtp}
-                      disabled={resendCooldown > 0}
-                    >
-                      {resendCooldown > 0 ? (
-                        <View style={styles.countdownBadge}>
-                          <RotateCcw size={14} color={COLORS.textMuted} />
-                          <Text style={styles.countdownText}>
-                            Resend challenge in {resendCooldown}s
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={styles.otpRowActive}>
-                          <KeyRound size={16} color={COLORS.primary[600]} />
-                          <Text style={styles.otpTextActive}>
-                            Forgot Password? Verify with OTP
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </View>
                 </View>
               )}
 
@@ -1135,6 +1139,48 @@ const styles = StyleSheet.create({
   },
   inlineForgotText: {
     ...TYPOGRAPHY.captionBold,
+    color: COLORS.primary[700],
+  },
+  forgotPasswordRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  verifySubmitButton: {
+    marginTop: 0,
+  },
+  altDividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 22,
+    marginBottom: 16,
+  },
+  altDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E2E8F0",
+  },
+  altDividerText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#94A3B8",
+    marginHorizontal: 12,
+    textTransform: "lowercase",
+  },
+  altOptionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 48,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary[100],
+    backgroundColor: COLORS.primary[50],
+    borderRadius: 14,
+  },
+  altOptionButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
     color: COLORS.primary[700],
   },
   biometricButton: {

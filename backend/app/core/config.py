@@ -83,7 +83,9 @@ class Settings(BaseSettings):
         "http://localhost:8008",
         "http://127.0.0.1:8008",
         "http://localhost:8000",
-        "http://127.0.0.1:8000"
+        "http://127.0.0.1:8000",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081"
     ]
 
     model_config = SettingsConfigDict(
