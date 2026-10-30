@@ -15,6 +15,10 @@ import {
   LoginResponse,
   RegisterResponse,
   WorkspaceResponse,
+  VerifyResetOtpResponse,
+  ResetPasswordRequest,
+  PasswordAssistanceRequest,
+  PasswordAssistanceResponse,
 } from "../../types/auth";
 
 export interface RegisterPayload {
@@ -94,6 +98,87 @@ export const authApi = {
    */
   getWorkspace: async (): Promise<WorkspaceResponse["workspace"]> => {
     const res = await fetchJSON<{ success: boolean; data: any }>("/auth/me/workspace");
+    return res.data;
+  },
+
+  /**
+   * Dispatches a single-use 6-digit password reset OTP to user's registered email.
+   * Employs anti-enumeration generic messaging.
+   */
+  forgotPassword: async (email: string): Promise<{ message: string; status: string }> => {
+    const res = await fetchJSON<{ success: boolean; data: { message: string; status: string } }>(
+      "/auth/forgot-password",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      }
+    );
+    return res.data;
+  },
+
+  /**
+   * Verifies the 6-digit reset code and retrieves an ephemeral single-use reset token.
+   */
+  verifyResetOtp: async (email: string, otp: string): Promise<VerifyResetOtpResponse> => {
+    const res = await fetchJSON<{ success: boolean; data: VerifyResetOtpResponse }>(
+      "/auth/verify-reset-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: otp.trim() }),
+      }
+    );
+    return res.data;
+  },
+
+  /**
+   * Resets the user's password using the verified ephemeral reset token.
+   */
+  resetPassword: async (payload: ResetPasswordRequest): Promise<{ message: string; email?: string }> => {
+    const res = await fetchJSON<{ success: boolean; data: { message: string; email?: string } }>(
+      "/auth/reset-password",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return res.data;
+  },
+
+  /**
+   * Resends password reset OTP subject to rate limiting and 60s cooldown.
+   */
+  resendResetOtp: async (email: string): Promise<{ message: string; status: string }> => {
+    const res = await fetchJSON<{ success: boolean; data: { message: string; status: string } }>(
+      "/auth/resend-reset-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      }
+    );
+    return res.data;
+  },
+
+  /**
+   * Submits a recovery assistance request to Super Admin support channel.
+   */
+  requestAssistance: async (payload: PasswordAssistanceRequest): Promise<PasswordAssistanceResponse> => {
+    const res = await fetchJSON<{ success: boolean; data: PasswordAssistanceResponse }>(
+      "/auth/request-assistance",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return res.data;
+  },
+
+  /**
+   * Checks status of assistance ticket.
+   */
+  getAssistanceStatus: async (referenceNumber: string): Promise<any> => {
+    const res = await fetchJSON<{ success: boolean; data: any }>(
+      `/auth/assistance-status/${encodeURIComponent(referenceNumber.trim())}`
+    );
     return res.data;
   },
 

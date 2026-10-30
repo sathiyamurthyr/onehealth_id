@@ -273,6 +273,30 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
 
+                {/* Account Recovery Link */}
+                <TouchableOpacity
+                  testID="forgot-password-link"
+                  style={styles.recoveryLinkButton}
+                  onPress={() => router.push("/(auth)/forgot-password" as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Having trouble signing in? Reset your password or recover account"
+                >
+                  <Text style={styles.recoveryLinkText}>Having trouble signing in?</Text>
+                </TouchableOpacity>
+
+                {/* Registration Prompt */}
+                <View style={styles.registerPromptRow}>
+                  <Text style={styles.registerPromptText}>New to OH-ID? </Text>
+                  <TouchableOpacity
+                    testID="register-link"
+                    onPress={() => router.push("/(auth)/register" as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Register for a new OneHealth ID account"
+                  >
+                    <Text style={styles.registerLinkText}>Register</Text>
+                  </TouchableOpacity>
+                </View>
+
                 {canShowBiometrics && (
                   <TouchableOpacity
                     testID="biometric-quick-button"
@@ -310,9 +334,19 @@ export default function LoginScreen() {
                   </View>
                 </View>
 
-                <Text style={[styles.inputLabel, { marginTop: SPACING.md }]}>
-                  Password
-                </Text>
+                <View style={styles.passwordHeaderRow}>
+                  <Text style={styles.inputLabel}>
+                    Password
+                  </Text>
+                  <TouchableOpacity
+                    testID="verify-forgot-password-link"
+                    onPress={() => router.push("/(auth)/forgot-password" as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Forgot Password? Reset your credentials"
+                  >
+                    <Text style={styles.inlineForgotText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.passwordInputWrapper}>
                   <Lock size={18} color={COLORS.textMuted} style={styles.fieldIcon} />
                   <TextInput
@@ -623,6 +657,43 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     ...TYPOGRAPHY.bodyBold,
     color: COLORS.neutral.white,
+  },
+  recoveryLinkButton: {
+    marginTop: SPACING.md,
+    alignItems: "center",
+    paddingVertical: SPACING.xs,
+  },
+  recoveryLinkText: {
+    ...TYPOGRAPHY.captionBold,
+    color: COLORS.primary[700],
+  },
+  registerPromptRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: SPACING.md,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.neutral[100],
+  },
+  registerPromptText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  registerLinkText: {
+    ...TYPOGRAPHY.captionBold,
+    color: COLORS.primary[700],
+  },
+  passwordHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  inlineForgotText: {
+    ...TYPOGRAPHY.captionBold,
+    color: COLORS.primary[700],
   },
   biometricButton: {
     flexDirection: "row",

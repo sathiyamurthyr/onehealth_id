@@ -56,3 +56,38 @@ export interface WorkspaceResponse {
   available_workspaces: any[];
   available_hospitals: any[];
 }
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface VerifyResetOtpRequest {
+  email: string;
+  otp: string;
+}
+
+export interface VerifyResetOtpResponse {
+  message: string;
+  reset_token: string;
+  expires_in_seconds: number;
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  reset_token: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export interface PasswordAssistanceRequest {
+  email: string;
+  category: "OTP_DELIVERY" | "OTP_VERIFICATION" | "ACCOUNT_RECOVERY";
+  description?: string;
+  contact_phone?: string;
+}
+
+export interface PasswordAssistanceResponse {
+  reference_number: string;
+  status: string;
+  message: string;
+}

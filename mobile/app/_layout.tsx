@@ -93,6 +93,20 @@ function RouteGuardNavigator() {
         }}
       />
       <Stack.Screen
+        name="(auth)/register"
+        options={{
+          title: "Create Account",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(auth)/forgot-password"
+        options={{
+          title: "Account Recovery",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="(patient)/index"
         options={{
           title: "Patient Portal",

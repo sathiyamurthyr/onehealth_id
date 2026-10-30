@@ -19,6 +19,7 @@ jest.mock("../src/context/AuthContext", () => {
 
 describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
   let mockReplace: jest.Mock;
+  let mockPush: jest.Mock;
   let mockLogin: jest.Mock;
   let mockLoginWithBiometrics: jest.Mock;
   let mockLogout: jest.Mock;
@@ -27,6 +28,7 @@ describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockReplace = jest.fn();
+    mockPush = jest.fn();
     mockLogin = jest.fn();
     mockLoginWithBiometrics = jest.fn();
     mockLogout = jest.fn();
@@ -34,7 +36,7 @@ describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
 
     (useRouter as jest.Mock).mockReturnValue({
       replace: mockReplace,
-      push: jest.fn(),
+      push: mockPush,
       back: jest.fn(),
     });
 
@@ -191,6 +193,34 @@ describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
 
       const bannerError = await findByText("Invalid mobile number or password");
       expect(bannerError).toBeTruthy();
+    });
+
+    it("navigates to forgot-password screen when 'Having trouble signing in?' is tapped", async () => {
+      const { getByTestId } = await render(<LoginScreen />);
+      const recoveryLink = getByTestId("forgot-password-link");
+      await fireEvent.press(recoveryLink);
+
+      expect(mockPush).toHaveBeenCalledWith("/(auth)/forgot-password");
+    });
+
+    it("navigates to registration screen when 'Register' link is tapped", async () => {
+      const { getByTestId } = await render(<LoginScreen />);
+      const registerLink = getByTestId("register-link");
+      await fireEvent.press(registerLink);
+
+      expect(mockPush).toHaveBeenCalledWith("/(auth)/register");
+    });
+
+    it("navigates to forgot-password screen from password verification step", async () => {
+      const { getByTestId } = await render(<LoginScreen />);
+
+      await fireEvent.changeText(getByTestId("mobile-input"), "9876543210");
+      await fireEvent.press(getByTestId("continue-button"));
+
+      const inlineForgot = getByTestId("verify-forgot-password-link");
+      await fireEvent.press(inlineForgot);
+
+      expect(mockPush).toHaveBeenCalledWith("/(auth)/forgot-password");
     });
 
     it("allows biometric quick unlock when enrolled and enabled", async () => {
