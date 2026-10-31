@@ -999,22 +999,53 @@ class SPViewsRepository(
         referral: Optional[Dict[str, Any]] = None,
         follow_up: Optional[Dict[str, Any]] = None,
         actor_id: str = "doctor",
-        consultation_id: Optional[str] = None
+        consultation_id: Optional[str] = None,
+        report_template_id: Optional[str] = None,
+        rx_template_id: Optional[str] = None,
+        signed_by: Optional[str] = None,
+        digital_signature_hash: Optional[str] = None
     ) -> Dict[str, Any]:
         with get_db_cursor() as cur:
             new_cid = consultation_id or f"c-{uuid.uuid4().hex[:10]}"
 
+            # Resolve hospital
+            cur.execute("SELECT hospital_id FROM oh_id.doctors WHERE id = %s LIMIT 1;", (doctor_id,))
+            doc_row = cur.fetchone()
+            hospital_id = doc_row["hospital_id"] if doc_row and doc_row.get("hospital_id") else "hosp-kedar"
+
+            # Resolve report template
+            resolved_report_tmpl = report_template_id
+            resolved_report_ver = 1
+            if not resolved_report_tmpl and hospital_id:
+                cur.execute(
+                    "SELECT clinical_report_template_id, clinical_report_template_version, rx_template_id, rx_template_version FROM oh_id.hospital_document_template_settings WHERE hospital_id = %s LIMIT 1;",
+                    (hospital_id,)
+                )
+                h_set = cur.fetchone()
+                if h_set:
+                    if h_set.get("clinical_report_template_id"):
+                        resolved_report_tmpl = h_set["clinical_report_template_id"]
+                        resolved_report_ver = h_set.get("clinical_report_template_version") or 1
+                    if not rx_template_id and h_set.get("rx_template_id"):
+                        rx_template_id = h_set["rx_template_id"]
+
+            resolved_report_tmpl = resolved_report_tmpl or "tmpl_rep_classic_hospital"
+            resolved_rx_tmpl = rx_template_id or "tmpl_rx_classic_hospital"
+
             # 1. Insert or update OPD consultation
+            sig_hash = digital_signature_hash or f"SHA256:{uuid.uuid4().hex[:16]}"
             cur.execute(
                 """
                 INSERT INTO oh_id.opd_consultations (
                     id, appointment_id, patient_id, doctor_id, symptoms, diagnosis,
                     clinical_notes, vitals, chief_complaint, examination, medical_history,
-                    diagnoses, consultation_status, created_at
+                    diagnoses, consultation_status, template_id, template_version,
+                    signed_by, signed_at, digital_signature_hash, created_at
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s,
                     %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-                    %s::jsonb, 'COMPLETED', CURRENT_TIMESTAMP
+                    %s::jsonb, 'COMPLETED', %s, %s,
+                    %s, CURRENT_TIMESTAMP, %s, CURRENT_TIMESTAMP
                 ) ON CONFLICT (id) DO UPDATE SET
                     diagnosis = EXCLUDED.diagnosis,
                     clinical_notes = EXCLUDED.clinical_notes,
@@ -1023,6 +1054,11 @@ class SPViewsRepository(
                     examination = EXCLUDED.examination,
                     medical_history = EXCLUDED.medical_history,
                     diagnoses = EXCLUDED.diagnoses,
+                    template_id = COALESCE(EXCLUDED.template_id, oh_id.opd_consultations.template_id),
+                    template_version = COALESCE(EXCLUDED.template_version, oh_id.opd_consultations.template_version),
+                    signed_by = COALESCE(EXCLUDED.signed_by, oh_id.opd_consultations.signed_by),
+                    signed_at = COALESCE(EXCLUDED.signed_at, oh_id.opd_consultations.signed_at),
+                    digital_signature_hash = COALESCE(EXCLUDED.digital_signature_hash, oh_id.opd_consultations.digital_signature_hash),
                     consultation_status = 'COMPLETED';
                 """,
                 (
@@ -1032,7 +1068,9 @@ class SPViewsRepository(
                     json.dumps(chief_complaint or {}),
                     json.dumps(examination or {}),
                     json.dumps(medical_history or {}),
-                    json.dumps(diagnoses or [])
+                    json.dumps(diagnoses or []),
+                    resolved_report_tmpl, resolved_report_ver,
+                    signed_by or actor_id, sig_hash
                 )
             )
 
@@ -1048,13 +1086,13 @@ class SPViewsRepository(
                 cur.execute(
                     """
                     INSERT INTO oh_id.prescriptions (
-                        id, consultation_id, patient_id, doctor_id, diagnosis, instructions,
+                        id, consultation_id, patient_id, doctor_id, hospital_id, diagnosis, instructions,
                         status, valid_from, valid_until, validity_period_not_specified, signed_by, signed_at,
-                        digital_signature_hash, created_by, created_at, version
+                        digital_signature_hash, template_id, template_version, created_by, created_at, version
                     ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, CURRENT_TIMESTAMP, 1
+                        %s, %s, 1, %s, CURRENT_TIMESTAMP, 1
                     ) ON CONFLICT (id) DO UPDATE SET
                         diagnosis = EXCLUDED.diagnosis,
                         instructions = EXCLUDED.instructions,
@@ -1064,18 +1102,20 @@ class SPViewsRepository(
                         validity_period_not_specified = EXCLUDED.validity_period_not_specified,
                         signed_by = EXCLUDED.signed_by,
                         signed_at = EXCLUDED.signed_at,
-                        digital_signature_hash = EXCLUDED.digital_signature_hash;
+                        digital_signature_hash = EXCLUDED.digital_signature_hash,
+                        template_id = COALESCE(EXCLUDED.template_id, oh_id.prescriptions.template_id);
                     """,
                     (
-                        rx_id, new_cid, patient_id, doctor_id, diagnosis,
+                        rx_id, new_cid, patient_id, doctor_id, hospital_id, diagnosis,
                         prescription.get("instructions"),
                         prescription.get("status") or "ACTIVE",
                         val_from,
                         val_until,
                         val_unspec,
-                        prescription.get("signed_by"),
-                        datetime.now() if prescription.get("signed_by") else None,
-                        prescription.get("digital_signature_hash"),
+                        prescription.get("signed_by") or actor_id,
+                        datetime.now() if prescription.get("signed_by") or actor_id else None,
+                        prescription.get("digital_signature_hash") or sig_hash,
+                        resolved_rx_tmpl,
                         actor_id
                     )
                 )
@@ -2054,7 +2094,8 @@ class SPViewsRepository(
         valid_from: Optional[str] = None,
         valid_until: Optional[str] = None,
         validity_type: Optional[str] = "CALENDAR_DAYS",
-        validity_period_not_specified: Optional[bool] = None
+        validity_period_not_specified: Optional[bool] = None,
+        template_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Creates an immutable prescription with medications, signature hash, and verification token."""
         import uuid
@@ -2070,6 +2111,22 @@ class SPViewsRepository(
             validity_period_not_specified = (valid_from is None and valid_until is None)
 
         with get_db_cursor() as cur:
+            # Resolve template
+            resolved_template_id = template_id
+            resolved_template_version = 1
+            if not resolved_template_id and hospital_id:
+                cur.execute(
+                    "SELECT rx_template_id, rx_template_version FROM oh_id.hospital_document_template_settings WHERE hospital_id = %s LIMIT 1;",
+                    (hospital_id,)
+                )
+                h_set = cur.fetchone()
+                if h_set and h_set.get("rx_template_id"):
+                    resolved_template_id = h_set["rx_template_id"]
+                    resolved_template_version = h_set.get("rx_template_version") or 1
+
+            if not resolved_template_id:
+                resolved_template_id = "tmpl_rx_classic_hospital"
+
             # 1. Insert into oh_id.prescriptions
             cur.execute(
                 """
@@ -2078,13 +2135,13 @@ class SPViewsRepository(
                     instructions, doctor_notes, follow_up_days, follow_up_date, requires_pin,
                     status, valid_from, valid_until, validity_type, validity_period_not_specified,
                     signed_by, signed_at, digital_signature_hash,
-                    verification_token, created_by, version, created_at, updated_at
+                    verification_token, created_by, version, template_id, template_version, created_at, updated_at
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, CURRENT_TIMESTAMP, %s,
-                    %s, %s, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    %s, %s, 1, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 );
                 """,
                 (
@@ -2092,7 +2149,7 @@ class SPViewsRepository(
                     doctor_notes, doctor_notes, follow_up_days, follow_up_date, requires_pin,
                     status, valid_from, valid_until, validity_type or "CALENDAR_DAYS", validity_period_not_specified,
                     actor_id, sig_hash,
-                    ver_token, actor_id
+                    ver_token, actor_id, resolved_template_id, resolved_template_version
                 )
             )
 
@@ -11222,7 +11279,293 @@ class SPViewsRepository(
             row = cur.fetchone()
             return dict(row) if row else None
 
+    # =========================================================================
+    # UNIFIED CLINICAL DOCUMENT TEMPLATES MANAGEMENT
+    # =========================================================================
+
+    def list_clinical_document_templates(
+        self,
+        document_type: Optional[str] = None,
+        is_active: Optional[bool] = None
+    ) -> List[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            clauses = []
+            params = []
+            if document_type:
+                clauses.append("document_type = %s")
+                params.append(document_type.upper())
+            if is_active is not None:
+                clauses.append("is_active = %s")
+                params.append(is_active)
+
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            cur.execute(f"""
+                SELECT id, slug, name, document_type, category, description,
+                       best_suited_for, layout_config, version, is_active, is_default,
+                       created_at, updated_at
+                FROM oh_id.clinical_document_templates
+                {where_sql}
+                ORDER BY document_type ASC, is_default DESC, name ASC;
+            """, tuple(params))
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+    def get_clinical_document_template_by_id(self, template_id: str) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT id, slug, name, document_type, category, description,
+                       best_suited_for, layout_config, version, is_active, is_default,
+                       created_at, updated_at
+                FROM oh_id.clinical_document_templates
+                WHERE id = %s OR slug = %s;
+            """, (template_id, template_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def get_hospital_document_template_settings(self, hospital_id: str) -> Dict[str, Any]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT s.hospital_id, s.rx_template_id, s.rx_template_version,
+                       s.clinical_report_template_id, s.clinical_report_template_version,
+                       s.custom_header_text, s.custom_footer_notes, s.show_hospital_logo,
+                       s.updated_by, s.updated_at,
+                       rx_tmpl.name AS rx_template_name,
+                       rx_tmpl.layout_config AS rx_template_layout_config,
+                       rep_tmpl.name AS clinical_report_template_name,
+                       rep_tmpl.layout_config AS clinical_report_template_layout_config
+                FROM oh_id.hospital_document_template_settings s
+                LEFT JOIN oh_id.clinical_document_templates rx_tmpl ON s.rx_template_id = rx_tmpl.id
+                LEFT JOIN oh_id.clinical_document_templates rep_tmpl ON s.clinical_report_template_id = rep_tmpl.id
+                WHERE s.hospital_id = %s;
+            """, (hospital_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+
+            # Fallback if not configured yet
+            return {
+                "hospital_id": hospital_id,
+                "rx_template_id": "tmpl_rx_classic_hospital",
+                "rx_template_version": 1,
+                "rx_template_name": "Classic Hospital Rx",
+                "clinical_report_template_id": "tmpl_rep_classic_hospital",
+                "clinical_report_template_version": 1,
+                "clinical_report_template_name": "Classic Hospital Clinical Report",
+                "show_hospital_logo": True,
+                "custom_header_text": None,
+                "custom_footer_notes": None,
+                "updated_by": "system_default"
+            }
+
+    def update_hospital_document_template_settings(
+        self,
+        hospital_id: str,
+        rx_template_id: Optional[str] = None,
+        clinical_report_template_id: Optional[str] = None,
+        custom_header_text: Optional[str] = None,
+        custom_footer_notes: Optional[str] = None,
+        show_hospital_logo: Optional[bool] = None,
+        updated_by: str = "hospital_admin"
+    ) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            # 1. Validate templates exist and match expected types
+            rx_ver = 1
+            if rx_template_id:
+                cur.execute(
+                    "SELECT version FROM oh_id.clinical_document_templates WHERE id = %s AND document_type = 'PRESCRIPTION';",
+                    (rx_template_id,)
+                )
+                rx_r = cur.fetchone()
+                if not rx_r:
+                    raise ValueError(f"Prescription template '{rx_template_id}' not found or inactive.")
+                rx_ver = rx_r.get("version") or 1
+
+            rep_ver = 1
+            if clinical_report_template_id:
+                cur.execute(
+                    "SELECT version FROM oh_id.clinical_document_templates WHERE id = %s AND document_type = 'CLINICAL_REPORT';",
+                    (clinical_report_template_id,)
+                )
+                rep_r = cur.fetchone()
+                if not rep_r:
+                    raise ValueError(f"Clinical report template '{clinical_report_template_id}' not found or inactive.")
+                rep_ver = rep_r.get("version") or 1
+
+            # 2. Upsert
+            cur.execute("""
+                INSERT INTO oh_id.hospital_document_template_settings (
+                    hospital_id, rx_template_id, rx_template_version,
+                    clinical_report_template_id, clinical_report_template_version,
+                    custom_header_text, custom_footer_notes, show_hospital_logo,
+                    updated_by, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, TRUE), %s, CURRENT_TIMESTAMP
+                ) ON CONFLICT (hospital_id) DO UPDATE SET
+                    rx_template_id = COALESCE(EXCLUDED.rx_template_id, oh_id.hospital_document_template_settings.rx_template_id),
+                    rx_template_version = COALESCE(EXCLUDED.rx_template_version, oh_id.hospital_document_template_settings.rx_template_version),
+                    clinical_report_template_id = COALESCE(EXCLUDED.clinical_report_template_id, oh_id.hospital_document_template_settings.clinical_report_template_id),
+                    clinical_report_template_version = COALESCE(EXCLUDED.clinical_report_template_version, oh_id.hospital_document_template_settings.clinical_report_template_version),
+                    custom_header_text = COALESCE(EXCLUDED.custom_header_text, oh_id.hospital_document_template_settings.custom_header_text),
+                    custom_footer_notes = COALESCE(EXCLUDED.custom_footer_notes, oh_id.hospital_document_template_settings.custom_footer_notes),
+                    show_hospital_logo = COALESCE(EXCLUDED.show_hospital_logo, oh_id.hospital_document_template_settings.show_hospital_logo),
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (
+                hospital_id,
+                rx_template_id or "tmpl_rx_classic_hospital",
+                rx_ver,
+                clinical_report_template_id or "tmpl_rep_classic_hospital",
+                rep_ver,
+                custom_header_text,
+                custom_footer_notes,
+                show_hospital_logo,
+                updated_by
+            ))
+
+            # Audit log
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, created_at
+                ) VALUES (
+                    %s, %s, %s, 'HOSPITAL_TEMPLATE_SETTINGS_UPDATED', 'hospital', %s, %s::jsonb, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:12]}",
+                updated_by,
+                updated_by,
+                hospital_id,
+                json.dumps({
+                    "rx_template_id": rx_template_id,
+                    "clinical_report_template_id": clinical_report_template_id,
+                    "updated_by": updated_by
+                })
+            ))
+
+        return self.get_hospital_document_template_settings(hospital_id)
+
+    def update_template_status(self, template_id: str, is_active: bool, updated_by: str) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.clinical_document_templates
+                SET is_active = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING *;
+            """, (is_active, template_id))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Template '{template_id}' not found.")
+
+            # Audit
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, created_at
+                ) VALUES (
+                    %s, %s, %s, 'TEMPLATE_STATUS_CHANGED', 'clinical_document_template', %s, %s::jsonb, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:12]}",
+                updated_by,
+                updated_by,
+                template_id,
+                json.dumps({"is_active": is_active, "updated_by": updated_by})
+            ))
+            return dict(row)
+
+    def set_default_template(self, template_id: str, updated_by: str) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            # 1. Find template type
+            cur.execute("SELECT id, document_type, name FROM oh_id.clinical_document_templates WHERE id = %s;", (template_id,))
+            target = cur.fetchone()
+            if not target:
+                raise ValueError(f"Template '{template_id}' not found.")
+
+            doc_type = target["document_type"]
+
+            # 2. Reset others of same document_type
+            cur.execute(
+                "UPDATE oh_id.clinical_document_templates SET is_default = FALSE WHERE document_type = %s;",
+                (doc_type,)
+            )
+
+            # 3. Set this as default
+            cur.execute(
+                "UPDATE oh_id.clinical_document_templates SET is_default = TRUE, is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING *;",
+                (template_id,)
+            )
+            row = cur.fetchone()
+
+            # Audit
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, created_at
+                ) VALUES (
+                    %s, %s, %s, 'TEMPLATE_SET_DEFAULT', 'clinical_document_template', %s, %s::jsonb, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:12]}",
+                updated_by,
+                updated_by,
+                template_id,
+                json.dumps({"document_type": doc_type, "template_id": template_id, "updated_by": updated_by})
+            ))
+            return dict(row)
+
+    def publish_template_version(self, template_id: str, updated_by: str) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.clinical_document_templates
+                SET version = version + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING *;
+            """, (template_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Template '{template_id}' not found.")
+            return dict(row)
+
+    def get_hospital_template_usage_stats(self) -> Dict[str, Any]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT s.rx_template_id AS template_id, COUNT(*) AS hospital_count
+                FROM oh_id.hospital_document_template_settings s
+                WHERE s.rx_template_id IS NOT NULL
+                GROUP BY s.rx_template_id;
+            """)
+            rx_counts = {r["template_id"]: r["hospital_count"] for r in cur.fetchall()}
+
+            cur.execute("""
+                SELECT s.clinical_report_template_id AS template_id, COUNT(*) AS hospital_count
+                FROM oh_id.hospital_document_template_settings s
+                WHERE s.clinical_report_template_id IS NOT NULL
+                GROUP BY s.clinical_report_template_id;
+            """)
+            rep_counts = {r["template_id"]: r["hospital_count"] for r in cur.fetchall()}
+
+            return {
+                "prescription_template_usage": rx_counts,
+                "clinical_report_template_usage": rep_counts
+            }
+
+    def get_consultation_report_detail(self, consultation_id: str) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM oh_id.vw_consultation_reports_full WHERE id = %s;
+            """, (consultation_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            rep = dict(row)
+            # Parse vitals and clinical JSON if needed
+            val_vitals = rep.get("vitals")
+            if isinstance(val_vitals, str):
+                try:
+                    rep["vitals"] = json.loads(val_vitals)
+                except Exception:
+                    rep["vitals"] = {}
+            return rep
+
 sp_repository = SPViewsRepository()
+
 
 
 

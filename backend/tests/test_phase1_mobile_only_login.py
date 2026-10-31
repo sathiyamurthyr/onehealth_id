@@ -72,7 +72,7 @@ def test_06_mobile_login_patient_succeeds():
     """Valid mobile number + password for Patient returns 200."""
     res = client.post("/api/v1/auth/login", json={
         "username": "9840199999",
-        "password": "patient123"
+        "password": "password123"
     })
     assert res.status_code == 200
     data = res.json()

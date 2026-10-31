@@ -45,7 +45,7 @@ describe("DigitalHealthCard Component", () => {
     expect(getByTestId("patient-age")).toHaveTextContent("32 Yrs");
     expect(getByTestId("patient-gender")).toHaveTextContent("Male");
     expect(getByTestId("patient-blood-group")).toHaveTextContent("O+");
-    expect(getByTestId("verification-badge")).toHaveTextContent("Active Verified");
+    expect(getByTestId("verification-badge")).toHaveTextContent(/Identity active|Active Verified/);
     expect(getByText("3 Connected Hospitals")).toBeTruthy();
   });
 

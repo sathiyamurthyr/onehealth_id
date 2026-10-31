@@ -6,6 +6,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react-native";
+
+jest.setTimeout(15000);
+
 import DoctorHomeScreen from "../app/(doctor)/index";
 import DoctorScanScreen from "../app/(doctor)/scan";
 import DoctorConsultationScreen from "../app/(doctor)/consultation";

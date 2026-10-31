@@ -80,7 +80,6 @@ export default function PatientHomeScreen() {
           name: user.name || user.full_name || "Alice Smith",
           gender: "Female",
           blood_group: "O+",
-          age: 32,
           dob: "1994-01-01",
           verification_status: "VERIFIED_ACTIVE",
           facilities_count: 2,
@@ -133,14 +132,26 @@ export default function PatientHomeScreen() {
 
   const patientDisplayName = user?.name || user?.full_name || cardData?.name || "Alice Smith";
 
+  type ServiceBadgeType = "success" | "primary" | "warning" | "info";
+
   // 6 Responsive Healthcare Services Grid
-  const healthcareServices = [
+  const healthcareServices: Array<{
+    title: string;
+    badge: string;
+    badgeType: ServiceBadgeType;
+    desc: string;
+    icon: React.ReactNode;
+    iconBg: string;
+    route?: string;
+    onPress?: () => void;
+    testID: string;
+  }> = [
     {
       title: "Appointments",
       badge: "2 Upcoming",
-      badgeType: "success" as const,
+      badgeType: "success",
       desc: "View upcoming appointments and OPD queue status",
-      icon: <Calendar size={22} color="#2563EB" />,
+      icon: <Calendar size={16} color="#2563EB" />,
       iconBg: "#EFF6FF",
       route: "/(patient)/appointments",
       testID: "nav-appointments",
@@ -148,9 +159,9 @@ export default function PatientHomeScreen() {
     {
       title: "Prescriptions",
       badge: "3 Active",
-      badgeType: "primary" as const,
+      badgeType: "primary",
       desc: "Doctor-prescribed medications with dosage schedule",
-      icon: <Pill size={22} color="#9333EA" />,
+      icon: <Pill size={16} color="#9333EA" />,
       iconBg: "#FAF5FF",
       route: "/(patient)/prescriptions",
       testID: "nav-prescriptions",
@@ -158,9 +169,9 @@ export default function PatientHomeScreen() {
     {
       title: "Health Records",
       badge: "Updated",
-      badgeType: "success" as const,
+      badgeType: "success",
       desc: "Consultation history, lab reports and diagnostic records",
-      icon: <Activity size={22} color="#16A34A" />,
+      icon: <FileText size={16} color="#16A34A" />,
       iconBg: "#F0FDF4",
       route: "/(patient)/timeline",
       testID: "nav-timeline",
@@ -168,9 +179,9 @@ export default function PatientHomeScreen() {
     {
       title: "Medical Documents",
       badge: "1 Pending",
-      badgeType: "warning" as const,
+      badgeType: "warning",
       desc: "Upload and view your medical documents",
-      icon: <UploadCloud size={22} color="#EA580C" />,
+      icon: <UploadCloud size={16} color="#EA580C" />,
       iconBg: "#FFF7ED",
       route: "/(patient)/upload",
       testID: "nav-upload-document",
@@ -178,9 +189,9 @@ export default function PatientHomeScreen() {
     {
       title: "My Hospitals",
       badge: "Connected",
-      badgeType: "info" as const,
+      badgeType: "primary",
       desc: "Manage your connected hospitals and care providers",
-      icon: <Building2 size={22} color="#DC2626" />,
+      icon: <Building2 size={16} color="#EF4444" />,
       iconBg: "#FEF2F2",
       onPress: () => setHospitalsVisible(true),
       testID: "nav-hospitals",
@@ -188,11 +199,11 @@ export default function PatientHomeScreen() {
     {
       title: "My Health Profile",
       badge: "Complete",
-      badgeType: "success" as const,
+      badgeType: "success",
       desc: "Personal details, allergies, medical history and more",
-      icon: <UserIcon size={22} color="#0D9488" />,
-      iconBg: "#F0FDFA",
-      onPress: () => setProfileModalVisible(true),
+      icon: <UserIcon size={16} color="#0891B2" />,
+      iconBg: "#ECFEFF",
+      route: "/(patient)/profile",
       testID: "nav-health-profile",
     },
   ];
@@ -217,9 +228,8 @@ export default function PatientHomeScreen() {
             <Image source={APP_ICON} style={styles.brandIcon} resizeMode="contain" />
             <View style={styles.brandTextGroup}>
               <Text style={styles.brandName}>OneHealth ID</Text>
-              <Text style={styles.brandTagline}>
-                One Digital Health Identity. A Connected Healthcare Journey.
-              </Text>
+              <Text style={styles.brandTagline}>One Digital Health Identity.</Text>
+              <Text style={styles.brandTagline}>A Connected Healthcare Journey.</Text>
             </View>
           </View>
 
@@ -241,10 +251,11 @@ export default function PatientHomeScreen() {
             {/* Patient Avatar Dropdown */}
             <TouchableOpacity
               style={styles.avatarButton}
-              onPress={() => setProfileModalVisible(true)}
+              onPress={() => router.push("/(patient)/profile" as any)}
               accessibilityRole="button"
               accessibilityLabel="Patient Profile Menu"
               activeOpacity={0.7}
+              testID="btn-patient-avatar"
             >
               <View style={styles.avatarCircle}>
                 <UserIcon size={16} color="#2563EB" />
@@ -254,27 +265,28 @@ export default function PatientHomeScreen() {
           </View>
         </View>
 
-        {/* PERSONALIZED GREETING & PROFILE ACTION PILL */}
-        <View style={styles.greetingRow}>
-          <View style={styles.greetingLeft}>
-            <Text style={styles.greetingPrefix}>Welcome back,</Text>
-            <Text style={styles.greetingName}>
-              {patientDisplayName} <Text style={{ fontSize: 20 }}>👋</Text>
-            </Text>
-            <Text style={styles.greetingSubtitle}>Your health journey, all in one place.</Text>
+        {/* WELCOME BACK GREETING & PROFILE ACTION ROW */}
+        <View style={styles.welcomeRow}>
+          <View style={styles.welcomeTextGroup}>
+            <Text style={styles.welcomeGreeting}>Welcome back,</Text>
+            <View style={styles.welcomeNameRow}>
+              <Text style={styles.welcomeName}>{patientDisplayName}</Text>
+              <Text style={styles.welcomeEmoji}>👋</Text>
+            </View>
+            <Text style={styles.welcomeSubtitle}>Your health journey, all in one place.</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.myProfilePill}
-            onPress={() => setProfileModalVisible(true)}
-            activeOpacity={0.8}
+            style={styles.myProfilePillButton}
+            onPress={() => router.push("/(patient)/profile" as any)}
             accessibilityRole="button"
             accessibilityLabel="My Profile"
-            testID="nav-my-profile-pill"
+            activeOpacity={0.8}
+            testID="btn-my-profile-pill"
           >
-            <UserIcon size={14} color="#2563EB" style={{ marginRight: 5 }} />
+            <UserIcon size={15} color="#2563EB" />
             <Text style={styles.myProfilePillText}>My Profile</Text>
-            <ArrowRight size={13} color="#2563EB" style={{ marginLeft: 4 }} />
+            <ArrowRight size={14} color="#2563EB" />
           </TouchableOpacity>
         </View>
 
@@ -325,43 +337,44 @@ export default function PatientHomeScreen() {
               accessibilityLabel={`${service.title}: ${service.desc}`}
             >
               <Card style={styles.serviceCard}>
-                <View style={styles.serviceCardTop}>
+                <View style={styles.serviceCardRow}>
                   <View style={[styles.serviceIconCircle, { backgroundColor: service.iconBg }]}>
                     {service.icon}
                   </View>
-                  <View
-                    style={[
-                      styles.serviceBadge,
-                      service.badgeType === "success" && styles.badgeSuccess,
-                      service.badgeType === "primary" && styles.badgePrimary,
-                      service.badgeType === "warning" && styles.badgeWarning,
-                      service.badgeType === "info" && styles.badgeInfo,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.serviceBadgeText,
-                        service.badgeType === "success" && styles.badgeTextSuccess,
-                        service.badgeType === "primary" && styles.badgeTextPrimary,
-                        service.badgeType === "warning" && styles.badgeTextWarning,
-                        service.badgeType === "info" && styles.badgeTextInfo,
-                      ]}
-                    >
-                      {service.badge}
-                    </Text>
+                  <View style={styles.serviceTextGroup}>
+                    <View style={styles.serviceTitleBadgeRow}>
+                      <Text style={styles.serviceTitle} numberOfLines={1}>
+                        {service.title}
+                      </Text>
+                      <View
+                        style={[
+                          styles.serviceBadge,
+                          service.badgeType === "success" && styles.badgeSuccess,
+                          service.badgeType === "primary" && styles.badgePrimary,
+                          service.badgeType === "warning" && styles.badgeWarning,
+                          service.badgeType === "info" && styles.badgeInfo,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.serviceBadgeText,
+                            service.badgeType === "success" && styles.badgeTextSuccess,
+                            service.badgeType === "primary" && styles.badgeTextPrimary,
+                            service.badgeType === "warning" && styles.badgeTextWarning,
+                            service.badgeType === "info" && styles.badgeTextInfo,
+                          ]}
+                        >
+                          {service.badge}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.serviceDescRow}>
+                      <Text style={styles.serviceDesc} numberOfLines={2}>
+                        {service.desc}
+                      </Text>
+                      <ChevronRight size={13} color="#94A3B8" style={{ marginTop: 2 }} />
+                    </View>
                   </View>
-                </View>
-
-                <View style={styles.serviceCardBottom}>
-                  <View style={styles.serviceTitleRow}>
-                    <Text style={styles.serviceTitle} numberOfLines={1}>
-                      {service.title}
-                    </Text>
-                    <ChevronRight size={15} color="#94A3B8" />
-                  </View>
-                  <Text style={styles.serviceDesc} numberOfLines={2}>
-                    {service.desc}
-                  </Text>
                 </View>
               </Card>
             </TouchableOpacity>
@@ -377,7 +390,7 @@ export default function PatientHomeScreen() {
           accessibilityLabel="Privacy and Security details"
         >
           <View style={styles.privacyIconCircle}>
-            <ShieldCheck size={22} color="#16A34A" />
+            <ShieldCheck size={20} color="#16A34A" />
           </View>
           <View style={styles.privacyTextCol}>
             <Text style={styles.privacyTitle}>Privacy & Security</Text>
@@ -385,11 +398,8 @@ export default function PatientHomeScreen() {
               Your health data is protected with advanced security encryption and strict access controls.
             </Text>
           </View>
-          <ChevronRight size={18} color="#94A3B8" />
+          <ChevronRight size={18} color="#16A34A" />
         </TouchableOpacity>
-
-        {/* Bottom Scroll Padding */}
-        <View style={{ height: 80 }} />
       </ScrollView>
 
       {/* FIXED MOBILE BOTTOM NAVIGATION BAR */}
@@ -400,9 +410,9 @@ export default function PatientHomeScreen() {
           accessibilityRole="tab"
           accessibilityLabel="Home tab (active)"
         >
-          <View style={styles.activeTabIndicator} />
           <Home size={22} color="#2563EB" strokeWidth={2.5} />
           <Text style={styles.navTabActiveLabel}>Home</Text>
+          <View style={styles.activeTabIndicator} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -430,9 +440,10 @@ export default function PatientHomeScreen() {
         <TouchableOpacity
           style={styles.navTabItem}
           activeOpacity={0.8}
-          onPress={() => setProfileModalVisible(true)}
+          onPress={() => router.push("/(patient)/profile" as any)}
           accessibilityRole="tab"
           accessibilityLabel="Profile tab"
+          testID="tab-profile"
         >
           <UserIcon size={22} color="#64748B" />
           <Text style={styles.navTabLabel}>Profile</Text>
@@ -602,8 +613,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingTop: 4,
+    paddingBottom: 76,
     maxWidth: 540,
     width: "100%",
     alignSelf: "center",
@@ -620,8 +631,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
-    marginBottom: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
   },
   brandLeftGroup: {
     flexDirection: "row",
@@ -630,24 +641,25 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   brandIcon: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    marginRight: 10,
+    marginRight: 8,
   },
   brandTextGroup: {
     flex: 1,
   },
   brandName: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
     color: "#0F172A",
     letterSpacing: -0.2,
   },
   brandTagline: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: "#64748B",
-    marginTop: 1,
+    marginTop: 0.5,
+    lineHeight: 14,
   },
   topActionsGroup: {
     flexDirection: "row",
@@ -669,7 +681,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -2,
     right: -2,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#EF4444",
     borderRadius: 8,
     width: 16,
     height: 16,
@@ -687,7 +699,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    padding: 3,
+    padding: 2,
     paddingRight: 6,
     borderRadius: 20,
     borderWidth: 1,
@@ -701,55 +713,53 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  greetingRow: {
+  welcomeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginVertical: 10,
+    marginTop: 6,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
-  greetingLeft: {
+  welcomeTextGroup: {
     flex: 1,
     marginRight: 10,
   },
-  greetingPrefix: {
+  welcomeGreeting: {
     fontSize: 13,
     color: "#64748B",
     fontWeight: "500",
   },
-  greetingName: {
-    fontSize: 21,
+  welcomeNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 1,
+  },
+  welcomeName: {
+    fontSize: 19,
     fontWeight: "800",
     color: "#0F172A",
     letterSpacing: -0.3,
   },
-  greetingSubtitle: {
-    fontSize: 12,
+  welcomeEmoji: {
+    fontSize: 18,
+    marginLeft: 4,
+  },
+  welcomeSubtitle: {
+    fontSize: 11.5,
     color: "#64748B",
     marginTop: 2,
   },
-  myProfilePill: {
+  myProfilePillButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#EFF6FF",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
+    borderColor: "#BFDBFE",
     paddingVertical: 7,
+    paddingHorizontal: 12,
     borderRadius: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 1,
-      },
-      web: {
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-      } as any,
-    }),
+    gap: 5,
   },
   myProfilePillText: {
     fontSize: 12,
@@ -757,25 +767,25 @@ const styles = StyleSheet.create({
     color: "#2563EB",
   },
   identityCardSection: {
-    marginVertical: 8,
+    marginVertical: 4,
   },
   servicesHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginTop: 16,
-    marginBottom: 10,
+    marginTop: 10,
+    marginBottom: 6,
   },
   servicesTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
     color: "#0F172A",
     letterSpacing: -0.2,
   },
   servicesSubtitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#64748B",
-    marginTop: 2,
+    marginTop: 1,
   },
   viewAllButton: {
     flexDirection: "row",
@@ -791,26 +801,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: 2,
   },
   serviceGridItem: {
     width: "48.5%",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   serviceCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 14,
+    padding: 8,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    height: 128,
-    justifyContent: "space-between",
+    minHeight: 82,
+    justifyContent: "center",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.04,
-        shadowRadius: 6,
+        shadowRadius: 4,
       },
       android: {
         elevation: 1,
@@ -820,22 +830,52 @@ const styles = StyleSheet.create({
       } as any,
     }),
   },
-  serviceCardTop: {
+  serviceCardRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  serviceIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    justifyContent: "center",
     alignItems: "center",
   },
+  serviceIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 6,
+  },
+  serviceTextGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  serviceTitleBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginBottom: 2,
+  },
+  serviceTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0F172A",
+    letterSpacing: -0.2,
+    flexShrink: 0,
+  },
   serviceBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    flexShrink: 0,
+  },
+  serviceDescRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  serviceDesc: {
+    fontSize: 9.5,
+    color: "#64748B",
+    lineHeight: 13,
+    flex: 1,
+    marginRight: 2,
   },
   badgeSuccess: {
     backgroundColor: "#F0FDF4",
@@ -865,27 +905,6 @@ const styles = StyleSheet.create({
   badgeTextInfo: {
     color: "#0891B2",
   },
-  serviceCardBottom: {
-    marginTop: 6,
-  },
-  serviceTitleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  serviceTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0F172A",
-    flex: 1,
-    marginRight: 4,
-  },
-  serviceDesc: {
-    fontSize: 10,
-    color: "#64748B",
-    marginTop: 2,
-    lineHeight: 14,
-  },
   privacySecurityBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -893,14 +912,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#DCFCE7",
     borderRadius: 16,
-    padding: 12,
-    marginTop: 8,
+    padding: 11,
+    marginTop: 6,
     marginBottom: 16,
   },
   privacyIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#DCFCE7",
     justifyContent: "center",
     alignItems: "center",
@@ -913,27 +932,30 @@ const styles = StyleSheet.create({
   privacyTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#15803D",
+    color: "#166534",
   },
   privacySubtitle: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: "#166534",
     marginTop: 1,
-    lineHeight: 15,
+    lineHeight: 14,
   },
   bottomNavContainer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 64,
+    maxWidth: 540,
+    width: "100%",
+    alignSelf: "center",
+    height: 60,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingBottom: Platform.OS === "ios" ? 12 : 4,
+    paddingBottom: Platform.OS === "ios" ? 10 : 2,
     ...Platform.select({
       ios: {
         shadowColor: "#000",
@@ -957,12 +979,11 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   activeTabIndicator: {
-    position: "absolute",
-    top: 0,
-    width: 36,
+    width: 32,
     height: 3,
     borderRadius: 2,
     backgroundColor: "#2563EB",
+    marginTop: 3,
   },
   navTabLabel: {
     fontSize: 10,

@@ -69,9 +69,11 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          if (onRotate) {
-            onRotate().catch(() => {});
-          }
+          setTimeout(() => {
+            if (onRotate) {
+              onRotate().catch(() => {});
+            }
+          }, 0);
           return autoRotateSeconds;
         }
         return prev - 1;
@@ -145,10 +147,13 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
         </View>
 
         <View style={styles.verifiedBadge} testID="verification-badge">
-          <Check size={12} color="#FFFFFF" strokeWidth={3} style={{ marginRight: 4 }} />
+          <CheckCircle2 size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
           <Text style={styles.verifiedBadgeText}>
-            {cardData?.verification_status === "VERIFIED_ACTIVE" ? "Active Verified" : "Verified"}
+            {cardData?.verification_status === "VERIFIED_ACTIVE" || isVerified
+              ? "Verified"
+              : "Pending"}
           </Text>
+          <Text style={styles.accessibleBadgeHelper}>Identity active</Text>
         </View>
       </View>
 
@@ -402,7 +407,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   brandGroup: {
     flexDirection: "row",
@@ -433,22 +438,30 @@ const styles = StyleSheet.create({
   verifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16A34A",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    backgroundColor: "#059669",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
     borderRadius: 14,
   },
   verifiedBadgeText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700",
     letterSpacing: 0.2,
+  },
+  accessibleBadgeHelper: {
+    height: 0,
+    width: 0,
+    opacity: 0,
+    fontSize: 1,
   },
   cardBodyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingBottom: 14,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.08)",
   },
@@ -457,19 +470,19 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   patientName: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.2,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   ohidRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   ohidText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: "700",
     color: "#38BDF8",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
@@ -481,14 +494,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 8,
   },
   demoItem: {
     marginRight: 8,
   },
   demoLabel: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: "#94A3B8",
     textTransform: "uppercase",
     fontWeight: "600",
@@ -505,7 +518,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   bloodValue: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: "700",
     color: "#F87171",
   },
@@ -513,7 +526,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
-    padding: 6,
+    padding: 5,
     ...Platform.select({
       ios: {
         shadowColor: "#000",
@@ -535,7 +548,7 @@ const styles = StyleSheet.create({
   enlargeRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 3,
   },
   enlargeText: {
     fontSize: 9,
@@ -546,7 +559,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 12,
+    backgroundColor: "rgba(10, 25, 47, 0.65)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginTop: 10,
   },
   stripGuideCol: {
     flex: 1,
@@ -601,23 +620,15 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   accessibleAuditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.04)",
+    height: 0,
+    opacity: 0,
+    overflow: "hidden",
   },
   accessibleFacilityText: {
-    fontSize: 9,
-    color: "rgba(255, 255, 255, 0.4)",
-    fontWeight: "500",
+    fontSize: 1,
   },
   accessibleTokenText: {
-    fontSize: 8,
-    color: "rgba(255, 255, 255, 0.25)",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    fontSize: 1,
   },
   modalBackdrop: {
     flex: 1,

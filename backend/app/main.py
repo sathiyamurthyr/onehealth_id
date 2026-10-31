@@ -21,7 +21,8 @@ from backend.app.routers import (
     global_country, global_developer, global_telehealth, global_wearables,
     global_payer, global_localization, global_research,
     document_ocr,
-    crypto_handshake
+    crypto_handshake,
+    clinical_templates
 )
 
 from backend.app.core.middleware import SecurityHeadersMiddleware
@@ -101,6 +102,7 @@ api_v1.include_router(ai_knowledge.router)
 api_v1.include_router(ai_agents.router)
 api_v1.include_router(document_ocr.router)
 api_v1.include_router(crypto_handshake.router)
+api_v1.include_router(clinical_templates.router)
 
 # Phase 7 Network Ecosystem Routers
 api_v1.include_router(network_onboarding.router)
@@ -173,6 +175,7 @@ app.include_router(ai_knowledge.router)
 app.include_router(ai_agents.router)
 app.include_router(document_ocr.router)
 app.include_router(crypto_handshake.router)
+app.include_router(clinical_templates.router)
 
 # Phase 7 Network Ecosystem Routers on Root
 app.include_router(network_onboarding.router)

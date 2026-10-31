@@ -5,6 +5,7 @@
  */
 
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import { UserProfile } from "../../types/auth";
 
 const TOKEN_KEY = "oh_mobile_jwt";
@@ -21,7 +22,15 @@ const PIN_LOCKOUT_UNTIL_KEY = "oh_mobile_pin_lockout_until";
 const inMemoryCache: Record<string, string> = {};
 
 class SecureSessionStore {
+  private isWeb(): boolean {
+    return (
+      Platform.OS === "web" ||
+      (typeof window !== "undefined" && typeof window.localStorage !== "undefined")
+    );
+  }
+
   private isNativeAvailable(): boolean {
+    if (this.isWeb()) return false;
     return (
       typeof SecureStore !== "undefined" &&
       typeof SecureStore.setItemAsync === "function"
@@ -30,6 +39,14 @@ class SecureSessionStore {
 
   public async setItem(key: string, value: string): Promise<void> {
     inMemoryCache[key] = value;
+    if (this.isWeb()) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // quota exceeded or private mode fallback
+      }
+      return;
+    }
     try {
       if (this.isNativeAvailable()) {
         await SecureStore.setItemAsync(key, value, {
@@ -42,6 +59,16 @@ class SecureSessionStore {
   }
 
   public async getItem(key: string): Promise<string | null> {
+    if (this.isWeb()) {
+      try {
+        const val = window.localStorage.getItem(key);
+        if (val !== null && val !== undefined) return val;
+      } catch {
+        // storage disabled or private mode
+      }
+      return inMemoryCache[key] ?? null;
+    }
+
     try {
       if (this.isNativeAvailable()) {
         const val = await SecureStore.getItemAsync(key);
@@ -55,6 +82,14 @@ class SecureSessionStore {
 
   public async deleteItem(key: string): Promise<void> {
     delete inMemoryCache[key];
+    if (this.isWeb()) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // fallback
+      }
+      return;
+    }
     try {
       if (this.isNativeAvailable()) {
         await SecureStore.deleteItemAsync(key);
@@ -166,9 +201,9 @@ class SecureSessionStore {
     await this.deleteItem(TOKEN_KEY);
     await this.deleteItem(HOSPITAL_KEY);
     await this.deleteItem(USER_KEY);
-    for (const k of Object.keys(inMemoryCache)) {
-      delete inMemoryCache[k];
-    }
+    delete inMemoryCache[TOKEN_KEY];
+    delete inMemoryCache[HOSPITAL_KEY];
+    delete inMemoryCache[USER_KEY];
   }
 }
 

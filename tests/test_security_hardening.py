@@ -46,7 +46,7 @@ def receptionist_token():
 
 @pytest.fixture(scope="module")
 def patient_token():
-    res = client.post("/api/v1/auth/login", json={"username": "patient", "password": "patient123"})
+    res = client.post("/api/v1/auth/login", json={"username": "9840199999", "password": "password123"})
     assert res.status_code == 200, f"Patient login failed: {res.text}"
     return res.json()["access_token"]
 

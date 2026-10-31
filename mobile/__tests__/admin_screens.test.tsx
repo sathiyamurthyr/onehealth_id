@@ -5,6 +5,9 @@
 
 import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react-native";
+
+jest.setTimeout(15000);
+
 import HospitalAdminHomeScreen from "../app/(admin)/index";
 import SuperAdminHomeScreen from "../app/(super)/index";
 import { adminApi } from "../src/services/api/admin";

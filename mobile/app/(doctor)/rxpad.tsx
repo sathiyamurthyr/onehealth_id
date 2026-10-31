@@ -6,7 +6,7 @@
  * clinical instructions, follow-up scheduling, and 4-digit digital signing PIN.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -29,14 +29,25 @@ import {
   AlertCircle,
   X,
   FileCheck,
+  Eye,
+  Layers,
 } from "lucide-react-native";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from "../../src/theme";
 import { Card } from "../../src/components/common/Card";
 import { doctorApi } from "../../src/services/api/doctor";
 import { PrescriptionDrugItem } from "../../src/types/doctor";
+import {
+  clinicalTemplatesApi,
+  HospitalDocumentTemplateSettings,
+} from "../../src/services/api/clinical_templates";
+import { PrescriptionTemplateRenderer } from "../../src/components/clinical_documents";
 
 export default function DoctorRxPadScreen() {
   const router = useRouter();
+
+  // Active Hospital Document Template State
+  const [templateSettings, setTemplateSettings] = useState<HospitalDocumentTemplateSettings | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // Patient Info
   const [patientId, setPatientId] = useState("p-standalone-01");
@@ -105,6 +116,12 @@ export default function DoctorRxPadScreen() {
     setDrugs((prev) => prev.filter((_, idx) => idx !== index));
   };
 
+  useEffect(() => {
+    clinicalTemplatesApi.getDoctorHospitalTemplates()
+      .then((settings) => setTemplateSettings(settings))
+      .catch((err) => console.log("Failed to hydrate hospital templates", err));
+  }, []);
+
   const handleSignPrescription = async () => {
     if (doctorPin.length < 4) {
       setPinError("Please enter your 4-digit digital signing PIN.");
@@ -122,6 +139,7 @@ export default function DoctorRxPadScreen() {
         follow_up_days: parseInt(followUpDays, 10) || 14,
         requires_pin: true,
         verification_pin: doctorPin,
+        template_id: templateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
         items: drugs,
       };
 
@@ -163,6 +181,27 @@ export default function DoctorRxPadScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Active Hospital Prescription Template Banner */}
+        <View style={styles.activeTemplateBanner}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Layers size={16} color={COLORS.primary[700]} />
+            <View>
+              <Text style={styles.activeTemplateLabel}>ACTIVE HOSPITAL RX TEMPLATE</Text>
+              <Text style={styles.activeTemplateName}>
+                {templateSettings?.rx_template_name || "Classic Hospital Rx"}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.previewTmplBtn}
+            onPress={() => setShowPreviewModal(true)}
+            testID="btn-preview-rxpad-template"
+          >
+            <Eye size={13} color={COLORS.primary[700]} style={{ marginRight: 4 }} />
+            <Text style={styles.previewTmplBtnText}>Preview</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Patient Selection Card */}
         <Card style={styles.formCard}>
           <Text style={styles.fieldLabel}>PATIENT FULL NAME</Text>
@@ -401,6 +440,55 @@ export default function DoctorRxPadScreen() {
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Live Rx Template Preview Modal */}
+      <Modal
+        visible={showPreviewModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPreviewModal(false)}
+        testID="doctor-rx-template-preview-modal"
+      >
+        <View style={styles.previewBackdrop}>
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeaderRow}>
+              <View>
+                <Text style={styles.previewTitle}>
+                  {templateSettings?.rx_template_name || "Classic Hospital Rx"}
+                </Text>
+                <Text style={styles.previewSub}>
+                  Official Layout • v{templateSettings?.rx_template_version || 1}.0
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowPreviewModal(false)}>
+                <X size={20} color={COLORS.neutral[600]} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: "85%", padding: 10 }}>
+              <PrescriptionTemplateRenderer
+                prescription={{
+                  id: "rx-preview-live",
+                  patient_name: patientName || "Karthik Raman",
+                  patient_id: patientId,
+                  onehealth_id: "OHID-IND-2026-0001",
+                  diagnosis,
+                  items: drugs,
+                  advice: doctorNotes,
+                  follow_up_date: `${followUpDays} days`,
+                  doctor_name: "Dr. Senthil Nathan",
+                  hospital_name: templateSettings?.hospital_name || "Kedar Hospital",
+                  template_id: templateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
+                  template_name: templateSettings?.rx_template_name || "Classic Hospital Rx",
+                }}
+                customHeader={templateSettings?.custom_header_text}
+                customFooter={templateSettings?.custom_footer_notes}
+                showHospitalLogo={templateSettings?.show_hospital_logo ?? true}
+              />
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -731,5 +819,77 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: "700",
     fontSize: 13,
+  },
+  activeTemplateBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary[50],
+    borderWidth: 1,
+    borderColor: COLORS.primary[200],
+    borderRadius: RADIUS.md,
+    padding: 10,
+    marginBottom: SPACING.base,
+  },
+  activeTemplateLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: COLORS.primary[800],
+    letterSpacing: 0.5,
+  },
+  activeTemplateName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary[900],
+    marginTop: 1,
+  },
+  previewTmplBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.primary[300],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  previewTmplBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary[700],
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 12,
+  },
+  previewCard: {
+    width: "100%",
+    maxWidth: 680,
+    maxHeight: "92%",
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+  },
+  previewHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.neutral[200],
+    backgroundColor: COLORS.neutral[50],
+  },
+  previewTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  previewSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
   },
 });

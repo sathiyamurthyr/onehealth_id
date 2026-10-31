@@ -228,6 +228,64 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
       expect(getByText("Welcome to OH-ID")).toBeTruthy();
       expect(getByTestId("mobile-input")).toBeTruthy();
     });
+
+    it("prompts user to set up 6-digit PIN on password login when PIN is not configured", async () => {
+      // Setup mock where PIN is not configured yet
+      (useAuth as jest.Mock).mockReturnValue({
+        user: null,
+        token: null,
+        isLoading: false,
+        isAuthenticated: false,
+        activeRole: null,
+        availableRoles: [],
+        biometricCapability: { hasHardware: false, isEnrolled: false, biometricType: "None" },
+        isBiometricEnabled: false,
+        hasConfiguredPin: false,
+        rememberedPhone: null,
+        rememberedName: null,
+        login: mockLogin.mockResolvedValueOnce({
+          success: true,
+          defaultRoute: "/(patient)",
+        }),
+        loginWithBiometrics: mockLoginWithBiometrics,
+        loginWithPin: mockLoginWithPin,
+        setupAppPin: mockSetupAppPin.mockResolvedValueOnce({ success: true }),
+        clearAppPin: jest.fn(),
+        logout: jest.fn(),
+        switchRole: jest.fn(),
+        setBiometricPreference: jest.fn(),
+        refreshSession: jest.fn(),
+      });
+
+      const { getByTestId, getByText } = await render(<LoginScreen />);
+
+      // Enter mobile
+      const mobileInput = getByTestId("mobile-input");
+      await fireEvent.changeText(mobileInput, "9884240519");
+      await fireEvent.press(getByTestId("continue-button"));
+
+      // Enter password & submit
+      const passwordInput = getByTestId("password-input");
+      await fireEvent.changeText(passwordInput, "validpassword");
+      await fireEvent.press(getByTestId("login-button"));
+
+      // Verify PIN setup prompt is rendered
+      await waitFor(() => {
+        expect(getByText("Set Up Quick PIN")).toBeTruthy();
+        expect(getByTestId("setup-pin-input")).toBeTruthy();
+        expect(getByTestId("setup-pin-confirm")).toBeTruthy();
+      });
+
+      // Enter matching PINs
+      await fireEvent.changeText(getByTestId("setup-pin-input"), "123456");
+      await fireEvent.changeText(getByTestId("setup-pin-confirm"), "123456");
+      await fireEvent.press(getByTestId("save-pin-button"));
+
+      await waitFor(() => {
+        expect(mockSetupAppPin).toHaveBeenCalledWith("123456");
+        expect(mockReplace).toHaveBeenCalledWith("/(patient)");
+      });
+    });
   });
 });
 

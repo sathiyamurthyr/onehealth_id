@@ -114,6 +114,27 @@ function RouteGuardNavigator() {
         }}
       />
       <Stack.Screen
+        name="(patient)/profile"
+        options={{
+          title: "Personal Profile",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(patient)/timeline"
+        options={{
+          title: "Health Timeline",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(patient)/family_member"
+        options={{
+          title: "Family Member Profile",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="(doctor)/index"
         options={{
           title: "Doctor Workspace",

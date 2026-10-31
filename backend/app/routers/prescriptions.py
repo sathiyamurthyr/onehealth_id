@@ -43,6 +43,7 @@ class CreatePrescriptionRequest(BaseModel):
     validity_type: Optional[str] = "CALENDAR_DAYS"
     requires_pin: bool = False
     verification_pin: Optional[str] = None
+    template_id: Optional[str] = None
     items: List[PrescriptionItemPayload] = Field(default_factory=list)
 
 class VerifyPrescriptionRequest(BaseModel):
@@ -182,6 +183,7 @@ def create_prescription(
             visit_id=payload.visit_id,
             items=[item.model_dump() for item in payload.items],
             actor_id=actor_name,
+            template_id=payload.template_id,
             status="SIGNED"
         )
 

@@ -6,7 +6,7 @@
  * digital prescriptions, and cryptographically signs with doctor's 4-digit PIN.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -32,6 +32,8 @@ import {
   ShieldCheck,
   AlertCircle,
   X,
+  Eye,
+  Layers,
 } from "lucide-react-native";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from "../../src/theme";
 import { Card } from "../../src/components/common/Card";
@@ -42,6 +44,14 @@ import {
   PrescriptionDrugItem,
   ConsultationPayload,
 } from "../../src/types/doctor";
+import {
+  clinicalTemplatesApi,
+  HospitalDocumentTemplateSettings,
+} from "../../src/services/api/clinical_templates";
+import {
+  ClinicalReportTemplateRenderer,
+  PrescriptionTemplateRenderer,
+} from "../../src/components/clinical_documents";
 
 export default function DoctorConsultationScreen() {
   const router = useRouter();
@@ -91,6 +101,16 @@ export default function DoctorConsultationScreen() {
   const [newDrugFreq, setNewDrugFreq] = useState("Twice daily (1-0-1)");
   const [newDrugDuration, setNewDrugDuration] = useState("5");
 
+  // Active Hospital Document Template State
+  const [templateSettings, setTemplateSettings] = useState<HospitalDocumentTemplateSettings | null>(null);
+  const [previewModalType, setPreviewModalType] = useState<"REPORT" | "RX" | null>(null);
+
+  useEffect(() => {
+    clinicalTemplatesApi.getDoctorHospitalTemplates()
+      .then((settings) => setTemplateSettings(settings))
+      .catch((err) => console.log("Failed to hydrate hospital templates", err));
+  }, []);
+
   // Follow-up Days
   const [followUpDays, setFollowUpDays] = useState("5");
 
@@ -133,7 +153,7 @@ export default function DoctorConsultationScreen() {
       setSubmitting(true);
       setPinError(null);
 
-      const payload: ConsultationPayload = {
+      const payload: any = {
         diagnosis: primaryDiagnosis,
         symptoms,
         clinical_notes: clinicalNotes,
@@ -141,6 +161,8 @@ export default function DoctorConsultationScreen() {
         diagnoses: [
           { description: primaryDiagnosis, tier: "PRIMARY" },
         ],
+        report_template_id: templateSettings?.clinical_report_template_id || "tmpl_rep_classic_hospital",
+        rx_template_id: templateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
         prescription: {
           items: drugs,
           doctor_notes: "Take medications strictly as prescribed.",
@@ -204,6 +226,43 @@ export default function DoctorConsultationScreen() {
             </View>
           </View>
         </Card>
+
+        {/* Active Hospital Templates Banner */}
+        <View style={styles.activeTemplatesBar}>
+          <View style={styles.activeTmplPill}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.activeTmplLabel}>ACTIVE REPORT TEMPLATE</Text>
+              <Text style={styles.activeTmplName}>
+                {templateSettings?.clinical_report_template_name || "Classic Hospital Clinical Report"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.previewIconBtn}
+              onPress={() => setPreviewModalType("REPORT")}
+              testID="btn-preview-report-template"
+            >
+              <Eye size={12} color={COLORS.primary[700]} />
+              <Text style={styles.previewIconText}>Preview</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.activeTmplPill}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.activeTmplLabel}>ACTIVE RX TEMPLATE</Text>
+              <Text style={styles.activeTmplName}>
+                {templateSettings?.rx_template_name || "Classic Hospital Rx"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.previewIconBtn}
+              onPress={() => setPreviewModalType("RX")}
+              testID="btn-preview-rx-template"
+            >
+              <Eye size={12} color={COLORS.primary[700]} />
+              <Text style={styles.previewIconText}>Preview</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Section 1: Objective Vitals Triage */}
         <View style={styles.section}>
@@ -522,6 +581,81 @@ export default function DoctorConsultationScreen() {
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Live Template Preview Modal */}
+      <Modal
+        visible={Boolean(previewModalType)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPreviewModalType(null)}
+        testID="doctor-consultation-preview-modal"
+      >
+        <View style={styles.previewBackdrop}>
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeaderRow}>
+              <View>
+                <Text style={styles.previewTitle}>
+                  {previewModalType === "REPORT"
+                    ? templateSettings?.clinical_report_template_name || "Classic Hospital Clinical Report"
+                    : templateSettings?.rx_template_name || "Classic Hospital Rx"}
+                </Text>
+                <Text style={styles.previewSub}>
+                  Official Encounter Document Layout
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setPreviewModalType(null)}>
+                <X size={20} color={COLORS.neutral[600]} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: "85%", padding: 10 }}>
+              {previewModalType === "REPORT" ? (
+                <ClinicalReportTemplateRenderer
+                  report={{
+                    id: "c-preview-encounter",
+                    patient_id: patientId,
+                    patient_name: patientName,
+                    onehealth_id: onehealthId,
+                    doctor_id: "doc-k-01",
+                    doctor_name: "Dr. Senthil Nathan",
+                    hospital_id: templateSettings?.hospital_id || "hosp-kedar",
+                    hospital_name: templateSettings?.hospital_name || "Kedar Hospital",
+                    diagnosis: primaryDiagnosis,
+                    symptoms,
+                    clinical_notes: clinicalNotes,
+                    vitals,
+                    template_id: templateSettings?.clinical_report_template_id || "tmpl_rep_classic_hospital",
+                    template_name: templateSettings?.clinical_report_template_name || "Classic Hospital Clinical Report",
+                    template_version: templateSettings?.clinical_report_template_version || 1,
+                    template_layout_config: templateSettings?.clinical_report_template_layout || {},
+                  }}
+                  customHeader={templateSettings?.custom_header_text}
+                  customFooter={templateSettings?.custom_footer_notes}
+                  showHospitalLogo={templateSettings?.show_hospital_logo ?? true}
+                />
+              ) : (
+                <PrescriptionTemplateRenderer
+                  prescription={{
+                    id: "rx-preview-encounter",
+                    patient_name: patientName,
+                    patient_id: patientId,
+                    onehealth_id: onehealthId,
+                    diagnosis: primaryDiagnosis,
+                    items: drugs,
+                    doctor_name: "Dr. Senthil Nathan",
+                    hospital_name: templateSettings?.hospital_name || "Kedar Hospital",
+                    template_id: templateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
+                    template_name: templateSettings?.rx_template_name || "Classic Hospital Rx",
+                  }}
+                  customHeader={templateSettings?.custom_header_text}
+                  customFooter={templateSettings?.custom_footer_notes}
+                  showHospitalLogo={templateSettings?.show_hospital_logo ?? true}
+                />
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -922,5 +1056,82 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: "700",
     fontSize: 13,
+  },
+  activeTemplatesBar: {
+    gap: 8,
+    marginBottom: SPACING.base,
+  },
+  activeTmplPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary[50],
+    borderWidth: 1,
+    borderColor: COLORS.primary[200],
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  activeTmplLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: COLORS.primary[800],
+    letterSpacing: 0.5,
+  },
+  activeTmplName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.primary[900],
+    marginTop: 1,
+  },
+  previewIconBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.primary[300],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+    gap: 3,
+  },
+  previewIconText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.primary[700],
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 12,
+  },
+  previewCard: {
+    width: "100%",
+    maxWidth: 680,
+    maxHeight: "92%",
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+  },
+  previewHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.neutral[200],
+    backgroundColor: COLORS.neutral[50],
+  },
+  previewTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  previewSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
   },
 });

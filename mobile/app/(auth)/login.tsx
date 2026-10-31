@@ -33,6 +33,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from "../../src/theme";
 import { Card } from "../../src/components/common/Card";
 import { useAuth } from "../../src/context/AuthContext";
+import { pinService } from "../../src/services/auth/pin_service";
 import {
   Phone,
   Lock,
@@ -170,7 +171,13 @@ export default function LoginScreen() {
     try {
       const res = await login(mobile.trim(), password);
       if (res.success) {
-        router.replace(res.defaultRoute as any);
+        const hasPin = hasConfiguredPin || (await pinService.hasConfiguredPin());
+        if (!hasPin && res.defaultRoute === "/(patient)") {
+          setPendingRoute(res.defaultRoute);
+          setStep("PIN_SETUP");
+        } else {
+          router.replace(res.defaultRoute as any);
+        }
       } else {
         setErrorMessage(res.error || "Authentication failed. Please verify your credentials.");
       }
