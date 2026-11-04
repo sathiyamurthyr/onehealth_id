@@ -1,7 +1,15 @@
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
-from backend.app.schemas.models import AppointmentCreate, AppointmentResponse, AppointmentStatusUpdate
+from datetime import date
+from backend.app.schemas.models import (
+    AppointmentCreate,
+    AppointmentResponse,
+    AppointmentStatusUpdate,
+    AppointmentRescheduleRequest,
+    AppointmentCancelRequest,
+    AppointmentUpdateRequest,
+)
 from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.response import success_response, error_response
 from backend.app.core.rbac import (
@@ -92,8 +100,22 @@ def create_appointment(
     validate_hospital_tenant_scope(user, target_hospital)
 
     # Validate double-booking and schedule availability
-    appt_date = payload.appointment_date or (payload.slot.split(" ")[0] if payload.slot and " " in payload.slot else None)
-    appt_time = payload.appointment_time or (payload.slot.split(" ", 1)[1] if payload.slot and " " in payload.slot else None)
+    today_str = date.today().isoformat()
+    if payload.appointment_date:
+        appt_date = payload.appointment_date
+        appt_time = payload.appointment_time or payload.slot or "10:00 AM"
+    elif payload.slot:
+        parts = payload.slot.strip().split(" ", 1)
+        if len(parts) == 2 and ("-" in parts[0] or "/" in parts[0]):
+            appt_date = parts[0]
+            appt_time = parts[1]
+        else:
+            appt_date = today_str
+            appt_time = payload.slot
+    else:
+        appt_date = today_str
+        appt_time = payload.appointment_time or "10:00 AM"
+
     if appt_date and appt_time:
         schedule_validation = sp_repository.validate_appointment_schedule(
             doctor_id=payload.doctor_id,
@@ -109,7 +131,7 @@ def create_appointment(
             )
 
     assigned_id = payload.id or f"appt-{str(uuid4())[:8]}"
-    slot_val = payload.slot or f"{payload.appointment_date or '2026-10-01'} {payload.appointment_time or '10:00 AM'}"
+    slot_val = payload.slot or f"{appt_date} {appt_time}"
 
     try:
         appt = sp_repository.book_appointment(
@@ -228,7 +250,8 @@ def update_appointment_status(
     update: AppointmentStatusUpdate,
     user: Dict[str, Any] = Depends(require_any_permission(
         "appointment.manage", "appointment.update", "appointment.checkin",
-        "clinical.consultation", "doctor.read", "hospital.update", "system.manage"
+        "clinical.consultation", "doctor.read", "hospital.update", "system.manage",
+        "patient.self.appointments"
     )),
 ):
     valid_statuses = ["scheduled", "confirmed", "checked_in", "in_progress", "completed", "cancelled", "no_show"]
@@ -242,9 +265,170 @@ def update_appointment_status(
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    validate_hospital_tenant_scope(user, appt.get("hospital_id"))
+    user_perms = user.get("permissions", [])
+    user_ref_id = user.get("user_ref_id") or user.get("id")
 
-    updated = sp_repository.update_appointment_status(appointment_id, update.status)
+    # Patient IDOR boundary: Patients can only change their own appointment status to 'cancelled'
+    if "patient.self.appointments" in user_perms and "appointment.manage" not in user_perms and "system.manage" not in user_perms:
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if appt.get("patient_id") != effective_patient_id and appt.get("patient_id") != user_ref_id:
+            raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to modify this appointment.")
+        if update.status != "cancelled":
+            raise HTTPException(status_code=403, detail="Forbidden: Patients may only cancel appointments.")
+    else:
+        validate_hospital_tenant_scope(user, appt.get("hospital_id"))
+
+    if update.status == "cancelled":
+        updated = sp_repository.cancel_appointment(
+            appointment_id=appointment_id,
+            reason=update.cancellation_reason or "Cancelled by user",
+            cancelled_by_name=user.get("name") or user.get("username", "Patient"),
+            cancelled_by_id=user_ref_id
+        )
+    else:
+        updated = sp_repository.update_appointment_status(appointment_id, update.status)
+
     if not updated:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return updated
+
+
+@router.post("/{appointment_id}/reschedule", response_model=AppointmentResponse)
+def reschedule_appointment_endpoint(
+    appointment_id: str,
+    payload: AppointmentRescheduleRequest,
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.manage", "appointment.update", "appointment.create",
+        "patient.self.appointments", "system.manage"
+    )),
+):
+    """
+    Reschedules an existing appointment to a new date and available time slot.
+    Checks concurrency and preserves audit history.
+    """
+    appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    user_perms = user.get("permissions", [])
+    user_ref_id = user.get("user_ref_id") or user.get("id")
+
+    # Patient IDOR check
+    if "patient.self.appointments" in user_perms and "appointment.manage" not in user_perms and "system.manage" not in user_perms:
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if appt.get("patient_id") != effective_patient_id and appt.get("patient_id") != user_ref_id:
+            raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to reschedule this appointment.")
+    else:
+        validate_hospital_tenant_scope(user, appt.get("hospital_id"))
+
+    try:
+        updated = sp_repository.reschedule_appointment(
+            appointment_id=appointment_id,
+            new_date=payload.new_date,
+            new_time=payload.new_time,
+            doctor_id=payload.doctor_id,
+            changed_by_name=user.get("name") or user.get("username", "Patient"),
+            changed_by_id=user_ref_id
+        )
+        log_security_event("APPOINTMENT_RESCHEDULED", actor_id=user.get("username"), resource=f"appointment:{appointment_id}", status="SUCCESS")
+        return updated
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Reschedule failed for appointment %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reschedule appointment. Please try again.")
+
+
+@router.post("/{appointment_id}/cancel", response_model=AppointmentResponse)
+def cancel_appointment_endpoint(
+    appointment_id: str,
+    payload: AppointmentCancelRequest,
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.manage", "appointment.update", "appointment.delete",
+        "patient.self.appointments", "system.manage"
+    )),
+):
+    """
+    Cancels an appointment with stated reason and records cancellation policy audit.
+    """
+    appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    user_perms = user.get("permissions", [])
+    user_ref_id = user.get("user_ref_id") or user.get("id")
+
+    # Patient IDOR check
+    if "patient.self.appointments" in user_perms and "appointment.manage" not in user_perms and "system.manage" not in user_perms:
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if appt.get("patient_id") != effective_patient_id and appt.get("patient_id") != user_ref_id:
+            raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to cancel this appointment.")
+    else:
+        validate_hospital_tenant_scope(user, appt.get("hospital_id"))
+
+    try:
+        updated = sp_repository.cancel_appointment(
+            appointment_id=appointment_id,
+            reason=payload.reason,
+            cancelled_by_name=user.get("name") or user.get("username", "Patient"),
+            cancelled_by_id=user_ref_id
+        )
+        log_security_event("APPOINTMENT_CANCELLED", actor_id=user.get("username"), resource=f"appointment:{appointment_id}", status="SUCCESS")
+        return updated
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Cancellation failed for appointment %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to cancel appointment. Please try again.")
+
+
+@router.put("/{appointment_id}", response_model=AppointmentResponse)
+def update_appointment_details_endpoint(
+    appointment_id: str,
+    payload: AppointmentUpdateRequest,
+    user: Dict[str, Any] = Depends(require_any_permission(
+        "appointment.manage", "appointment.update", "appointment.create",
+        "patient.self.appointments", "system.manage"
+    )),
+):
+    """
+    Updates permitted appointment details (Reason, Department, Doctor, Date, Time, Notes).
+    """
+    appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    user_perms = user.get("permissions", [])
+    user_ref_id = user.get("user_ref_id") or user.get("id")
+
+    # Patient IDOR check
+    if "patient.self.appointments" in user_perms and "appointment.manage" not in user_perms and "system.manage" not in user_perms:
+        pat = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        effective_patient_id = pat["id"] if pat else user_ref_id
+        if appt.get("patient_id") != effective_patient_id and appt.get("patient_id") != user_ref_id:
+            raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to edit this appointment.")
+    else:
+        validate_hospital_tenant_scope(user, appt.get("hospital_id"))
+
+    try:
+        updated = sp_repository.update_appointment_details(
+            appointment_id=appointment_id,
+            reason=payload.reason,
+            department_id=payload.department_id,
+            doctor_id=payload.doctor_id,
+            appointment_date=payload.appointment_date,
+            appointment_time=payload.appointment_time,
+            notes=payload.notes,
+            changed_by_name=user.get("name") or user.get("username", "Patient"),
+            changed_by_id=user_ref_id
+        )
+        log_security_event("APPOINTMENT_EDITED", actor_id=user.get("username"), resource=f"appointment:{appointment_id}", status="SUCCESS")
+        return updated
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error("Update failed for appointment %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update appointment. Please try again.")

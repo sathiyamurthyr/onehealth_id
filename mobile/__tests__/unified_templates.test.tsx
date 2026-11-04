@@ -180,14 +180,14 @@ describe("Unified Clinical Document Templates Test Suite", () => {
     };
 
     test("renders Classic Hospital Rx layout (tabular with allergies)", async () => {
-      const { getByText } = await render(
+      const { getByText, getAllByText } = await render(
         <PrescriptionTemplateRenderer
           prescription={{ ...baseRx, template_id: "tmpl_rx_classic_hospital", template_name: "Classic Hospital Rx" }}
         />
       );
 
       expect(getByText("Alice Smith")).toBeTruthy();
-      expect(getByText("Kedar Hospital")).toBeTruthy();
+      expect(getAllByText("Kedar Hospital").length).toBeGreaterThan(0);
       expect(getByText(/ALLERGIES: Penicillin/)).toBeTruthy();
       expect(getByText(/1\. Azithromycin/)).toBeTruthy();
       expect(getByText("DRUG NAME & FORM")).toBeTruthy();

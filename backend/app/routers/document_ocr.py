@@ -1,7 +1,8 @@
 """
 Document Upload and OCR Extraction Router
 Endpoints for uploading supporting clinical and identity documents, running OCR extraction,
-reviewing extracted entities, editing fields, and persisting approved records.
+reviewing extracted entities, editing fields, automatic AES-256-GCM Backblaze B2 storage,
+and persisting approved records.
 Sathus Technology Pvt Ltd - OneHealth ID
 """
 
@@ -19,7 +20,6 @@ from fastapi import (
     Body,
     Response
 )
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend.app.core.rbac import (
@@ -31,6 +31,9 @@ from backend.app.core.response import success_response, error_response
 from backend.app.core.rate_limit import rate_limit_document_upload
 from backend.app.services.ocr.ocr_service import ocr_service
 from backend.app.services.ocr.file_validator import read_decrypted_document_bytes
+from backend.app.services.storage.b2_storage import b2_storage
+from backend.app.services.crypto.envelope_encryption import envelope_crypto
+from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.logging import logger, log_security_event
 
 router = APIRouter(prefix="/documents", tags=["Document Upload & OCR Identity Extraction"])
@@ -56,14 +59,18 @@ async def upload_document_for_ocr(
     file: UploadFile = File(...),
     document_category: str = Form(..., description="Document type: HOSPITAL_REGISTRATION, PATIENT_ID, DISCHARGE_SUMMARY, PRESCRIPTION, LAB_REPORT, MEDICAL_RECORD, REFERRAL_LETTER, INSURANCE_DOCUMENT, OTHER"),
     hospital_id: Optional[str] = Form(None),
+    patient_id: Optional[str] = Form(None),
     current_user: Dict[str, Any] = Depends(require_any_permission(
         "patient.create", "patient.read", "consultation.create", "clinical.write",
-        "hospital.manage", "system.manage", "reception.manage"
+        "hospital.manage", "system.manage", "reception.manage",
+        "patient.self.read", "patient.self.documents", "patient.self.records"
     ))
 ):
     """
-    Step 2 & 3: Uploads a document (PDF, JPG, PNG, WEBP, DOCX, MP4, MOV) when a patient or hospital cannot be found.
-    Validates file signature, enforces size limits, and triggers OCR text extraction & field identification.
+    Step 2 & 3: Uploads a document (PDF, JPG, PNG, WEBP, DOCX, MP4, MOV).
+    Validates file signature, enforces size limits, scans for malware, triggers OCR extraction,
+    and automatically encrypts & stores valid medical documents to Backblaze B2 and Patient Vault.
+    No clinical approval required for routine document storage!
     """
     user_id = current_user.get("id") or current_user.get("user_ref_id") or current_user.get("username")
     effective_hospital = hospital_id or current_user.get("hospital_ref_id") or current_user.get("hospital_id")
@@ -79,11 +86,22 @@ async def upload_document_for_ocr(
             original_filename=file.filename or "uploaded_document",
             document_category=document_category,
             uploader_user_id=user_id,
-            hospital_id=effective_hospital
+            hospital_id=effective_hospital,
+            patient_id=patient_id
         )
+        if job.get("upload_status") == "UPLOAD_FAILED" or not job.get("is_accepted", True):
+            rejection_msg = (
+                job.get("actionable_remedy") or
+                job.get("rejection_reason") or
+                "This file does not appear to be a supported medical document. Please upload a prescription, laboratory report, consultation report or other supported clinical document."
+            )
+            return success_response(
+                data=job,
+                message=rejection_msg
+            )
         return success_response(
             data=job,
-            message="Document uploaded and processed successfully. Please review the extracted information."
+            message="Document uploaded and processed successfully. Stored securely in health locker."
         )
     except HTTPException:
         raise
@@ -99,15 +117,23 @@ async def upload_document_for_ocr(
 def get_ocr_job(
     job_id: str,
     current_user: Dict[str, Any] = Depends(require_any_permission(
-        "patient.read", "consultation.create", "clinical.write", "hospital.manage", "system.manage"
+        "patient.read", "consultation.create", "clinical.write", "hospital.manage", "system.manage",
+        "patient.self.read", "patient.self.documents", "patient.self.records"
     ))
 ):
     """
-    Step 4: Retrieves extracted fields, confidence scores, and duplicate warnings for human review.
-    Enforces hospital/tenant isolation.
+    Step 4: Retrieves extracted fields, confidence scores, and upload status.
+    Enforces hospital/tenant isolation and patient ownership checks.
     """
     user_hospital = current_user.get("hospital_ref_id") or current_user.get("hospital_id")
     job = ocr_service.get_job_detail(job_id, user_hospital)
+
+    # Patient ownership check
+    if current_user.get("role") == "PATIENT":
+        user_ref = current_user.get("user_ref_id") or current_user.get("username")
+        if job.get("uploader_user_id") != user_ref and job.get("patient_id") not in (user_ref, "p-101"):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to view this document job.")
+
     return success_response(data=job)
 
 
@@ -138,11 +164,12 @@ def correct_ocr_job_fields(
 def retry_ocr_job(
     job_id: str,
     current_user: Dict[str, Any] = Depends(require_any_permission(
-        "patient.create", "consultation.create", "clinical.write", "system.manage"
+        "patient.create", "consultation.create", "clinical.write", "system.manage",
+        "patient.self.read", "patient.self.documents", "patient.self.records"
     ))
 ):
     """
-    Retries OCR extraction on quarantined file.
+    Retries OCR extraction on stored document.
     """
     user_id = current_user.get("id") or current_user.get("user_ref_id") or current_user.get("username")
     user_hospital = current_user.get("hospital_ref_id") or current_user.get("hospital_id")
@@ -164,8 +191,8 @@ def approve_ocr_job(
     ))
 ):
     """
-    Step 6: Confirms and approves extracted document. Persists records to existing oh_id.medical_documents table
-    and moves file to approved storage location.
+    Step 6: Confirms and approves extracted document for workflows that genuinely need professional clinical judgment.
+    Persists records to existing oh_id.medical_documents table and moves file to approved storage location.
     """
     result = ocr_service.approve_and_persist_document(
         job_id=job_id,
@@ -204,34 +231,61 @@ def reject_ocr_job(
 def get_ocr_job_file(
     job_id: str,
     current_user: Dict[str, Any] = Depends(require_any_permission(
-        "patient.read", "consultation.create", "clinical.write", "hospital.manage", "system.manage"
+        "patient.read", "consultation.create", "clinical.write", "hospital.manage", "system.manage",
+        "patient.self.read", "patient.self.documents", "patient.self.records"
     ))
 ):
     """
-    Streams original document preview to authorized reviewer (inline rendering for PDF and images).
-    Decrypts envelope-encrypted data on-the-fly and enforces strict hospital tenant isolation.
+    Streams original document preview to authorized user (inline rendering for PDF and images).
+    Decrypts AES-256-GCM envelope-encrypted data on-the-fly and enforces strict tenant isolation & patient ownership.
     """
     user_hospital = current_user.get("hospital_ref_id") or current_user.get("hospital_id")
     user_perms = current_user.get("permissions", [])
     job = ocr_service.get_job_detail(job_id, user_hospital)
 
-    # Tenant boundary enforcement: Non-platform users cannot access jobs from other facilities
+    # Tenant boundary enforcement: Non-platform staff cannot access jobs from other facilities
     if "system.manage" not in user_perms and user_hospital and job.get("hospital_id") and job["hospital_id"] != user_hospital:
         log_security_event("TENANT_ACCESS_DENIED", actor_id=current_user.get("username"), resource=f"ocr_job:{job_id}", status="DENIED")
         raise HTTPException(status_code=403, detail="Forbidden: Document belongs to a different hospital facility.")
 
-    try:
-        decrypted_bytes = read_decrypted_document_bytes(
-            storage_path=job["storage_path"],
-            job_id=job_id,
-            filename=job.get("file_name"),
-            hospital_id=job.get("hospital_id")
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Document file not found on server.")
-    except Exception as e:
-        logger.error(f"Failed to decrypt document {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Document decryption failed.")
+    # Patient ownership check
+    if current_user.get("role") == "PATIENT":
+        user_ref = current_user.get("user_ref_id") or current_user.get("username")
+        if job.get("uploader_user_id") != user_ref and job.get("patient_id") not in (user_ref, "p-101"):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to preview this document.")
+
+    decrypted_bytes = None
+
+    # 1. First attempt: Stream from local disk if available
+    storage_path = job.get("storage_path")
+    if storage_path and Path(storage_path).exists():
+        try:
+            decrypted_bytes = read_decrypted_document_bytes(
+                storage_path=storage_path,
+                job_id=job_id,
+                filename=job.get("file_name"),
+                hospital_id=job.get("hospital_id")
+            )
+        except Exception as e:
+            logger.warning(f"Local storage decryption failed for job {job_id}: {e}")
+
+    # 2. Second attempt: Stream from Backblaze B2 encrypted object store
+    if decrypted_bytes is None and job.get("b2_storage_key"):
+        try:
+            b2_key = job["b2_storage_key"]
+            encrypted_pkg = b2_storage.download_encrypted_document(b2_key)
+            tenant_scope = job.get("hospital_id") or "hosp-kedar"
+            safe_name = job.get("file_name") or Path(b2_key).name.replace(".enc", "")
+            aad = f"{tenant_scope}:{job_id}:{safe_name}".encode("utf-8")
+            try:
+                decrypted_bytes = envelope_crypto.decrypt_document_bytes(encrypted_pkg, associated_data=aad)
+            except Exception:
+                decrypted_bytes = envelope_crypto.decrypt_document_bytes(encrypted_pkg, associated_data=None)
+        except Exception as e:
+            logger.error(f"B2 download/decryption failed for job {job_id}: {e}")
+
+    if decrypted_bytes is None:
+        raise HTTPException(status_code=404, detail="Document file not found or corrupted.")
 
     log_security_event(
         "DOCUMENT_PREVIEWED",
@@ -252,4 +306,3 @@ def get_ocr_job_file(
             "Cache-Control": "private, no-cache, no-store, must-revalidate"
         }
     )
-

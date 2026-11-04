@@ -138,7 +138,7 @@ describe("Patient API Service", () => {
     fetchJSONSpy.mockResolvedValueOnce(mockAppointments);
 
     const result = await patientApi.getAppointments();
-    expect(fetchJSONSpy).toHaveBeenCalledWith("/appointments");
+    expect(fetchJSONSpy).toHaveBeenCalledWith("/me/appointments");
     expect(result).toHaveLength(1);
     expect(result[0].doctor_name).toBe("Dr. Ananya Sharma");
     expect(result[0].token_number).toBe(14);

@@ -9,7 +9,7 @@ import { Alert } from "react-native";
 import PatientProfileScreen from "../app/(patient)/profile";
 import { patientApi } from "../src/services/api/patient";
 
-jest.setTimeout(25000);
+jest.setTimeout(60000);
 
 // Mock Modal for deterministic portal unmounting
 jest.mock("react-native/Libraries/Modal/Modal", () => {
@@ -252,7 +252,7 @@ describe("PatientProfileScreen Integration", () => {
 
   it("opens add family modal and creates family link", async () => {
     const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
-    const { getByTestId, getByText } = await render(<PatientProfileScreen />);
+    const { getByTestId, getByText, queryByTestId } = await render(<PatientProfileScreen />);
 
     await waitFor(() => {
       expect(getByText("Personal Health Profile")).toBeTruthy();

@@ -65,9 +65,11 @@ export interface PrescriptionDrugItem {
   dose?: string;
   frequency?: string; // 1-0-1, Once daily, TDS, SOS
   duration_days?: number;
+  quantity?: number | string;
   route?: string; // Oral, Sublingual, IV, Topical
   food_instruction?: string; // Before food, After food, With food
   specific_instructions?: string;
+  additional_instructions?: string;
 }
 
 export interface ConsultationPayload {

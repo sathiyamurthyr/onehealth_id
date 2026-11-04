@@ -139,6 +139,28 @@ describe("Doctor Screens Integration", () => {
       );
     });
 
+    it("triggers Call Next Patient and transitions queue status to IN_CONSULTATION", async () => {
+      const { getByTestId } = await render(<DoctorHomeScreen />);
+
+      await waitFor(() => {
+        expect(getByTestId("btn-call-next-patient")).toBeTruthy();
+      });
+
+      const callNextBtn = getByTestId("btn-call-next-patient");
+      await fireEvent.press(callNextBtn);
+
+      expect(doctorApi.updateQueueStatus).toHaveBeenCalledWith("q-01", "IN_CONSULTATION");
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pathname: "/(doctor)/consultation",
+          params: expect.objectContaining({
+            patient_id: "p-101",
+            patient_name: "Aakash Verma",
+          }),
+        })
+      );
+    });
+
     it("navigates to QR scanner and RxPad when action buttons are pressed", async () => {
       const { getByTestId } = await render(<DoctorHomeScreen />);
 
@@ -149,6 +171,19 @@ describe("Doctor Screens Integration", () => {
       const rxpadBtn = getByTestId("btn-open-rxpad");
       await fireEvent.press(rxpadBtn);
       expect(mockPush).toHaveBeenCalledWith("/(doctor)/rxpad");
+    });
+
+    it("renders Doctor Profile Card with credentials and triggers sign-out", async () => {
+      const { getByTestId, getByText } = await render(<DoctorHomeScreen />);
+      await waitFor(() => {
+        expect(getByTestId("doctor-profile-card")).toBeTruthy();
+        expect(getByTestId("doctor-sign-out-btn")).toBeTruthy();
+        expect(getByText("Sign Out")).toBeTruthy();
+      });
+
+      const signOutBtn = getByTestId("doctor-sign-out-btn");
+      await fireEvent.press(signOutBtn);
+      expect(mockReplace).toHaveBeenCalledWith("/(auth)/login");
     });
   });
 
@@ -197,6 +232,28 @@ describe("Doctor Screens Integration", () => {
         expect(getByText("38 Yrs")).toBeTruthy();
       });
     });
+
+    it("displays prominent error banner when invalid QR token is entered", async () => {
+      (doctorApi.resolveQrWorkflow as jest.Mock).mockRejectedValueOnce(
+        new Error("OneHealth ID or QR Token could not be verified")
+      );
+
+      const { getByTestId, getByText } = await render(<DoctorScanScreen />);
+
+      const manualTab = getByTestId("tab-manual-mode");
+      await fireEvent.press(manualTab);
+
+      const input = getByTestId("manual-code-input");
+      await fireEvent.changeText(input, "INVALID_TOKEN_999");
+
+      const submitBtn = getByTestId("submit-manual-code-btn");
+      await fireEvent.press(submitBtn);
+
+      await waitFor(() => {
+        expect(getByTestId("scan-error-banner")).toBeTruthy();
+        expect(getByText("OneHealth ID or QR Token could not be verified")).toBeTruthy();
+      });
+    });
   });
 
   describe("DoctorConsultationScreen", () => {
@@ -211,8 +268,8 @@ describe("Doctor Screens Integration", () => {
       expect(getByTestId("input-primary-diagnosis")).toBeTruthy();
     });
 
-    it("allows adding a medication to the prescription list", async () => {
-      const { getByTestId, getByText } = await render(<DoctorConsultationScreen />);
+    it("allows adding a medication to the prescription list and flags safety alerts", async () => {
+      const { getByTestId, getAllByText, getByText } = await render(<DoctorConsultationScreen />);
 
       const drugNameInput = getByTestId("input-drug-name");
       await fireEvent.changeText(drugNameInput, "Amoxicillin");
@@ -220,7 +277,9 @@ describe("Doctor Screens Integration", () => {
       const addBtn = getByTestId("btn-add-drug");
       await fireEvent.press(addBtn);
 
-      expect(getByText(/Amoxicillin/)).toBeTruthy();
+      expect(getAllByText(/Amoxicillin/).length).toBeGreaterThanOrEqual(1);
+      // Confirms the clinical safety warning engine detected the penicillin allergy
+      expect(getByText("CRITICAL ALLERGY CONFLICT")).toBeTruthy();
     });
 
     it("opens 4-digit digital signing PIN modal and finalizes encounter", async () => {
@@ -273,6 +332,8 @@ describe("Doctor Screens Integration", () => {
       expect(getByText("Digital RxPad")).toBeTruthy();
       expect(getByTestId("rxpad-patient-name")).toBeTruthy();
       expect(getByTestId("rxpad-diagnosis")).toBeTruthy();
+      expect(getByTestId("rxpad-input-drug-quantity")).toBeTruthy();
+      expect(getByTestId("rxpad-input-drug-instructions")).toBeTruthy();
 
       const signBtn = getByTestId("btn-sign-prescription");
       await fireEvent.press(signBtn);

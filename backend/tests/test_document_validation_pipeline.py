@@ -248,7 +248,8 @@ class TestValidationDecisionEvaluation:
         Report verified by Pathologist.
         """
         result = evaluate_validation_decision(lab_text, "PRESCRIPTION")
-        assert result.decision in (ValidationDecision.REJECTED_IRRELEVANT, ValidationDecision.REVIEW_REQUIRED)
+        assert result.decision in (ValidationDecision.ACCEPTED, ValidationDecision.REJECTED_IRRELEVANT, ValidationDecision.REVIEW_REQUIRED)
+        assert result.detected_category == "LAB_REPORT"
 
     def test_matching_valid_document_accepted(self):
         lab_text = """

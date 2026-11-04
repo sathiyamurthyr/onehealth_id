@@ -38,6 +38,58 @@ export interface PinVerificationResult {
   cooldownSeconds?: number;
 }
 
+/**
+ * Validates PIN strength against predictable patterns, sequences, and repetitions.
+ */
+export function validatePinStrength(pin: string): { isValid: boolean; error?: string } {
+  const cleanPin = pin.trim();
+  if (!/^\d{6}$/.test(cleanPin)) {
+    return { isValid: false, error: "App PIN must be exactly 6 digits." };
+  }
+
+  // Reject all identical digits (e.g. 000000, 111111)
+  if (/^(\d)\1{5}$/.test(cleanPin)) {
+    return {
+      isValid: false,
+      error: "PIN cannot contain identical repeated digits (e.g. 111111). Please choose a more secure PIN.",
+    };
+  }
+
+  // Reject sequential ascending (e.g. 012345, 123456, 234567, 345678, 456789)
+  if ("0123456789".includes(cleanPin)) {
+    return {
+      isValid: false,
+      error: "PIN cannot be sequential ascending digits (e.g. 123456). Please choose a more secure PIN.",
+    };
+  }
+
+  // Reject sequential descending (e.g. 987654, 876543, 765432, 654321, 543210)
+  if ("9876543210".includes(cleanPin)) {
+    return {
+      isValid: false,
+      error: "PIN cannot be sequential descending digits (e.g. 654321). Please choose a more secure PIN.",
+    };
+  }
+
+  // Reject repeating two-digit patterns (e.g. 121212, 131313)
+  if (/^(\d{2})\1{2}$/.test(cleanPin)) {
+    return {
+      isValid: false,
+      error: "PIN cannot be a repeating pattern (e.g. 121212). Please choose a more secure PIN.",
+    };
+  }
+
+  // Reject known predictable pairs (e.g. 112233)
+  if (/^(\d)\1(\d)\2(\d)\3$/.test(cleanPin)) {
+    return {
+      isValid: false,
+      error: "PIN cannot be double-pair sequences (e.g. 112233). Please choose a more secure PIN.",
+    };
+  }
+
+  return { isValid: true };
+}
+
 class PinAuthService {
   /**
    * Checks whether the user has established a local app PIN on this device.
@@ -48,12 +100,20 @@ class PinAuthService {
   }
 
   /**
+   * Validates PIN strength.
+   */
+  public checkStrength(pin: string): { isValid: boolean; error?: string } {
+    return validatePinStrength(pin);
+  }
+
+  /**
    * Sets up or updates the 6-digit app PIN using PBKDF2 key derivation.
    */
   public async setupPin(pin: string): Promise<{ success: boolean; error?: string }> {
     const cleanPin = pin.trim();
-    if (!/^\d{6}$/.test(cleanPin)) {
-      return { success: false, error: "App PIN must be exactly 6 digits." };
+    const strength = validatePinStrength(cleanPin);
+    if (!strength.isValid) {
+      return { success: false, error: strength.error };
     }
 
     try {

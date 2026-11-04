@@ -31,6 +31,7 @@ import {
   User,
 } from "lucide-react-native";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from "../../src/theme";
+import { AppHeader } from "../../src/components/common/AppHeader";
 import { Card } from "../../src/components/common/Card";
 import { StatusBadge } from "../../src/components/common/StatusBadge";
 import { doctorApi } from "../../src/services/api/doctor";
@@ -53,8 +54,8 @@ export default function DoctorScanScreen() {
       const result = await doctorApi.resolveQrWorkflow(code.trim());
       setScannedResult(result);
     } catch (err: any) {
-      console.error("QR Resolution failed", err);
-      setError(err?.message || "Invalid or expired OneHealth QR code.");
+      console.warn("QR Resolution info:", err);
+      setError(err?.message || "OneHealth ID or QR Token could not be verified");
     } finally {
       setScanning(false);
     }
@@ -84,28 +85,21 @@ export default function DoctorScanScreen() {
 
   return (
     <View style={styles.container} testID="doctor-scan-screen">
-      {/* Top Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          testID="back-to-doctor-home"
-          accessibilityRole="button"
-          accessibilityLabel="Back to Doctor Workspace"
-        >
-          <ArrowLeft size={20} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTitles}>
-          <Text style={styles.screenTitle}>Patient Intake Scanner</Text>
-          <Text style={styles.screenSubtitle}>Instant Zero-Knowledge QR Identification</Text>
-        </View>
-      </View>
+      {/* Global Standardized Header: White Card + Subtle Blue Divider + Outlined Notification & Profile */}
+      <AppHeader
+        title="Patient Intake Scanner"
+        subtitle="Instant Zero-Knowledge QR Identification"
+        showBackButton={true}
+        backButtonTestID="back-to-doctor-home"
+        showDivider={true}
+        showDefaultActions={true}
+      />
 
       {/* Mode Selector Tabs */}
       <View style={styles.modeTabs}>
         <TouchableOpacity
           style={[styles.tabButton, scanMode === "camera" && styles.tabButtonActive]}
-          onPress={() => setScanMode("camera")}
+          onPress={() => { setScanMode("camera"); setError(null); }}
           testID="tab-camera-mode"
         >
           <Camera size={15} color={scanMode === "camera" ? COLORS.primary[700] : COLORS.neutral[500]} />
@@ -116,7 +110,7 @@ export default function DoctorScanScreen() {
 
         <TouchableOpacity
           style={[styles.tabButton, scanMode === "manual" && styles.tabButtonActive]}
-          onPress={() => setScanMode("manual")}
+          onPress={() => { setScanMode("manual"); setError(null); }}
           testID="tab-manual-mode"
         >
           <Keyboard size={15} color={scanMode === "manual" ? COLORS.primary[700] : COLORS.neutral[500]} />
@@ -127,6 +121,14 @@ export default function DoctorScanScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Error Banner displayed across Camera and Manual modes */}
+        {error && (
+          <View style={styles.errorBox} testID="scan-error-banner">
+            <AlertCircle size={15} color={COLORS.error[500]} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
         {/* Scanned Resolution Result Card */}
         {scannedResult ? (
           <Card style={styles.resultCard} testID="scan-result-card">
@@ -182,6 +184,7 @@ export default function DoctorScanScreen() {
 
             <TouchableOpacity
               style={styles.rescanButton}
+              testID="rescan-patient-btn"
               onPress={() => {
                 setScannedResult(null);
                 setManualInput("");
@@ -247,12 +250,28 @@ export default function DoctorScanScreen() {
               testID="manual-code-input"
             />
 
-            {error && (
-              <View style={styles.errorBox}>
-                <AlertCircle size={14} color={COLORS.error[500]} />
-                <Text style={styles.errorText}>{error}</Text>
+            {/* Quick Test Presets */}
+            <View style={styles.sampleRow}>
+              <Text style={styles.sampleTitle}>Quick Test Presets:</Text>
+              <View style={styles.sampleButtons}>
+                <TouchableOpacity
+                  style={styles.sampleChip}
+                  onPress={() => setManualInput("OHID-IND-2026-01001")}
+                  testID="sample-valid-qr-btn"
+                >
+                  <Text style={styles.sampleChipText}>Alice Smith (Valid)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sampleChip}
+                  onPress={() => setManualInput("INVALID_OR_EXPIRED_TOKEN")}
+                  testID="sample-invalid-qr-btn"
+                >
+                  <Text style={styles.sampleChipText}>Invalid Token</Text>
+                </TouchableOpacity>
               </View>
-            )}
+            </View>
+
+
 
             <TouchableOpacity
               style={styles.manualSubmitBtn}
@@ -595,6 +614,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     marginTop: SPACING.xl,
+  },
+    sampleRow: {
+    marginVertical: SPACING.xs,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  sampleTitle: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: COLORS.neutral[500],
+    marginBottom: 6,
+  },
+  sampleButtons: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  sampleChip: {
+    backgroundColor: COLORS.primary[50],
+    borderWidth: 1,
+    borderColor: COLORS.primary[200],
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sampleChipText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: COLORS.primary[800],
   },
   securityFooterText: {
     fontSize: 10,

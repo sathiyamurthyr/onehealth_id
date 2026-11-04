@@ -33,6 +33,7 @@ import {
   Layers,
 } from "lucide-react-native";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from "../../src/theme";
+import { AppHeader } from "../../src/components/common/AppHeader";
 import { Card } from "../../src/components/common/Card";
 import { doctorApi } from "../../src/services/api/doctor";
 import { PrescriptionDrugItem } from "../../src/types/doctor";
@@ -50,8 +51,8 @@ export default function DoctorRxPadScreen() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // Patient Info
-  const [patientId, setPatientId] = useState("p-standalone-01");
-  const [patientName, setPatientName] = useState("Karthik Raman");
+  const [patientId, setPatientId] = useState("p-101");
+  const [patientName, setPatientName] = useState("Alice Smith");
   const [diagnosis, setDiagnosis] = useState("Hypertension & Dyslipidemia");
   const [doctorNotes, setDoctorNotes] = useState("Low sodium diet recommended. 30 mins brisk walk daily.");
   const [followUpDays, setFollowUpDays] = useState("14");
@@ -83,6 +84,9 @@ export default function DoctorRxPadScreen() {
   const [newDrugStrength, setNewDrugStrength] = useState("500 mg");
   const [newDrugFreq, setNewDrugFreq] = useState("Twice daily (1-0-1)");
   const [newDrugDuration, setNewDrugDuration] = useState("7");
+  const [newDrugQuantity, setNewDrugQuantity] = useState("10");
+  const [newDrugFood, setNewDrugFood] = useState("After food");
+  const [newDrugInstructions, setNewDrugInstructions] = useState("");
 
   // PIN Signing Modal
   const [showPinModal, setShowPinModal] = useState(false);
@@ -105,11 +109,14 @@ export default function DoctorRxPadScreen() {
         dose: "1",
         frequency: newDrugFreq,
         duration_days: parseInt(newDrugDuration, 10) || 7,
+        quantity: newDrugQuantity || undefined,
         route: "Oral",
-        food_instruction: "After food",
+        food_instruction: newDrugFood,
+        additional_instructions: newDrugInstructions || undefined,
       },
     ]);
     setNewDrugName("");
+    setNewDrugInstructions("");
   };
 
   const handleRemoveDrug = (index: number) => {
@@ -149,7 +156,7 @@ export default function DoctorRxPadScreen() {
         signature: res.digital_signature || "SHA256:7a9f82d1c0e4...VERIFIED",
       });
     } catch (err: any) {
-      console.error("Prescription signing failed", err);
+      console.warn("Prescription signing info:", err);
       setPinError(err?.message || "Invalid signing PIN or failed to sign prescription.");
     } finally {
       setSubmitting(false);
@@ -163,22 +170,15 @@ export default function DoctorRxPadScreen() {
 
   return (
     <View style={styles.container} testID="doctor-rxpad-screen">
-      {/* Top Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          testID="back-to-doctor-dashboard"
-          accessibilityRole="button"
-          accessibilityLabel="Back to Doctor Workspace"
-        >
-          <ArrowLeft size={20} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTitles}>
-          <Text style={styles.screenTitle}>Digital RxPad</Text>
-          <Text style={styles.screenSubtitle}>Electronic Prescription Generator</Text>
-        </View>
-      </View>
+      {/* Global Standardized Header: White Card + Subtle Blue Divider + Outlined Notification & Profile */}
+      <AppHeader
+        title="Digital RxPad"
+        subtitle="Electronic Prescription Generator"
+        showBackButton={true}
+        backButtonTestID="back-to-doctor-dashboard"
+        showDivider={true}
+        showDefaultActions={true}
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Active Hospital Prescription Template Banner */}
@@ -261,8 +261,11 @@ export default function DoctorRxPadScreen() {
               <View style={styles.drugMeta}>
                 <Text style={styles.drugTitle}>{drug.medicine_name} ({drug.strength})</Text>
                 <Text style={styles.drugSub}>
-                  {drug.frequency} • {drug.duration_days} Days • {drug.food_instruction}
+                  {drug.frequency} • {drug.duration_days} Days{drug.quantity ? ` • Qty: ${drug.quantity}` : ""} • {drug.food_instruction}
                 </Text>
+                {drug.additional_instructions ? (
+                  <Text style={styles.drugInstructions}>{drug.additional_instructions}</Text>
+                ) : null}
               </View>
               <TouchableOpacity
                 style={styles.removeDrugBtn}
@@ -315,6 +318,44 @@ export default function DoctorRxPadScreen() {
                 value={newDrugFreq}
                 onChangeText={setNewDrugFreq}
                 testID="rxpad-input-drug-frequency"
+              />
+            </View>
+
+            <View style={styles.builderRow}>
+              <View style={styles.builderCol}>
+                <Text style={styles.microLabel}>QUANTITY</Text>
+                <TextInput
+                  style={styles.inputSmall}
+                  value={newDrugQuantity}
+                  onChangeText={setNewDrugQuantity}
+                  keyboardType="numeric"
+                  placeholder="10"
+                  placeholderTextColor={COLORS.neutral[400]}
+                  testID="rxpad-input-drug-quantity"
+                />
+              </View>
+              <View style={styles.builderCol}>
+                <Text style={styles.microLabel}>FOOD INSTRUCTION</Text>
+                <TextInput
+                  style={styles.inputSmall}
+                  value={newDrugFood}
+                  onChangeText={setNewDrugFood}
+                  placeholder="After food"
+                  placeholderTextColor={COLORS.neutral[400]}
+                  testID="rxpad-input-food-instruction"
+                />
+              </View>
+            </View>
+
+            <View style={{ marginTop: SPACING.xs }}>
+              <Text style={styles.microLabel}>ADDITIONAL INSTRUCTIONS</Text>
+              <TextInput
+                style={styles.inputField}
+                value={newDrugInstructions}
+                onChangeText={setNewDrugInstructions}
+                placeholder="e.g. Take with warm water before sleep"
+                placeholderTextColor={COLORS.neutral[400]}
+                testID="rxpad-input-drug-instructions"
               />
             </View>
 
@@ -597,6 +638,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textSecondary,
     marginTop: 1,
+  },
+  drugInstructions: {
+    fontSize: 10,
+    color: COLORS.primary[700],
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   removeDrugBtn: {
     padding: 6,

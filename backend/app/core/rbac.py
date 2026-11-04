@@ -307,6 +307,57 @@ def require_any_permission(*permission_codes: str) -> Callable:
         )
     return _dependency
 
+def authorize_medical_document_upload(
+    user: Dict[str, Any] = Depends(get_current_user_context)
+) -> Dict[str, Any]:
+    """
+    Enforces least-privilege authorization for medical document uploads.
+    Permits:
+    1. Authenticated Patients with 'patient.self.documents', 'patient.self.records', or role PATIENT.
+    2. Licensed Clinicians (DOCTOR, NURSE, etc.) with 'clinical.write', 'consultation.create', or 'consultation.update'.
+    3. Reception / Front Desk staff with 'reception.manage' or 'patient.create'.
+    4. Hospital Administrators with 'hospital.manage'.
+    5. Platform / Super Administrators with 'system.manage' or SUPER_ADMIN / PLATFORM_ADMIN roles.
+    Rejects all other unpermitted users with a clear, safe HTTP 403 message.
+    """
+    user_perms = set(user.get("permissions") or [])
+    user_roles = set(user.get("roles") or [user.get("role")])
+
+    # 1. Super Admin / Platform Admin
+    if "system.manage" in user_perms or "SUPER_ADMIN" in user_roles or "PLATFORM_ADMIN" in user_roles:
+        return user
+
+    # 2. Patient self-service upload
+    if "PATIENT" in user_roles or "patient.self.documents" in user_perms or "patient.self.records" in user_perms:
+        return user
+
+    # 3. Clinical Staff (Doctor, Nurse, etc.)
+    if any(p in user_perms for p in ("clinical.write", "consultation.create", "consultation.update")):
+        return user
+    if any(r in user_roles for r in ("DOCTOR", "NURSE", "CLINICAL_STAFF", "CHIEF_MEDICAL_OFFICER", "RESIDENT")):
+        if any(p in user_perms for p in ("clinical.write", "consultation.create", "consultation.update", "patient.read")):
+            return user
+
+    # 4. Reception / Front Desk
+    if any(p in user_perms for p in ("reception.manage", "patient.create")):
+        return user
+
+    # 5. Hospital Admin
+    if "hospital.manage" in user_perms:
+        return user
+
+    log_security_event(
+        "DOCUMENT_UPLOAD_FORBIDDEN",
+        actor_id=user.get("username") or user.get("user_ref_id") or "UNKNOWN",
+        resource="endpoint:/documents/upload-ocr",
+        status="DENIED",
+        details={"roles": list(user_roles), "permissions": list(user_perms)}
+    )
+    raise HTTPException(
+        status_code=403,
+        detail="Your account is not authorised to upload this document to the selected record. No permission changes have been made. Please sign in with the appropriate account or contact your hospital administrator."
+    )
+
 def validate_hospital_tenant_scope(user: Dict[str, Any], target_hospital_id: Optional[str]):
     """
     Enforces strict hospital tenant isolation.

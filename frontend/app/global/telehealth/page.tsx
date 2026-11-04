@@ -177,7 +177,7 @@ export default function GlobalTelehealthConsolePage() {
                   <span style={{ fontWeight: 600, color: "#fff" }}>WebRTC HD Stream • {selectedSession.patient_name}</span>
                 </div>
                 <div style={{ background: "rgba(0,0,0,0.5)", padding: "0.3rem 0.75rem", borderRadius: "6px", fontSize: "0.85rem", color: "#38bdf8" }}>
-                  E2E AES-256 Encrypted
+                  End-to-End Secure Stream
                 </div>
               </div>
 

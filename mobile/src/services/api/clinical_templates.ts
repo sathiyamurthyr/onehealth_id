@@ -54,6 +54,10 @@ export interface UpdateHospitalTemplateSettingsPayload {
 export interface ConsultationReportDetail {
   id: string;
   appointment_id?: string | null;
+  encounter_no?: string;
+  consultation_date_time?: string;
+  department?: string;
+  consultation_type?: string;
   patient_id: string;
   patient_name: string;
   onehealth_id: string;
@@ -61,7 +65,11 @@ export interface ConsultationReportDetail {
   patient_gender?: string;
   patient_blood_group?: string;
   patient_phone?: string;
+  patient_mobile?: string;
   patient_dob?: string;
+  patient_address?: string;
+  patient_photo_url?: string;
+  visit_no?: string;
   doctor_id: string;
   doctor_name: string;
   doctor_specialty?: string;
@@ -74,13 +82,61 @@ export interface ConsultationReportDetail {
   hospital_address?: string;
   hospital_phone?: string;
   hospital_email?: string;
+  hospital_website?: string;
   symptoms?: string;
+  chief_complaints?: string;
   diagnosis?: string;
+  clinical_impression?: string;
   clinical_notes?: string;
   vitals?: Record<string, any>;
+  allergies_status?: string;
+  relevant_history?: {
+    present_illness?: string;
+    past_history?: string;
+    family_history?: string;
+    medication_history?: string;
+    lifestyle?: string;
+    smoking_alcohol?: string;
+    [key: string]: string | undefined;
+  };
+  examination_findings?: {
+    general_examination?: string;
+    cardiovascular?: string;
+    respiratory?: string;
+    abdomen?: string;
+    cns?: string;
+    others?: string;
+    [key: string]: string | undefined;
+  };
+  investigations?: Array<{
+    test_name: string;
+    result: string;
+    reference_range?: string;
+    date?: string;
+    unit?: string;
+  }>;
+  treatment_plan?: Array<{
+    id?: string;
+    medicine_name: string;
+    dosage_form?: string;
+    dose?: string;
+    frequency?: string;
+    duration?: string;
+    instructions?: string;
+  }>;
+  diet_lifestyle_advice?: string[] | string;
+  follow_up_plan?: string;
+  additional_notes?: string;
   signed_by?: string;
   signed_at?: string;
   digital_signature_hash?: string;
+  signature_svg?: string;
+  issue_date?: string;
+  valid_until?: string;
+  document_status?: "VALID" | "EXPIRING SOON" | "EXPIRED" | "REVOKED" | "SUPERSEDED";
+  document_id?: string;
+  version?: string;
+  verification_url?: string;
   created_at?: string;
   template_id: string;
   template_version: number;

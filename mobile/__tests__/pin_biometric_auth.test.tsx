@@ -104,19 +104,48 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
       expect(hasPin).toBe(true);
     });
 
+    it("evaluates PIN strength and rejects predictable and sequential patterns", () => {
+      // Identical digits
+      expect(pinService.checkStrength("000000").isValid).toBe(false);
+      expect(pinService.checkStrength("111111").isValid).toBe(false);
+      expect(pinService.checkStrength("999999").isValid).toBe(false);
+
+      // Sequential ascending
+      expect(pinService.checkStrength("012345").isValid).toBe(false);
+      expect(pinService.checkStrength("123456").isValid).toBe(false);
+      expect(pinService.checkStrength("456789").isValid).toBe(false);
+
+      // Sequential descending
+      expect(pinService.checkStrength("987654").isValid).toBe(false);
+      expect(pinService.checkStrength("654321").isValid).toBe(false);
+      expect(pinService.checkStrength("543210").isValid).toBe(false);
+
+      // Repeating 2-digit patterns
+      expect(pinService.checkStrength("121212").isValid).toBe(false);
+      expect(pinService.checkStrength("131313").isValid).toBe(false);
+
+      // Double-pair sequences
+      expect(pinService.checkStrength("112233").isValid).toBe(false);
+
+      // Strong randomized PINs
+      expect(pinService.checkStrength("839201").isValid).toBe(true);
+      expect(pinService.checkStrength("482915").isValid).toBe(true);
+      expect(pinService.checkStrength("710493").isValid).toBe(true);
+    });
+
     it("verifies correct PIN and rejects incorrect candidates", async () => {
-      await pinService.setupPin("654321");
+      await pinService.setupPin("839201");
 
       const failRes = await pinService.verifyPin("000000");
       expect(failRes.success).toBe(false);
       expect(failRes.remainingAttempts).toBe(4);
 
-      const passRes = await pinService.verifyPin("654321");
+      const passRes = await pinService.verifyPin("839201");
       expect(passRes.success).toBe(true);
     });
 
     it("triggers progressive cooldown after 3 failed attempts and lockout after 5", async () => {
-      await pinService.setupPin("112233");
+      await pinService.setupPin("740192");
 
       // Attempts 1 and 2
       await pinService.verifyPin("000001");
@@ -137,7 +166,7 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
       expect(attempt5.error).toContain("locked");
 
       // Subsequent attempt remains locked
-      const lockedAttempt = await pinService.verifyPin("112233");
+      const lockedAttempt = await pinService.verifyPin("740192");
       expect(lockedAttempt.success).toBe(false);
       expect(lockedAttempt.isLocked).toBe(true);
 
@@ -219,14 +248,43 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
       expect(queryByTestId("pin-input")).toBeNull();
     });
 
-    it("allows switching to Mobile OTP via 'Forgot PIN?' link", async () => {
-      const { getByTestId, getByText } = await render(<LoginScreen />);
+    it("resets PIN credentials and routes to mobile login via 'Forgot PIN?' link", async () => {
+      const mockClearAppPin = jest.fn().mockResolvedValueOnce(undefined);
+      (useAuth as jest.Mock).mockReturnValue({
+        user: null,
+        token: null,
+        isLoading: false,
+        isAuthenticated: false,
+        activeRole: null,
+        availableRoles: [],
+        biometricCapability: { hasHardware: true, isEnrolled: true, biometricType: "Fingerprint" },
+        isBiometricEnabled: true,
+        hasConfiguredPin: true,
+        rememberedPhone: "9176669426",
+        rememberedName: "Dr. Sathyamoorthy",
+        login: mockLogin,
+        loginWithBiometrics: mockLoginWithBiometrics,
+        loginWithPin: mockLoginWithPin,
+        setupAppPin: mockSetupAppPin,
+        clearAppPin: mockClearAppPin,
+        logout: jest.fn(),
+        switchRole: jest.fn(),
+        setBiometricPreference: jest.fn(),
+        refreshSession: jest.fn(),
+      });
+
+      const { getByTestId, getByText, findByText } = await render(<LoginScreen />);
 
       const forgotPinBtn = getByTestId("forgot-pin-button");
       await fireEvent.press(forgotPinBtn);
 
-      expect(getByText("Welcome to OH-ID")).toBeTruthy();
-      expect(getByTestId("mobile-input")).toBeTruthy();
+      await waitFor(() => {
+        expect(mockClearAppPin).toHaveBeenCalled();
+        expect(getByText("Welcome to OH-ID")).toBeTruthy();
+        expect(getByTestId("mobile-input")).toBeTruthy();
+      });
+      const notice = await findByText(/PIN reset initiated/);
+      expect(notice).toBeTruthy();
     });
 
     it("prompts user to set up 6-digit PIN on password login when PIN is not configured", async () => {
@@ -257,7 +315,7 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
         refreshSession: jest.fn(),
       });
 
-      const { getByTestId, getByText } = await render(<LoginScreen />);
+      const { getByTestId, getByText, findByText } = await render(<LoginScreen />);
 
       // Enter mobile
       const mobileInput = getByTestId("mobile-input");
@@ -276,13 +334,18 @@ describe("OH-ID Mobile — App PIN & Returning User Biometric System", () => {
         expect(getByTestId("setup-pin-confirm")).toBeTruthy();
       });
 
-      // Enter matching PINs
+      // Enter weak sequential PIN first - triggers strength warning
       await fireEvent.changeText(getByTestId("setup-pin-input"), "123456");
-      await fireEvent.changeText(getByTestId("setup-pin-confirm"), "123456");
+      const strengthNotice = await findByText(/cannot be sequential/i);
+      expect(strengthNotice).toBeTruthy();
+
+      // Enter matching strong PINs
+      await fireEvent.changeText(getByTestId("setup-pin-input"), "849201");
+      await fireEvent.changeText(getByTestId("setup-pin-confirm"), "849201");
       await fireEvent.press(getByTestId("save-pin-button"));
 
       await waitFor(() => {
-        expect(mockSetupAppPin).toHaveBeenCalledWith("123456");
+        expect(mockSetupAppPin).toHaveBeenCalledWith("849201");
         expect(mockReplace).toHaveBeenCalledWith("/(patient)");
       });
     });

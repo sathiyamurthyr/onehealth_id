@@ -16,6 +16,7 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  Image,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import {
@@ -35,6 +36,9 @@ import {
 } from "lucide-react-native";
 import { COLORS, SPACING, RADIUS } from "../../theme";
 import { OhIdCardData } from "../../types/patient";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const OH_ID_MARK = require("../../../assets/ohid_official_mark.png");
 
 export interface DigitalHealthCardProps {
   cardData: OhIdCardData | null;
@@ -112,9 +116,26 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
 
   if (loading) {
     return (
-      <View style={[styles.cardContainer, styles.loadingContainer]} testID={testID}>
-        <ActivityIndicator size="large" color="#60A5FA" />
-        <Text style={styles.loadingText}>Loading OneHealth ID Pass...</Text>
+      <View style={[styles.cardContainer, { padding: 18, justifyContent: "space-between", minHeight: 200 }]} testID={testID}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ width: 44, height: 44, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.18)", marginRight: 10 }} />
+            <View>
+              <View style={{ width: 120, height: 16, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.25)", marginBottom: 6 }} />
+              <View style={{ width: 80, height: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.18)" }} />
+            </View>
+          </View>
+          <View style={{ width: 70, height: 24, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.22)" }} />
+        </View>
+        <View style={{ marginVertical: 14 }}>
+          <View style={{ width: 140, height: 18, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.28)", marginBottom: 8 }} />
+          <View style={{ width: 180, height: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.18)" }} />
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View style={{ width: 100, height: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.18)" }} />
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.22)" }} />
+        </View>
+        <Text style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}>Loading OneHealth ID Pass...</Text>
       </View>
     );
   }
@@ -140,7 +161,7 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
           <View style={styles.brandIconCircle}>
             <Sparkles size={14} color="#60A5FA" />
           </View>
-          <View>
+          <View style={{ marginLeft: 8 }}>
             <Text style={styles.brandTitle}>OneHealth ID</Text>
             <Text style={styles.brandSubtitle}>Digital Health Identity Card</Text>
           </View>
@@ -228,10 +249,20 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
           <View style={styles.qrWhiteSurface} testID="qr-code-svg">
             <QRCode
               value={qrUrl}
-              size={82}
+              size={86}
               color="#0F172A"
               backgroundColor="#FFFFFF"
+              ecl="H"
             />
+            {/* Centered Official OH-ID Logo Inside QR Code */}
+            <View style={styles.qrCenterLogoOverlay} pointerEvents="none">
+              <Image
+                source={OH_ID_MARK}
+                style={styles.qrCenterLogoImage}
+                resizeMode="contain"
+                accessibilityLabel="OH-ID Logo"
+              />
+            </View>
           </View>
           <View style={styles.enlargeRow}>
             <Maximize2 size={11} color="#2563EB" style={{ marginRight: 4 }} />
@@ -240,15 +271,15 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Bottom Action Strip: Token Guide & Countdown / Refresh */}
+      {/* Bottom Action Strip: Hospital QR Check-In with Live Countdown & Refresh */}
       <View style={styles.bottomStrip}>
         <View style={styles.stripGuideCol}>
           <View style={styles.stripGuideRow}>
-            <QrIcon size={15} color="#93C5FD" style={{ marginRight: 6 }} />
-            <Text style={styles.stripGuideTitle}>Your Hospital QR Code</Text>
+            <View style={styles.livePulseDot} />
+            <Text style={styles.stripGuideTitle}>Hospital QR Check-In</Text>
           </View>
           <Text style={styles.stripGuideSubtitle}>
-            Show this QR at hospital for quick check-in
+            Show at reception or OPD kiosk for quick intake
           </Text>
         </View>
 
@@ -318,14 +349,26 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* High-Contrast Large QR Container */}
+            {/* High-Contrast Large QR Container with Centered Logo */}
             <View style={styles.modalQrWrapper}>
-              <QRCode
-                value={qrUrl}
-                size={220}
-                color="#000000"
-                backgroundColor="#FFFFFF"
-              />
+              <View style={styles.modalQrInnerBox}>
+                <QRCode
+                  value={qrUrl}
+                  size={220}
+                  color="#000000"
+                  backgroundColor="#FFFFFF"
+                  ecl="H"
+                />
+                {/* Official Centered OH-ID Logo Inside Large Modal QR */}
+                <View style={styles.modalQrCenterLogoOverlay} pointerEvents="none">
+                  <Image
+                    source={OH_ID_MARK}
+                    style={styles.modalQrCenterLogoImage}
+                    resizeMode="contain"
+                    accessibilityLabel="OH-ID Kiosk Logo"
+                  />
+                </View>
+              </View>
             </View>
 
             {/* Modal Patient Details */}
@@ -422,7 +465,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(96, 165, 250, 0.4)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 8,
   },
   brandTitle: {
     fontSize: 14,
@@ -544,6 +586,29 @@ const styles = StyleSheet.create({
   },
   qrWhiteSurface: {
     padding: 2,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  qrCenterLogoOverlay: {
+    position: "absolute",
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  qrCenterLogoImage: {
+    width: 19,
+    height: 22,
   },
   enlargeRow: {
     flexDirection: "row",
@@ -575,8 +640,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  livePulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#38BDF8",
+    marginRight: 6,
+  },
   stripGuideTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     color: "#FFFFFF",
   },
@@ -687,6 +759,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     marginBottom: 16,
+  },
+  modalQrInnerBox: {
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalQrCenterLogoOverlay: {
+    position: "absolute",
+    width: 58,
+    height: 58,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  modalQrCenterLogoImage: {
+    width: 44,
+    height: 48,
   },
   modalPatientName: {
     fontSize: 18,

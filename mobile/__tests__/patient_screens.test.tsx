@@ -23,6 +23,7 @@ jest.mock("expo-router", () => ({
     replace: jest.fn(),
     back: mockBack,
   }),
+  useFocusEffect: (cb: any) => cb(),
 }));
 
 // Mock AuthContext

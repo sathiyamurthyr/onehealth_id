@@ -50,6 +50,7 @@ import {
   CheckCircle2,
   Plus,
   Leaf,
+  User,
 } from "lucide-react-native";
 
 export type AuthStep = "RETURNING_USER" | "MOBILE" | "VERIFY" | "PIN_SETUP";
@@ -64,10 +65,13 @@ export default function LoginScreen() {
     loginWithBiometrics,
     loginWithPin,
     setupAppPin,
+    clearAppPin,
+    setBiometricPreference,
     biometricCapability,
     isBiometricEnabled,
     hasConfiguredPin,
     rememberedPhone,
+    rememberedName,
   } = useAuth();
 
   const [step, setStep] = useState<AuthStep>("MOBILE");
@@ -82,12 +86,15 @@ export default function LoginScreen() {
 
   // Returning user & PIN state
   const [pin, setPin] = useState("");
+  const [pinCooldown, setPinCooldown] = useState<number>(0);
   const pinInputRef = useRef<any>(null);
   const initialCheckedRef = useRef(false);
 
   // PIN Setup state (post-first login)
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  const [pinStrengthError, setPinStrengthError] = useState<string | null>(null);
+  const [enableBiometricsToggle, setEnableBiometricsToggle] = useState<boolean>(true);
   const [pendingRoute, setPendingRoute] = useState("/(patient)");
 
   // OTP Resend Countdown state
@@ -129,6 +136,17 @@ export default function LoginScreen() {
     }
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // PIN Lockout countdown timer
+  useEffect(() => {
+    let timer: any;
+    if (pinCooldown > 0) {
+      timer = setInterval(() => {
+        setPinCooldown((prev) => Math.max(0, prev - 1));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [pinCooldown]);
 
   const handleMobileChange = (text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "").slice(0, 10);
@@ -189,6 +207,7 @@ export default function LoginScreen() {
   };
 
   const handlePinChange = (text: string) => {
+    if (pinCooldown > 0) return;
     const cleaned = text.replace(/[^0-9]/g, "").slice(0, 6);
     setPin(cleaned);
     if (errorMessage) setErrorMessage(null);
@@ -199,6 +218,7 @@ export default function LoginScreen() {
   };
 
   const executePinVerification = async (pinValue: string) => {
+    if (pinCooldown > 0) return;
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -207,6 +227,9 @@ export default function LoginScreen() {
       if (res.success && res.defaultRoute) {
         router.replace(res.defaultRoute as any);
       } else {
+        if (res.cooldownSeconds) {
+          setPinCooldown(res.cooldownSeconds);
+        }
         setErrorMessage(res.error || "Incorrect PIN. Please try again.");
         setPin("");
       }
@@ -218,9 +241,31 @@ export default function LoginScreen() {
     }
   };
 
+  const handleNewPinChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9]/g, "").slice(0, 6);
+    setNewPin(cleaned);
+    if (errorMessage) setErrorMessage(null);
+
+    if (cleaned.length === 6) {
+      const strength = pinService.checkStrength(cleaned);
+      if (!strength.isValid) {
+        setPinStrengthError(strength.error || "Please choose a stronger PIN.");
+      } else {
+        setPinStrengthError(null);
+      }
+    } else {
+      setPinStrengthError(null);
+    }
+  };
+
   const handleSavePin = async () => {
     if (newPin.length !== 6) {
       setErrorMessage("App PIN must be exactly 6 digits.");
+      return;
+    }
+    const strength = pinService.checkStrength(newPin);
+    if (!strength.isValid) {
+      setErrorMessage(strength.error || "Please choose a stronger PIN.");
       return;
     }
     if (newPin !== confirmPin) {
@@ -234,6 +279,9 @@ export default function LoginScreen() {
     try {
       const res = await setupAppPin(newPin);
       if (res.success) {
+        if (enableBiometricsToggle && biometricCapability.hasHardware && biometricCapability.isEnrolled) {
+          await setBiometricPreference(true);
+        }
         router.replace(pendingRoute as any);
       } else {
         setErrorMessage(res.error || "Failed to set up PIN.");
@@ -243,6 +291,19 @@ export default function LoginScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleForgotPin = async () => {
+    try {
+      await clearAppPin();
+    } catch {
+      // Non-blocking cleanup
+    }
+    setPin("");
+    setPinCooldown(0);
+    setStep("MOBILE");
+    setErrorMessage(null);
+    setSuccessNotice("PIN reset initiated. Please verify with your registered mobile number and password.");
   };
 
   const handleBiometricUnlock = async () => {
@@ -354,12 +415,28 @@ export default function LoginScreen() {
                     Sign in securely with your 6-digit PIN.
                   </Text>
 
+                  {rememberedName ? (
+                    <View style={styles.userNameBadge}>
+                      <User size={14} color={COLORS.primary[700]} style={{ marginRight: 6 }} />
+                      <Text style={styles.userNameBadgeText}>{rememberedName}</Text>
+                    </View>
+                  ) : null}
+
                   {rememberedMaskedPhone ? (
                     <View style={styles.rememberedBadge}>
                       <Phone size={14} color={COLORS.primary[700]} style={{ marginRight: 6 }} />
                       <Text style={styles.rememberedBadgeText}>{rememberedMaskedPhone}</Text>
                     </View>
                   ) : null}
+
+                  {pinCooldown > 0 && (
+                    <View style={styles.lockoutBanner} testID="pin-lockout-banner">
+                      <AlertCircle size={16} color={COLORS.danger[700]} style={{ marginRight: 6 }} />
+                      <Text style={styles.lockoutBannerText}>
+                        PIN entry temporarily locked. Please wait {pinCooldown}s or reset PIN.
+                      </Text>
+                    </View>
+                  )}
 
                   <Text style={styles.inputLabel}>Enter 6-digit PIN</Text>
                   <TouchableOpacity
@@ -392,7 +469,7 @@ export default function LoginScreen() {
                       onChangeText={handlePinChange}
                       secureTextEntry
                       autoFocus
-                      editable={!isSubmitting}
+                      editable={!isSubmitting && pinCooldown === 0}
                     />
                   </TouchableOpacity>
 
@@ -425,10 +502,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     testID="forgot-pin-button"
                     style={styles.recoveryLinkButton}
-                    onPress={() => {
-                      setStep("MOBILE");
-                      setErrorMessage(null);
-                    }}
+                    onPress={handleForgotPin}
                     accessibilityRole="button"
                     accessibilityLabel="Forgot PIN? Sign in with Mobile OTP"
                   >
@@ -679,11 +753,25 @@ export default function LoginScreen() {
                     onPress={handleLoginSubmit}
                   >
                     {isSubmitting ? (
-                      <ActivityIndicator color={COLORS.neutral.white} size="small" />
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+                        <ActivityIndicator color={COLORS.neutral.white} size="small" style={{ marginRight: 8 }} />
+                        <Text style={styles.primaryButtonText}>Signing in...</Text>
+                      </View>
                     ) : (
                       <Text style={styles.primaryButtonText}>Sign In to OH-ID</Text>
                     )}
                   </TouchableOpacity>
+
+                  {isSubmitting && (
+                    <View style={{ marginTop: 12, alignItems: "center" }}>
+                      <Text style={{ fontSize: 13, color: "#475467", fontWeight: "600" }}>
+                        Verifying your credentials
+                      </Text>
+                      <Text style={{ fontSize: 12, color: "#667085", marginTop: 2 }}>
+                        Please wait a moment
+                      </Text>
+                    </View>
+                  )}
 
                   {/* Alternative Sign-In Options */}
                   <View style={styles.altDividerRow}>
@@ -748,10 +836,17 @@ export default function LoginScreen() {
                       maxLength={6}
                       secureTextEntry
                       value={newPin}
-                      onChangeText={(t) => setNewPin(t.replace(/[^0-9]/g, "").slice(0, 6))}
+                      onChangeText={handleNewPinChange}
                       editable={!isSubmitting}
                     />
                   </View>
+
+                  {pinStrengthError && (
+                    <View style={styles.pinStrengthNotice} testID="pin-strength-error">
+                      <AlertCircle size={14} color={COLORS.danger[700]} style={{ marginRight: 6 }} />
+                      <Text style={styles.pinStrengthErrorText}>{pinStrengthError}</Text>
+                    </View>
+                  )}
 
                   <Text style={[styles.inputLabel, { marginTop: SPACING.md }]}>Confirm PIN</Text>
                   <View style={styles.pinInputWrapper}>
@@ -772,10 +867,30 @@ export default function LoginScreen() {
                     />
                   </View>
 
+                  {biometricCapability.hasHardware && biometricCapability.isEnrolled && (
+                    <TouchableOpacity
+                      testID="toggle-biometric-enrollment"
+                      style={styles.biometricToggleCard}
+                      onPress={() => setEnableBiometricsToggle(!enableBiometricsToggle)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.biometricToggleRow}>
+                        <Fingerprint size={20} color={COLORS.primary[700]} style={{ marginRight: 10 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.biometricToggleTitle}>Enable {biometricCapability.biometricType} Unlock</Text>
+                          <Text style={styles.biometricToggleSubtitle}>Fast and secure unlock backed by device hardware keystore</Text>
+                        </View>
+                        <View style={[styles.checkboxBox, enableBiometricsToggle && styles.checkboxBoxActive]}>
+                          {enableBiometricsToggle && <CheckCircle2 size={16} color={COLORS.primary[600]} />}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
                     testID="save-pin-button"
                     style={[styles.primaryButton, styles.buttonActive, isSubmitting && { opacity: 0.7 }]}
-                    disabled={isSubmitting || newPin.length !== 6 || confirmPin.length !== 6}
+                    disabled={isSubmitting || newPin.length !== 6 || confirmPin.length !== 6 || Boolean(pinStrengthError)}
                     activeOpacity={0.8}
                     onPress={handleSavePin}
                   >
@@ -1237,6 +1352,96 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
   },
   // PIN and Returning User Styles
+  userNameBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.primary[50],
+    borderColor: COLORS.primary[200],
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 8,
+  },
+  userNameBadgeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary[800],
+  },
+  lockoutBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.danger[50],
+    borderColor: COLORS.danger[200],
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  lockoutBannerText: {
+    fontSize: 13,
+    color: COLORS.danger[700],
+    fontWeight: "500",
+    flex: 1,
+  },
+  pinStrengthNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.danger[50],
+    borderColor: COLORS.danger[200],
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  pinStrengthErrorText: {
+    fontSize: 12,
+    color: COLORS.danger[700],
+    fontWeight: "500",
+    flex: 1,
+  },
+  biometricToggleCard: {
+    backgroundColor: COLORS.neutral[50],
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  biometricToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  biometricToggleTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  biometricToggleSubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.neutral.white,
+    marginLeft: 8,
+  },
+  checkboxBoxActive: {
+    borderColor: COLORS.primary[600],
+    backgroundColor: COLORS.primary[50],
+  },
   rememberedBadge: {
     flexDirection: "row",
     alignItems: "center",

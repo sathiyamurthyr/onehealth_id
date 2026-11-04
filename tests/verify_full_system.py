@@ -60,7 +60,9 @@ def main():
     # D. Book Appointment (Stored Procedure: sp_book_appointment)
     doctors_resp = client.get("http://localhost:8008/api/v1/doctors", headers=headers)
     assert doctors_resp.status_code == 200
-    doc_id = doctors_resp.json()[0]["id"]
+    all_docs = doctors_resp.json()
+    kedar_docs = [d for d in all_docs if d.get("hospital_id") == "hosp-kedar"]
+    doc_id = kedar_docs[0]["id"] if kedar_docs else all_docs[0]["id"]
     appt_resp = client.post("http://localhost:8008/api/v1/appointments", headers=headers, json={
         "patient_id": pat["id"],
         "doctor_id": doc_id,

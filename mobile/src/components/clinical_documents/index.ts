@@ -5,4 +5,6 @@
 
 export * from "./PrescriptionTemplateRenderer";
 export * from "./ClinicalReportTemplateRenderer";
+export * from "./PrescriptionViewerModal";
+export * from "./ConsultationReportViewerModal";
 

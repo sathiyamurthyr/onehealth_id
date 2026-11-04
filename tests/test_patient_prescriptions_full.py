@@ -6,7 +6,7 @@ from backend.app.repositories.sp_views_repository import sp_repository
 
 client = TestClient(app)
 
-def get_auth_headers(username="patient", password="patient123"):
+def get_auth_headers(username="9884240519", password="Password@123"):
     resp = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     assert resp.status_code == 200, f"Login failed: {resp.text}"
     token = resp.json().get("access_token")
@@ -16,7 +16,7 @@ class TestPatientPrescriptions:
 
     @classmethod
     def setup_class(cls):
-        cls.headers = get_auth_headers("patient", "patient123")
+        cls.headers = get_auth_headers("9884240519", "Password@123")
 
     def test_list_prescriptions_default(self):
         """Tests fetching patient prescription list for authenticated patient."""

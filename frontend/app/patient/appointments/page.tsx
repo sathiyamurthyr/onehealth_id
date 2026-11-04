@@ -6,7 +6,7 @@ import {
   Calendar, Clock, MapPin, User, Stethoscope, CheckCircle2,
   XCircle, AlertCircle, ArrowLeft, Hospital, Filter, RefreshCw,
   Plus, ChevronRight, Lock, QrCode, Search, Tag, Users, AlertTriangle,
-  ArrowUpDown, FileText, Printer, Building2
+  ArrowUpDown, FileText, Printer, Building2, MoreVertical, Edit3, Repeat, Info
 } from "lucide-react";
 import { api, PatientAppointment, PatientVisitedHospital } from "@/lib/api";
 import { useFamily } from "@/lib/patient/FamilyContext";
@@ -16,6 +16,10 @@ import { RescheduleAppointmentModal } from "@/components/appointments/Reschedule
 import { CancelAppointmentModal } from "@/components/appointments/CancelAppointmentModal";
 import { AppointmentQRModal } from "@/components/appointments/AppointmentQRModal";
 import { AppointmentDetailsModal } from "@/components/appointments/AppointmentDetailsModal";
+import {
+  AppointmentManagementModal,
+  AppointmentManagementViewMode,
+} from "@/components/appointments/AppointmentManagementModal";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType }> = {
   SCHEDULED:        { label: "Scheduled",        color: "text-blue-700",   bg: "bg-blue-50",   border: "border-blue-200",   icon: Clock },
@@ -46,6 +50,26 @@ export default function PatientAppointmentsPage() {
   const [selectedApptForReschedule, setSelectedApptForReschedule] = useState<PatientAppointment | null>(null);
   const [selectedApptForCancel, setSelectedApptForCancel] = useState<PatientAppointment | null>(null);
   const [selectedApptForQR, setSelectedApptForQR] = useState<PatientAppointment | null>(null);
+
+  // 8-Screen Unified Appointment Management Modal State
+  const [managementModalOpen, setManagementModalOpen] = useState(false);
+  const [managementMode, setManagementMode] = useState<AppointmentManagementViewMode>("details");
+  const [activeManagementAppt, setActiveManagementAppt] = useState<PatientAppointment | null>(null);
+  const [activeMenuApptId, setActiveMenuApptId] = useState<string | null>(null);
+
+  const handleOpenDetails = (appt: PatientAppointment) => {
+    setActiveManagementAppt(appt);
+    setManagementMode("details");
+    setActiveMenuApptId(null);
+    setManagementModalOpen(true);
+  };
+
+  const handleOpenAction = (appt: PatientAppointment, mode: AppointmentManagementViewMode) => {
+    setActiveManagementAppt(appt);
+    setManagementMode(mode);
+    setActiveMenuApptId(null);
+    setManagementModalOpen(true);
+  };
 
   const hasPermission = canAccess("view_appointments");
 
@@ -161,18 +185,34 @@ export default function PatientAppointmentsPage() {
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-slate-900">
-                {personFilter === "ALL" ? "Family Appointments" : (isSelf ? "My Appointments" : `${currentName}'s Appointments`)}
+                {personFilter === "ALL" ? "Appointments & Queue" : (isSelf ? "Appointments & Queue" : `${currentName}'s Appointments`)}
               </h1>
               <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full border border-blue-200">
                 {sortedAppointments.length} {sortedAppointments.length === 1 ? "Appointment" : "Appointments"}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Discovery-based appointment booking, schedule management, and verified hospital check-in passes.
+              Clinic Consultations & OPD Tokens • Real-time queue check-in and schedule management.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 self-start sm:self-auto">
+            {/* Overview Button for Screen 8 */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveManagementAppt(sortedAppointments[0] || null);
+                setManagementMode("overview");
+                setManagementModalOpen(true);
+              }}
+              data-testid="btn-appointment-management-overview"
+              aria-label="Appointment Management Overview"
+              title="View Appointment Management Overview"
+              className="p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl transition shadow-xs"
+            >
+              <Info className="w-4 h-4 text-blue-600" />
+            </button>
+
             <button
               onClick={loadData}
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
@@ -183,6 +223,7 @@ export default function PatientAppointmentsPage() {
 
             <button
               id="book-appointment-btn"
+              data-testid="btn-book-appointment-primary"
               onClick={() => setIsBookingOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition transform active:scale-95"
             >
@@ -190,6 +231,29 @@ export default function PatientAppointmentsPage() {
               <span>+ Book Appointment</span>
             </button>
           </div>
+        </div>
+
+        {/* Top Action Card: Book Appointment (Matching Reference Screen 1) */}
+        <div
+          onClick={() => setIsBookingOpen(true)}
+          data-testid="btn-book-appointment-card"
+          className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 border border-blue-200/90 rounded-2xl shadow-xs hover:border-blue-400 hover:shadow-md transition cursor-pointer flex items-center justify-between gap-4 group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition transform">
+              <Calendar className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-blue-600 transition flex items-center gap-2">
+                <span>Book Appointment</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">New Consultation</span>
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Find a hospital, choose a doctor and book your next consultation.
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition shrink-0" />
         </div>
 
         {/* Permission Barrier */}
@@ -446,13 +510,13 @@ export default function PatientAppointmentsPage() {
                       </div>
 
                       {/* Action Buttons Footer */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 relative">
                         {/* Primary View Details Button */}
                         <button
                           type="button"
-                          onClick={() => setSelectedApptForDetails(appt)}
-                          data-testid={`view-details-${appt.id}`}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold border border-blue-200 transition shadow-xs"
+                          onClick={() => handleOpenDetails(appt)}
+                          data-testid={`btn-view-details-${appt.id}`}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold border border-blue-200 transition shadow-xs"
                         >
                           <FileText className="w-3.5 h-3.5 text-blue-600" />
                           <span>View Details</span>
@@ -464,37 +528,75 @@ export default function PatientAppointmentsPage() {
                             type="button"
                             onClick={() => setSelectedApptForQR(appt)}
                             data-testid={`show-qr-${appt.id}`}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition"
                           >
                             <QrCode className="w-3.5 h-3.5 text-slate-600" />
                             <span>Show QR Pass</span>
                           </button>
 
-                          {/* Reschedule Button (for upcoming) */}
-                          {isUpcoming && (
+                          {/* 3-Dots Action Dropdown Menu (Screen 1 Parity) */}
+                          <div className="relative">
                             <button
                               type="button"
-                              onClick={() => setSelectedApptForReschedule(appt)}
-                              data-testid={`reschedule-${appt.id}`}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition"
+                              onClick={() =>
+                                setActiveMenuApptId(activeMenuApptId === appt.id ? null : appt.id)
+                              }
+                              data-testid={`btn-appointment-more-${appt.id}`}
+                              aria-label="More appointment options"
+                              className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs transition"
                             >
-                              <Clock className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Reschedule</span>
+                              <MoreVertical className="w-4 h-4 text-slate-600" />
                             </button>
-                          )}
 
-                          {/* Cancel Button (for upcoming) */}
-                          {isUpcoming && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedApptForCancel(appt)}
-                              data-testid={`cancel-${appt.id}`}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition"
-                            >
-                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Cancel</span>
-                            </button>
-                          )}
+                            {activeMenuApptId === appt.id && (
+                              <div
+                                data-testid={`menu-dropdown-${appt.id}`}
+                                className="absolute right-0 bottom-full mb-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl py-1.5 z-30 animate-in fade-in zoom-in-95 duration-150"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAction(appt, "edit")}
+                                  data-testid={`menu-opt-edit-${appt.id}`}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 transition text-left"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Edit Appointment</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAction(appt, "reschedule")}
+                                  data-testid={`menu-opt-reschedule-${appt.id}`}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 transition text-left"
+                                >
+                                  <Repeat className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Reschedule</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAction(appt, "change_doctor")}
+                                  data-testid={`menu-opt-change-doctor-${appt.id}`}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 transition text-left"
+                                >
+                                  <User className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Change Doctor</span>
+                                </button>
+
+                                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAction(appt, "cancel")}
+                                  data-testid={`menu-opt-cancel-${appt.id}`}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>Cancel Appointment</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -526,6 +628,17 @@ export default function PatientAppointmentsPage() {
             )}
           </>
         )}
+
+        {/* Unified 8-Screen 8K Appointment Management Modal */}
+        <AppointmentManagementModal
+          isOpen={managementModalOpen}
+          appointment={activeManagementAppt}
+          initialMode={managementMode}
+          onClose={() => setManagementModalOpen(false)}
+          onAppointmentUpdated={() => {
+            loadData();
+          }}
+        />
 
         {/* Appointment Details Modal */}
         <AppointmentDetailsModal

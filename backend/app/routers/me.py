@@ -8,6 +8,10 @@ from backend.app.core.security import create_access_token
 from backend.app.core.response import success_response
 from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.logging import log_security_event, logger
+from pathlib import Path
+from backend.app.services.ocr.file_validator import read_decrypted_document_bytes
+from backend.app.services.storage.b2_storage import b2_storage
+from backend.app.services.crypto.envelope_encryption import envelope_crypto
 
 router = APIRouter(prefix="", tags=["User Context & Patient Self-Service Workspace"])
 
@@ -42,6 +46,8 @@ class PatientProfileUpdateRequest(BaseModel):
     emergency_contact: Optional[str] = None
     blood_group: Optional[str] = None
     diagnosis: Optional[str] = None
+    avatar_url: Optional[str] = None
+    profile_photo_url: Optional[str] = None
 
 class BookAppointmentRequest(BaseModel):
     patient_id: Optional[str] = None # None means book for myself (authenticated patient)
@@ -60,9 +66,18 @@ class RescheduleAppointmentRequest(BaseModel):
     new_date: str # YYYY-MM-DD
     new_time: str # e.g. 11:00 AM
     new_slot: Optional[str] = None
+    doctor_id: Optional[str] = None
 
 class CancelAppointmentRequest(BaseModel):
     reason: str
+
+class UpdateAppointmentRequest(BaseModel):
+    reason: Optional[str] = None
+    department_id: Optional[str] = None
+    doctor_id: Optional[str] = None
+    appointment_date: Optional[str] = None
+    appointment_time: Optional[str] = None
+    notes: Optional[str] = None
 
 class CreatePrescriptionShareRequest(BaseModel):
     recipient_name: Optional[str] = None
@@ -203,7 +218,9 @@ def get_current_me_profile(current_user: Dict[str, Any] = Depends(get_current_us
                 "blood_group": patient_record.get("blood_group"),
                 "emergency_contact": patient_record.get("emergency_contact"),
                 "qr_token": patient_record.get("qr_token"),
-                "status": patient_record.get("status")
+                "status": patient_record.get("status"),
+                "avatar_url": patient_record.get("avatar_url"),
+                "profile_photo_url": patient_record.get("profile_photo_url") or patient_record.get("avatar_url"),
             }
 
     # Authorized hospitals
@@ -215,6 +232,8 @@ def get_current_me_profile(current_user: Dict[str, Any] = Depends(get_current_us
         "user_ref_id": user_ref_id,
         "username": current_user["username"],
         "name": patient_record.get("name") if patient_record else (current_user.get("name") or current_user.get("full_name")),
+        "avatar_url": patient_record.get("avatar_url") if patient_record else None,
+        "profile_photo_url": (patient_record.get("profile_photo_url") or patient_record.get("avatar_url")) if patient_record else None,
         "role": role,
         "patient": patient_dict,
         "doctor": doctor_dict,
@@ -496,6 +515,7 @@ def reschedule_my_appointment(
             new_date=req.new_date,
             new_time=req.new_time,
             new_slot=req.new_slot or f"{req.new_date} {req.new_time}",
+            doctor_id=req.doctor_id,
             changed_by_name=primary_patient.get("name") or current_user.get("name", "Patient"),
             changed_by_id=current_user.get("user_ref_id", current_user["id"])
         )
@@ -510,10 +530,62 @@ def reschedule_my_appointment(
         actor_id=current_user["username"],
         resource=f"appointment:{appointment_id}",
         status="SUCCESS",
-        details={"new_date": req.new_date, "new_time": req.new_time}
+        details={"new_date": req.new_date, "new_time": req.new_time, "doctor_id": req.doctor_id}
     )
 
     return success_response(data=updated, message="Appointment rescheduled successfully!")
+
+@router.put("/me/appointments/{appointment_id}")
+def update_my_appointment_details(
+    appointment_id: str,
+    req: UpdateAppointmentRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Updates permitted appointment fields (Reason, Department, Doctor, Date, Time, Notes).
+    """
+    primary_patient = _resolve_authenticated_patient(current_user)
+    appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+
+    appt_patient_id = appt.get("patient_id")
+    if appt_patient_id != primary_patient["id"]:
+        access_check = sp_repository.verify_family_access(
+            primary_patient_id=primary_patient["id"],
+            target_patient_id=appt_patient_id,
+            required_permission="book_appointments"
+        )
+        if not access_check.get("authorized"):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to edit appointments for this family member.")
+
+    try:
+        updated = sp_repository.update_appointment_details(
+            appointment_id=appointment_id,
+            reason=req.reason,
+            department_id=req.department_id,
+            doctor_id=req.doctor_id,
+            appointment_date=req.appointment_date,
+            appointment_time=req.appointment_time,
+            notes=req.notes,
+            changed_by_name=primary_patient.get("name") or current_user.get("name", "Patient"),
+            changed_by_id=current_user.get("user_ref_id", current_user["id"])
+        )
+    except ValueError as val_err:
+        raise HTTPException(status_code=409, detail=str(val_err))
+    except Exception as e:
+        logger.error(f"Failed to update appointment {appointment_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update appointment.")
+
+    log_security_event(
+        "PATIENT_APPOINTMENT_EDITED",
+        actor_id=current_user["username"],
+        resource=f"appointment:{appointment_id}",
+        status="SUCCESS",
+        details={"reason": req.reason, "doctor_id": req.doctor_id}
+    )
+
+    return success_response(data=updated, message="Appointment details updated successfully!")
 
 @router.post("/me/appointments/{appointment_id}/cancel")
 def cancel_my_appointment(
@@ -705,6 +777,80 @@ def get_my_documents_counts(
     counts = sp_repository.get_patient_document_counts(patient["id"])
     return success_response(data=counts)
 
+@router.get("/me/storage-quota")
+def get_my_storage_quota(
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Returns real-time My Health Vault storage quota usage (1 GB default),
+    used/available capacity, progress percentage, plan name, and 7-folder breakdown.
+    """
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_STORAGE_QUOTA")
+    quota = sp_repository.get_patient_storage_quota(patient["id"])
+    return success_response(data=quota)
+
+@router.post("/me/storage-quota/upgrade")
+def upgrade_my_storage_quota(
+    payload: Dict[str, Any] = Body(...),
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """Upgrades the patient's Health Vault storage tier using platform subscription policy."""
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="UPGRADE_STORAGE_QUOTA")
+    plan_tier = payload.get("plan_tier", "PLUS_5GB")
+    res = sp_repository.upgrade_patient_storage_quota(patient["id"], plan_tier)
+    return success_response(data=res, message="Health Vault storage quota successfully upgraded.")
+
+@router.patch("/me/documents/{document_id}")
+def update_my_document(
+    document_id: str,
+    payload: Dict[str, Any] = Body(...),
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Renames a document's display title or moves it to a new folder (category)
+    in the patient's Health Vault. Preserves original files and audit log.
+    """
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="UPDATE_DOCUMENT")
+    title = payload.get("title")
+    category = payload.get("category")
+    actor_id = current_user.get("id") or patient["id"]
+
+    updated = sp_repository.update_patient_document(
+        document_id=document_id,
+        patient_id=patient["id"],
+        title=title,
+        category=category,
+        actor_id=actor_id
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medical document not found or access unauthorized.")
+    return success_response(data=updated, message="Document updated successfully in your Health Vault.")
+
+@router.delete("/me/documents/{document_id}")
+def delete_my_document(
+    document_id: str,
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Safely soft-deletes a document from the patient's Health Vault and frees storage quota.
+    Requires patient authentication and ownership validation.
+    """
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="DELETE_DOCUMENT")
+    actor_id = current_user.get("id") or patient["id"]
+    try:
+        res = sp_repository.delete_patient_document(
+            document_id=document_id,
+            patient_id=patient["id"],
+            actor_id=actor_id
+        )
+        return success_response(data=res, message="Document removed from your Health Vault. Storage quota updated.")
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+
 @router.get("/me/documents/{document_id}")
 def get_my_document_detail(
     document_id: str,
@@ -720,6 +866,80 @@ def get_my_document_detail(
     # Audit log
     sp_repository.log_document_audit(doc["id"], patient["id"], current_user.get("id"), "VIEW")
     return success_response(data=doc)
+
+@router.get("/me/documents/{document_id}/file")
+def get_my_document_file(
+    document_id: str,
+    patient_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Streams decrypted document original bytes (PDF, Image) for secure patient preview.
+    Validates patient ownership, resolves Backblaze B2 or local encrypted vault storage,
+    decrypts in-memory, and returns an inline response with strict no-cache security headers.
+    """
+    patient = _resolve_target_patient(current_user, patient_id, required_permission="view_records", action_name="VIEW_DOCUMENT_FILE")
+    doc = sp_repository.get_patient_document_detail(document_id, patient["id"])
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medical document not found or access unauthorized.")
+
+    meta = doc.get("metadata") or {}
+    storage_path = meta.get("approved_storage_path") or meta.get("storage_path")
+    b2_key = meta.get("b2_storage_key")
+    file_name = doc.get("title") or "document"
+    file_type = doc.get("file_type") or "PDF"
+
+    ext = file_type.lower()
+    if ext == "pdf":
+        mime = "application/pdf"
+    elif ext in ("jpg", "jpeg"):
+        mime = "image/jpeg"
+    elif ext == "png":
+        mime = "image/png"
+    elif ext == "webp":
+        mime = "image/webp"
+    else:
+        mime = "application/octet-stream"
+
+    decrypted_bytes = None
+    if storage_path and Path(storage_path).exists():
+        try:
+            decrypted_bytes = read_decrypted_document_bytes(
+                storage_path=storage_path,
+                job_id=meta.get("ocr_job_id"),
+                filename=Path(storage_path).name,
+                hospital_id=doc.get("hospital_id")
+            )
+        except Exception as e:
+            logger.warning(f"Local storage decryption failed for doc {document_id}: {e}")
+
+    if decrypted_bytes is None and b2_key:
+        try:
+            encrypted_pkg = b2_storage.download_encrypted_document(b2_key)
+            tenant_scope = doc.get("hospital_id") or "hosp-kedar"
+            job_id = meta.get("ocr_job_id") or document_id
+            safe_name = Path(b2_key).name.replace(".enc", "")
+            aad = f"{tenant_scope}:{job_id}:{safe_name}".encode("utf-8")
+            try:
+                decrypted_bytes = envelope_crypto.decrypt_document_bytes(encrypted_pkg, associated_data=aad)
+            except Exception:
+                decrypted_bytes = envelope_crypto.decrypt_document_bytes(encrypted_pkg, associated_data=None)
+        except Exception as e:
+            logger.error(f"B2 fetch/decryption failed for doc {document_id}: {e}")
+
+    if decrypted_bytes is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original document bytes could not be located in secure storage.")
+
+    sp_repository.log_document_audit(doc["id"], patient["id"], current_user.get("id"), "PREVIEW_FILE")
+    return Response(
+        content=decrypted_bytes,
+        media_type=mime,
+        headers={
+            "Content-Disposition": f'inline; filename="{file_name}.{ext}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-cache, no-store, must-revalidate"
+        }
+    )
 
 @router.post("/me/documents/upload")
 def upload_personal_document(
@@ -1087,7 +1307,9 @@ def get_my_ohid_card(
         "emergency_contact": patient.get("emergency_contact"),
         "verification_status": "VERIFIED_ACTIVE",
         "connected_facilities": memberships,
-        "facilities_count": len(memberships)
+        "facilities_count": len(memberships),
+        "avatar_url": patient.get("avatar_url"),
+        "profile_photo_url": patient.get("profile_photo_url") or patient.get("avatar_url")
     })
 
 @router.get("/me/health-timeline")

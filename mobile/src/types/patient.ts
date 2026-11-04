@@ -27,6 +27,8 @@ export interface OhIdCardData {
   blood_group?: string;
   emergency_contact?: string;
   verification_status: "VERIFIED_ACTIVE" | "PENDING_VERIFICATION" | "SUSPENDED";
+  avatar_url?: string;
+  profile_photo_url?: string;
   connected_facilities?: ConnectedFacility[];
   facilities_count?: number;
 }
@@ -35,6 +37,8 @@ export interface PatientProfile {
   id: string;
   name: string;
   onehealth_id: string;
+  avatar_url?: string;
+  profile_photo_url?: string;
   age?: number;
   gender?: string;
   dob?: string;
@@ -145,7 +149,15 @@ export interface PrescriptionItem {
   department?: string;
   diagnosis?: string;
   medicines: MedicineItem[];
-  status: "ACTIVE" | "COMPLETED" | "SUPERSEDED" | "EXPIRED" | "CANCELLED";
+  items?: any[];
+  status: "ACTIVE" | "COMPLETED" | "SUPERSEDED" | "EXPIRED" | "CANCELLED" | string;
+  computed_status?: string;
+  is_expired?: boolean;
+  follow_up_date?: string;
+  follow_up_days?: number;
+  clinical_advice?: string;
+  instructions?: string;
+  doctor_notes?: string;
   download_url?: string;
 }
 
@@ -155,14 +167,84 @@ export interface AppointmentItem {
   appointment_time?: string;
   doctor_id?: string;
   doctor_name: string;
+  doctor_specialty?: string;
+  doctor_qualification?: string;
   department: string;
   hospital_id?: string;
   hospital_name: string;
   token_number?: number;
   token_str?: string;
-  status: "CONFIRMED" | "CHECKED_IN" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED";
+  status: "CONFIRMED" | "CHECKED_IN" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED" | string;
   chief_complaint?: string;
   queue_status?: string;
+  appointment_type?: string;
+  checkin_token?: string;
+  patient_id?: string;
+  reason?: string;
+  patient_name?: string;
+  onehealth_id?: string;
+  room_number?: string;
+  created_at?: string;
+  booking_date?: string;
+  hospital_address?: string;
+  hospital_city?: string;
+  hospital_area?: string;
+  doctor_consultation_fee?: number;
+  reschedule_history?: any[];
+  cancellation_reason?: string;
+  cancelled_at?: string;
+}
+
+export interface DiscoveryHospital {
+  id: string;
+  name: string;
+  city: string;
+  address?: string;
+  area?: string;
+  category?: string;
+  distance_km?: number | string;
+  rating?: number;
+  review_count?: number;
+  consultation_fee?: number;
+  departments?: { id: string; name: string }[];
+}
+
+export interface DiscoveryDoctor {
+  id: string;
+  name: string;
+  specialty: string;
+  qualification?: string;
+  hospital_id?: string;
+  hospital_name?: string;
+  department_id?: string;
+  experience_years?: number;
+  consultation_fee?: number;
+  rating?: number;
+  availability_status?: "TODAY" | "TOMORROW" | "THIS_WEEK" | string;
+}
+
+export interface AppointmentSlot {
+  time: string;
+  period: "Morning" | "Afternoon" | "Evening";
+  session?: string;
+  date: string;
+  slot_value: string;
+  is_available: boolean;
+  doctor_id: string;
+}
+
+export interface BookAppointmentPayload {
+  patient_id?: string;
+  hospital_id: string;
+  doctor_id: string;
+  department_id?: string;
+  appointment_date: string;
+  appointment_time: string;
+  appointment_type?: string;
+  reason?: string;
+  symptoms_notes?: string;
+  priority?: "NORMAL" | "URGENT";
+  slot?: string;
 }
 
 export interface TimelineEvent {

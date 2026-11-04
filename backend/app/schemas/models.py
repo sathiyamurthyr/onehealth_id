@@ -230,6 +230,24 @@ class AppointmentCreate(AppointmentBase):
 
 class AppointmentStatusUpdate(BaseModel):
     status: str
+    cancellation_reason: Optional[str] = None
+
+class AppointmentRescheduleRequest(BaseModel):
+    new_date: str
+    new_time: str
+    doctor_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class AppointmentCancelRequest(BaseModel):
+    reason: str
+
+class AppointmentUpdateRequest(BaseModel):
+    reason: Optional[str] = None
+    department_id: Optional[str] = None
+    doctor_id: Optional[str] = None
+    appointment_date: Optional[str] = None
+    appointment_time: Optional[str] = None
+    notes: Optional[str] = None
 
 class AppointmentResponse(AppointmentBase):
     id: str
@@ -241,9 +259,13 @@ class AppointmentResponse(AppointmentBase):
     patient_diagnosis: Optional[str] = None
     doctor_name: Optional[str] = None
     doctor_specialty: Optional[str] = None
+    doctor_qualification: Optional[str] = None
     room_number: Optional[str] = None
     hospital_id: Optional[str] = None
     hospital_name: Optional[str] = None
+    hospital_address: Optional[str] = None
+    hospital_city: Optional[str] = None
+    hospital_area: Optional[str] = None
     branch_id: Optional[str] = None
     branch_name: Optional[str] = None
     department_id: Optional[str] = None
@@ -252,6 +274,12 @@ class AppointmentResponse(AppointmentBase):
     token_prefix: Optional[str] = "OPD-"
     checked_in_at: Optional[Any] = None
     visit_id: Optional[str] = None
+    reason: Optional[str] = None
+    checkin_token: Optional[str] = None
+    reschedule_history: Optional[Any] = None
+    cancellation_reason: Optional[str] = None
+    cancelled_at: Optional[Any] = None
+    cancelled_by: Optional[str] = None
     is_demo_data: Optional[bool] = False
     created_at: Optional[Any] = None
 

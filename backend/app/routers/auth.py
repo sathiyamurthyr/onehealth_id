@@ -51,16 +51,26 @@ def get_current_user(request: Optional[Request] = None, authorization: Optional[
 
 @router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit_login)])
 def login(creds: LoginRequest, response: Response, request: Request):
-    identifier = creds.username.strip()
+    raw_identifier = creds.username.strip()
     # Reject email logins per Phase 1 Architecture Conformance
-    if "@" in identifier:
+    if "@" in raw_identifier:
         raise HTTPException(
             status_code=400,
             detail="Email is not a login identifier. Please enter your Registered Mobile Number."
         )
 
+    # Normalize phone numbers: handle +91, spaces, dashes (e.g. "+91 98842 40519" -> "9884240519")
+    digits_only = "".join(filter(str.isdigit, raw_identifier))
+    if len(digits_only) >= 10:
+        identifier = digits_only[-10:]
+    else:
+        identifier = raw_identifier
+
     # 1. Fetch user from PostgreSQL oh_id.vw_user_auth by mobile or username
     user_row = sp_repository.get_user_by_mobile(identifier)
+    if not user_row:
+        user_row = sp_repository.get_user_by_username(raw_identifier)
+
     if not user_row:
         raise HTTPException(status_code=401, detail="Invalid mobile number or password")
 

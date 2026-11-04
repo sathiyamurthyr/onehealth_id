@@ -53,7 +53,7 @@ describe("DocumentUploadScreen — Enterprise Document Validation UX", () => {
     const { getByText, getByTestId } = await render(<DocumentUploadScreen />);
 
     expect(getByText("Upload Medical Document")).toBeTruthy();
-    expect(getByText("1. Select Medical Document Category")).toBeTruthy();
+    expect(getByText(/Select Medical Document Category/)).toBeTruthy();
     expect(getByText("Upload & Security Policy")).toBeTruthy();
 
     // Verify category pills exist
@@ -174,7 +174,7 @@ describe("DocumentUploadScreen — Enterprise Document Validation UX", () => {
         "Please upload an authentic medical record (e.g. Doctor RxPad, Diagnostic Lab Report, Discharge Summary). Non-medical bills and invoices are strictly blocked.",
     });
 
-    const { getByTestId, getByText } = await render(<DocumentUploadScreen />);
+    const { getByTestId, getByText, getAllByText } = await render(<DocumentUploadScreen />);
 
     await fireEvent.press(getByTestId("sample-irrelevant-btn"));
     await fireEvent.press(getByTestId("submit-validation-button"));
@@ -182,8 +182,9 @@ describe("DocumentUploadScreen — Enterprise Document Validation UX", () => {
     await waitFor(
       () => {
         expect(getByTestId("validation-outcome-rejected")).toBeTruthy();
-        expect(getByText("Irrelevant Content Blocked")).toBeTruthy();
-        expect(getByText(/Non-medical bills and invoices are strictly blocked/)).toBeTruthy();
+        expect(getByText(/REJECTED – NOT A MEDICAL DOCUMENT/)).toBeTruthy();
+        expect(getAllByText(/This file does not appear to be a supported medical document/)[0]).toBeTruthy();
+        expect(getByText("Retry Upload")).toBeTruthy();
       },
       { timeout: 3000 }
     );
@@ -212,6 +213,36 @@ describe("DocumentUploadScreen — Enterprise Document Validation UX", () => {
         expect(getByTestId("validation-outcome-rejected")).toBeTruthy();
         expect(getByText("Unreadable Document")).toBeTruthy();
         expect(getByText(/Ensure the document is well-lit/)).toBeTruthy();
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  it("displays rejected non-medical document card for NON_MEDICAL_DOCUMENT_REJECTED", async () => {
+    (documentsApi.uploadAndValidateDocument as jest.Mock).mockResolvedValueOnce({
+      id: "doc-err-non-medical",
+      status: "NON_MEDICAL_DOCUMENT_REJECTED",
+      validation_decision: "NON_MEDICAL_DOCUMENT_REJECTED",
+      file_name: "whatsapp_chat_screenshot.png",
+      document_category: "PRESCRIPTION",
+      file_size_bytes: 250 * 1024,
+      rejection_reason:
+        "Document classified as messaging application screenshot or chat conversation.",
+      actionable_remedy:
+        "This file does not appear to be a supported medical document. Please upload a prescription, laboratory report, consultation report or other supported clinical document.",
+    });
+
+    const { getByTestId, getByText, getAllByText } = await render(<DocumentUploadScreen />);
+
+    await fireEvent.press(getByTestId("sample-irrelevant-btn"));
+    await fireEvent.press(getByTestId("submit-validation-button"));
+
+    await waitFor(
+      () => {
+        expect(getByTestId("validation-outcome-rejected")).toBeTruthy();
+        expect(getByText(/REJECTED – NOT A MEDICAL DOCUMENT/)).toBeTruthy();
+        expect(getAllByText(/This file does not appear to be a supported medical document/)[0]).toBeTruthy();
+        expect(getByText("Retry Upload")).toBeTruthy();
       },
       { timeout: 3000 }
     );

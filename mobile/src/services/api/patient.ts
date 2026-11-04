@@ -18,6 +18,10 @@ import {
   FamilyOverview,
   AddFamilyMemberPayload,
   FamilyPermissions,
+  DiscoveryHospital,
+  DiscoveryDoctor,
+  AppointmentSlot,
+  BookAppointmentPayload,
 } from "../../types/patient";
 
 function unwrap<T>(res: any): T {
@@ -89,10 +93,17 @@ export const patientApi = {
   async getAppointments(patientId?: string): Promise<AppointmentItem[]> {
     const endpoint = patientId
       ? `/me/appointments?patient_id=${encodeURIComponent(patientId)}`
-      : "/appointments";
-    const res = await fetchJSON<any>(endpoint);
-    const items = unwrap<any[]>(res);
-    return Array.isArray(items) ? items : [];
+      : "/me/appointments";
+    try {
+      const res = await fetchJSON<any>(endpoint);
+      const items = unwrap<any[]>(res);
+      return Array.isArray(items) ? items : [];
+    } catch {
+      // Fallback for staff role or legacy endpoint
+      const fallback = await fetchJSON<any>("/appointments");
+      const fallbackItems = unwrap<any[]>(fallback);
+      return Array.isArray(fallbackItems) ? fallbackItems : [];
+    }
   },
 
   /**
@@ -189,17 +200,169 @@ export const patientApi = {
   /**
    * Updates permissions and consent for a family member.
    */
-  async updateFamilyPermissions(
-    relationshipId: string,
-    permissions: FamilyPermissions
-  ): Promise<FamilyMember> {
-    const res = await fetchJSON<any>(
-      `/me/family/${encodeURIComponent(relationshipId)}/permissions`,
-      {
+  /**
+   * Searches participating OH-ID hospitals by name, area or location.
+   */
+  async searchHospitals(query?: string, location?: string): Promise<DiscoveryHospital[]> {
+    const params = new URLSearchParams();
+    if (query) params.append("query", query);
+    if (location) params.append("location", location);
+    const qs = params.toString();
+    const res = await fetchJSON<any>(`/discovery/providers${qs ? `?${qs}` : ""}`);
+    const items = unwrap<any[]>(res);
+    return Array.isArray(items) ? items : [];
+  },
+
+  /**
+   * Fetches available clinical specialties.
+   */
+  async getSpecialties(category?: string, search?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (category) params.append("category", category);
+    if (search) params.append("search", search);
+    const qs = params.toString();
+    const res = await fetchJSON<any>(`/discovery/specialties${qs ? `?${qs}` : ""}`);
+    const items = unwrap<any[]>(res);
+    return Array.isArray(items) ? items : [];
+  },
+
+  /**
+   * Fetches registered doctors matching hospital and/or specialty.
+   */
+  async getDoctors(hospitalId?: string, specialty?: string, departmentId?: string): Promise<DiscoveryDoctor[]> {
+    const params = new URLSearchParams();
+    if (hospitalId) params.append("hospital_id", hospitalId);
+    if (specialty) params.append("specialty", specialty);
+    if (departmentId) params.append("department_id", departmentId);
+    const qs = params.toString();
+    const res = await fetchJSON<any>(`/discovery/doctors${qs ? `?${qs}` : ""}`);
+    const items = unwrap<any[]>(res);
+    return Array.isArray(items) ? items : [];
+  },
+
+  /**
+   * Computes verified real-time appointment time slots for a doctor and date.
+   */
+  async getAvailableSlots(doctorId: string, date: string, hospitalId?: string): Promise<AppointmentSlot[]> {
+    const params = new URLSearchParams({ doctor_id: doctorId, date });
+    if (hospitalId) params.append("hospital_id", hospitalId);
+    const res = await fetchJSON<any>(`/discovery/slots?${params.toString()}`);
+    const items = unwrap<any[]>(res);
+    return Array.isArray(items) ? items : [];
+  },
+
+  /**
+   * Books an appointment for self or authorized family member.
+   */
+  async bookAppointment(payload: BookAppointmentPayload): Promise<AppointmentItem> {
+    const res = await fetchJSON<any>("/me/appointments/book", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return unwrap<AppointmentItem>(res);
+  },
+
+  /**
+   * Fetches detailed information for a single appointment.
+   */
+  async getAppointmentDetails(appointmentId: string): Promise<AppointmentItem> {
+    try {
+      const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}`);
+      return unwrap<AppointmentItem>(res);
+    } catch {
+      const fallback = await fetchJSON<any>(`/appointments/${encodeURIComponent(appointmentId)}`);
+      return unwrap<AppointmentItem>(fallback);
+    }
+  },
+
+  /**
+   * Updates permitted appointment details (reason, department, doctor, date, time, notes).
+   */
+  async updateAppointment(
+    appointmentId: string,
+    payload: {
+      reason?: string;
+      department_id?: string;
+      doctor_id?: string;
+      appointment_date?: string;
+      appointment_time?: string;
+      notes?: string;
+    }
+  ): Promise<AppointmentItem> {
+    try {
+      const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}`, {
         method: "PUT",
-        body: JSON.stringify({ permissions }),
-      }
-    );
-    return unwrap<FamilyMember>(res);
+        body: JSON.stringify(payload),
+      });
+      return unwrap<AppointmentItem>(res);
+    } catch {
+      const fallback = await fetchJSON<any>(`/appointments/${encodeURIComponent(appointmentId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      return unwrap<AppointmentItem>(fallback);
+    }
+  },
+
+  /**
+   * Cancels a scheduled appointment.
+   */
+  async cancelAppointment(appointmentId: string, reason: string): Promise<any> {
+    try {
+      const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      return unwrap(res);
+    } catch {
+      const fallback = await fetchJSON<any>(`/appointments/${encodeURIComponent(appointmentId)}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      return unwrap(fallback);
+    }
+  },
+
+  /**
+   * Reschedules an appointment to a new date and time (with optional new doctor).
+   */
+  async rescheduleAppointment(
+    appointmentId: string,
+    newDate: string,
+    newTime: string,
+    doctorId?: string,
+    reason?: string
+  ): Promise<any> {
+    try {
+      const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+        method: "POST",
+        body: JSON.stringify({
+          new_date: newDate,
+          new_time: newTime,
+          doctor_id: doctorId,
+          reason,
+        }),
+      });
+      return unwrap(res);
+    } catch {
+      const fallback = await fetchJSON<any>(`/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+        method: "POST",
+        body: JSON.stringify({
+          new_date: newDate,
+          new_time: newTime,
+          doctor_id: doctorId,
+          notes: reason,
+        }),
+      });
+      return unwrap(fallback);
+    }
+  },
+
+  /**
+   * Fetches zero-knowledge check-in QR pass for this appointment.
+   */
+  async getAppointmentQrPass(appointmentId: string): Promise<any> {
+    const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}/qr`);
+    return unwrap(res);
   },
 };

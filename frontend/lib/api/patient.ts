@@ -562,7 +562,26 @@ export const patientApi = {
       body: JSON.stringify(payload),
     }),
 
-  rescheduleAppointment: (appointmentId: string, payload: { new_date: string; new_time: string; new_slot?: string; reason?: string }) =>
+  updateAppointment: (
+    appointmentId: string,
+    payload: {
+      reason?: string;
+      department_id?: string;
+      doctor_id?: string;
+      appointment_date?: string;
+      appointment_time?: string;
+      notes?: string;
+    }
+  ) =>
+    fetchJSON<{ success: boolean; data: PatientAppointment; message: string }>(`/me/appointments/${appointmentId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  rescheduleAppointment: (
+    appointmentId: string,
+    payload: { new_date: string; new_time: string; new_slot?: string; doctor_id?: string; reason?: string }
+  ) =>
     fetchJSON<{ success: boolean; data: PatientAppointment; message: string }>(`/me/appointments/${appointmentId}/reschedule`, {
       method: "POST",
       body: JSON.stringify(payload),

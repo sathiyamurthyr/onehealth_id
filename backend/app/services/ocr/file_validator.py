@@ -68,9 +68,13 @@ def verify_file_signature(content: bytes, ext: str) -> Tuple[bool, str]:
     # PDF signature: %PDF-
     if ext == ".pdf":
         if content.startswith(b'%PDF-'):
+            # Security scan for dangerous PDF embedded actions (JavaScript, Launch)
+            lower_content = content[:65536].lower() + content[-8192:].lower()
+            if b'/javascript' in lower_content or b'/launch' in lower_content:
+                return False, "PDF contains potentially unsafe embedded script or executable launch actions."
+
             # Check for encrypted PDF indicator
             if b'/Encrypt' in content[:4096] or b'/Encrypt' in content[-4096:]:
-                # Check with pypdfium2 if readable
                 try:
                     import pypdfium2 as pdfium
                     doc = pdfium.PdfDocument(content)
@@ -83,23 +87,35 @@ def verify_file_signature(content: bytes, ext: str) -> Tuple[bool, str]:
             return True, "application/pdf"
         return False, "Invalid PDF header signature."
 
-    # PNG signature: 89 50 4E 47 0D 0A 1A 0A
-    if ext == ".png":
-        if content.startswith(b'\x89PNG\r\n\x1a\n'):
-            return True, "image/png"
-        return False, "Invalid PNG signature."
+    # Validate image signatures and dimensions
+    if ext in (".png", ".jpg", ".jpeg", ".webp"):
+        valid_sig = False
+        mime = "image/jpeg"
+        if ext == ".png" and content.startswith(b'\x89PNG\r\n\x1a\n'):
+            valid_sig = True
+            mime = "image/png"
+        elif ext in (".jpg", ".jpeg") and content.startswith(b'\xff\xd8\xff'):
+            valid_sig = True
+            mime = "image/jpeg"
+        elif ext == ".webp" and content.startswith(b'RIFF') and len(content) > 12 and content[8:12] == b'WEBP':
+            valid_sig = True
+            mime = "image/webp"
 
-    # JPEG signature: FF D8 FF
-    if ext in (".jpg", ".jpeg"):
-        if content.startswith(b'\xff\xd8\xff'):
-            return True, "image/jpeg"
-        return False, "Invalid JPEG signature."
+        if not valid_sig:
+            return False, f"Invalid {ext.lstrip('.').upper()} signature."
 
-    # WEBP signature: RIFF....WEBP
-    if ext == ".webp":
-        if content.startswith(b'RIFF') and len(content) > 12 and content[8:12] == b'WEBP':
-            return True, "image/webp"
-        return False, "Invalid WebP signature."
+        # Verify image dimensions for decompression bomb protection
+        try:
+            import io
+            from PIL import Image
+            with Image.open(io.BytesIO(content)) as img:
+                w, h = img.size
+                if w > 10000 or h > 10000 or (w * h) > 50_000_000:
+                    return False, f"Image dimensions ({w}x{h}) exceed security limit of 50M pixels or 10,000px dimension."
+        except Exception as img_err:
+            return False, f"Corrupted or invalid image file: {str(img_err)}"
+
+        return True, mime
 
     # DOCX signature: PK 03 04 (ZIP container containing word/document.xml)
     if ext == ".docx":

@@ -7,7 +7,8 @@
  * Sathus Technology Pvt Ltd - Enterprise DevSecOps Architecture
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import { UserProfile } from "../types/auth";
 import { secureStorage } from "../services/storage/secure_store";
 import { authApi } from "../services/api/auth";
@@ -19,6 +20,7 @@ export interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAppLocked: boolean;
   activeRole: string | null;
   availableRoles: string[];
   biometricCapability: BiometricCapability;
@@ -26,12 +28,16 @@ export interface AuthContextType {
   hasConfiguredPin: boolean;
   rememberedPhone: string | null;
   rememberedName: string | null;
+  patientAvatar: string | null;
+  setPatientAvatar: (avatar: string | null) => Promise<void>;
   login: (username: string, password: string) => Promise<{ success: boolean; defaultRoute: string; error?: string }>;
   loginWithBiometrics: () => Promise<{ success: boolean; defaultRoute?: string; error?: string }>;
   loginWithPin: (pin: string) => Promise<PinVerificationResult & { defaultRoute?: string }>;
   setupAppPin: (pin: string) => Promise<{ success: boolean; error?: string }>;
   clearAppPin: () => Promise<void>;
   logout: () => Promise<void>;
+  lockApp: () => void;
+  unlockApp: () => void;
   switchRole: (role: string) => Promise<string>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -64,12 +70,13 @@ export const resolveRoleRoute = (role?: string): string => {
   }
 };
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
   const [activeRole, setActiveRole] = useState<string | null>(null);
   const [biometricCapability, setBiometricCapability] = useState<BiometricCapability>({
     hasHardware: false,
@@ -80,6 +87,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [hasConfiguredPin, setHasConfiguredPin] = useState<boolean>(false);
   const [rememberedPhone, setRememberedPhone] = useState<string | null>(null);
   const [rememberedName, setRememberedName] = useState<string | null>(null);
+  const [patientAvatar, setPatientAvatarState] = useState<string | null>(null);
+  const backgroundTimeRef = useRef<number | null>(null);
 
   // Initialize session state on app bootstrap
   useEffect(() => {
@@ -87,13 +96,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     async function initializeSession() {
       try {
-        const [storedToken, storedUser, bioCap, bioPref, hasPin, remembered] = await Promise.all([
+        const [storedToken, storedUser, bioCap, bioPref, hasPin, remembered, storedAvatar] = await Promise.all([
           secureStorage.getAccessToken(),
           secureStorage.getActiveUser(),
           biometricService.getCapability(),
           biometricService.isBiometricEnabled(),
           pinService.hasConfiguredPin(),
           secureStorage.getRememberedUser(),
+          secureStorage.getPatientAvatar(),
         ]);
 
         if (!isMounted) return;
@@ -103,11 +113,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setHasConfiguredPin(hasPin);
         setRememberedPhone(remembered.phone);
         setRememberedName(remembered.name);
+        if (storedAvatar) {
+          setPatientAvatarState(storedAvatar);
+        }
 
         if (storedToken && storedUser) {
           setToken(storedToken);
           setUser(storedUser);
           setActiveRole(storedUser.role);
+          // If device has an active PIN configured, gate access behind returning user unlock
+          if (hasPin) {
+            setIsAppLocked(true);
+          }
           // Non-blocking background verification of active token
           authApi.getMe().then((liveProfile) => {
             if (isMounted && liveProfile) {
@@ -133,6 +150,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isMounted = false;
     };
   }, []);
+
+  // Listen to AppState lifecycle: relock after background inactivity
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+      if (nextAppState === "background" || nextAppState === "inactive") {
+        backgroundTimeRef.current = Date.now();
+      } else if (nextAppState === "active") {
+        if (hasConfiguredPin && backgroundTimeRef.current) {
+          const elapsedSeconds = (Date.now() - backgroundTimeRef.current) / 1000;
+          // Inactivity policy: relock if backgrounded for more than 60 seconds
+          if (elapsedSeconds >= 60) {
+            setIsAppLocked(true);
+          }
+        }
+        backgroundTimeRef.current = null;
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [hasConfiguredPin]);
 
   const login = useCallback(
     async (
@@ -199,6 +238,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setToken(storedToken);
       setUser(storedUser);
       setActiveRole(storedUser.role);
+      setIsAppLocked(false);
       return {
         success: true,
         defaultRoute: resolveRoleRoute(storedUser.role),
@@ -227,6 +267,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setToken(storedToken);
         setUser(storedUser);
         setActiveRole(storedUser.role);
+        setIsAppLocked(false);
         return {
           success: true,
           defaultRoute: resolveRoleRoute(storedUser.role),
@@ -255,6 +296,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const clearAppPin = useCallback(async (): Promise<void> => {
     await pinService.clearPin();
     setHasConfiguredPin(false);
+    setIsAppLocked(false);
+  }, []);
+
+  const lockApp = useCallback((): void => {
+    setIsAppLocked(true);
+  }, []);
+
+  const unlockApp = useCallback((): void => {
+    setIsAppLocked(false);
   }, []);
 
   const switchRole = useCallback(async (newRole: string): Promise<string> => {
@@ -270,6 +320,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return resolveRoleRoute(newRole);
   }, [user]);
 
+  const setPatientAvatar = useCallback(async (avatar: string | null): Promise<void> => {
+    setPatientAvatarState(avatar);
+    await secureStorage.setPatientAvatar(avatar);
+  }, []);
+
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
@@ -278,6 +333,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       setToken(null);
       setActiveRole(null);
+      setIsAppLocked(false);
+      setPatientAvatarState(null);
       setIsLoading(false);
     }
   }, []);
@@ -307,7 +364,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user,
     token,
     isLoading,
-    isAuthenticated: Boolean(token && user),
+    isAuthenticated: Boolean(token && user && !isAppLocked),
+    isAppLocked,
     activeRole: activeRole || user?.role || null,
     availableRoles,
     biometricCapability,
@@ -315,12 +373,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     hasConfiguredPin,
     rememberedPhone,
     rememberedName,
+    patientAvatar,
+    setPatientAvatar,
     login,
     loginWithBiometrics,
     loginWithPin,
     setupAppPin,
     clearAppPin,
     logout,
+    lockApp,
+    unlockApp,
     switchRole,
     setBiometricPreference,
     refreshSession,

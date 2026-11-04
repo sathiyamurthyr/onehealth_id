@@ -17,6 +17,7 @@ const PIN_VERIFIER_KEY = "oh_mobile_pin_verifier";
 const PIN_SALT_KEY = "oh_mobile_pin_salt";
 const PIN_ATTEMPTS_KEY = "oh_mobile_pin_attempts";
 const PIN_LOCKOUT_UNTIL_KEY = "oh_mobile_pin_lockout_until";
+const PATIENT_AVATAR_KEY = "oh_mobile_patient_avatar";
 
 // Volatile in-memory fallback for test harnesses
 const inMemoryCache: Record<string, string> = {};
@@ -194,6 +195,18 @@ class SecureSessionStore {
       await this.deleteItem(PIN_LOCKOUT_UNTIL_KEY);
     } else {
       await this.setItem(PIN_LOCKOUT_UNTIL_KEY, timestamp.toString());
+    }
+  }
+
+  public async getPatientAvatar(): Promise<string | null> {
+    return this.getItem(PATIENT_AVATAR_KEY);
+  }
+
+  public async setPatientAvatar(avatarUrl: string | null): Promise<void> {
+    if (!avatarUrl) {
+      await this.deleteItem(PATIENT_AVATAR_KEY);
+    } else {
+      await this.setItem(PATIENT_AVATAR_KEY, avatarUrl);
     }
   }
 

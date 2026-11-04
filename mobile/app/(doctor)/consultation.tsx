@@ -6,7 +6,7 @@
  * digital prescriptions, and cryptographically signs with doctor's 4-digit PIN.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -31,11 +31,13 @@ import {
   CheckCircle2,
   ShieldCheck,
   AlertCircle,
+  AlertTriangle,
   X,
   Eye,
   Layers,
 } from "lucide-react-native";
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from "../../src/theme";
+import { AppHeader } from "../../src/components/common/AppHeader";
 import { Card } from "../../src/components/common/Card";
 import { StatusBadge } from "../../src/components/common/StatusBadge";
 import { doctorApi } from "../../src/services/api/doctor";
@@ -68,20 +70,56 @@ export default function DoctorConsultationScreen() {
   const onehealthId = params.onehealth_id || "OHID-CITIZEN-001";
   const tokenStr = params.token_str || "OPD-GEN-07";
 
-  // Vitals State
-  const [vitals, setVitals] = useState<ClinicalVitals>({
-    bp_systolic: "120",
-    bp_diastolic: "80",
-    heart_rate: "76",
-    temperature: "98.4",
-    spo2: "99",
-    weight_kg: "70",
-  });
+  // Patient Clinical Context & Safety
+  const [patientAllergies, setPatientAllergies] = useState<string[]>([
+    "Penicillin (Severe anaphylaxis)",
+    "Aspirin (Bronchospasm)",
+  ]);
+  const [chronicConditions, setChronicConditions] = useState<string[]>([
+    "Type 2 Diabetes Mellitus",
+    "Essential Hypertension",
+  ]);
 
-  // Clinical Notes & Diagnosis
-  const [symptoms, setSymptoms] = useState("Fever and mild dry cough for 3 days");
-  const [clinicalNotes, setClinicalNotes] = useState("Bilateral chest clear on auscultation. Throat mild erythema.");
-  const [primaryDiagnosis, setPrimaryDiagnosis] = useState("Acute Upper Respiratory Infection");
+  useEffect(() => {
+    if (patientId && typeof doctorApi.getPatientContext === "function") {
+      try {
+        const promise = doctorApi.getPatientContext(patientId);
+        if (promise && typeof promise.then === "function") {
+          promise
+            .then((ctx) => {
+              if (ctx?.allergies && Array.isArray(ctx.allergies) && ctx.allergies.length > 0) {
+                const normalized = ctx.allergies.map((a: any) => {
+                  if (typeof a === "string") return a;
+                  if (typeof a === "object" && a !== null) {
+                    const parts = [a.allergen || a.name || a.substance || "Allergen"];
+                    if (a.severity) parts.push(`(${a.severity})`);
+                    if (a.reaction) parts.push(`- ${a.reaction}`);
+                    return parts.join(" ");
+                  }
+                  return String(a);
+                });
+                setPatientAllergies(normalized);
+              }
+              if (ctx?.chronic_conditions && Array.isArray(ctx.chronic_conditions) && ctx.chronic_conditions.length > 0) {
+                const normalizedC = ctx.chronic_conditions.map((c: any) => {
+                  if (typeof c === "string") return c;
+                  if (typeof c === "object" && c !== null) {
+                    return c.condition || c.name || c.diagnosis || String(c);
+                  }
+                  return String(c);
+                });
+                setChronicConditions(normalizedC);
+              }
+            })
+            .catch(() => {
+              // Keep default clinical profile
+            });
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+  }, [patientId]);
 
   // Medication Builder State
   const [drugs, setDrugs] = useState<PrescriptionDrugItem[]>([
@@ -100,6 +138,76 @@ export default function DoctorConsultationScreen() {
   const [newDrugStrength, setNewDrugStrength] = useState("500 mg");
   const [newDrugFreq, setNewDrugFreq] = useState("Twice daily (1-0-1)");
   const [newDrugDuration, setNewDrugDuration] = useState("5");
+
+  // Drug Safety & Interaction Alerts Engine
+  const safetyAlerts = useMemo(() => {
+    const alerts: Array<{ id: string; type: "CRITICAL" | "WARNING"; title: string; message: string }> = [];
+
+    (drugs || []).forEach((d) => {
+      const name = d.medicine_name.toLowerCase();
+      // Penicillin / Amoxicillin allergy check
+      if (
+        (name.includes("amox") || name.includes("penicillin") || name.includes("ampicillin") || name.includes("augmentin")) &&
+        patientAllergies.some((a) => a.toLowerCase().includes("penicillin"))
+      ) {
+        alerts.push({
+          id: `allergy-penicillin-${d.medicine_name}`,
+          type: "CRITICAL",
+          title: "CRITICAL ALLERGY CONFLICT",
+          message: `Patient is allergic to Penicillin. Prescribing ${d.medicine_name} carries an anaphylaxis risk.`,
+        });
+      }
+      // Aspirin / NSAID allergy check
+      if (
+        (name.includes("aspirin") || name.includes("ibuprofen") || name.includes("diclofenac") || name.includes("aceclofenac")) &&
+        patientAllergies.some((a) => a.toLowerCase().includes("aspirin") || a.toLowerCase().includes("nsaid"))
+      ) {
+        alerts.push({
+          id: `allergy-nsaid-${d.medicine_name}`,
+          type: "CRITICAL",
+          title: "NSAID / ASPIRIN ALLERGY CONFLICT",
+          message: `Patient has documented allergy to Aspirin/NSAIDs.`,
+        });
+      }
+    });
+
+    // Duplicate Analgesic / NSAID check
+    const nsaids = drugs.filter((d) => {
+      const m = d.medicine_name.toLowerCase();
+      return (
+        m.includes("paracetamol") ||
+        m.includes("ibuprofen") ||
+        m.includes("aceclofenac") ||
+        m.includes("diclofenac") ||
+        m.includes("naproxen")
+      );
+    });
+    if (nsaids.length > 1) {
+      alerts.push({
+        id: "ddi-duplicate-nsaid",
+        type: "WARNING",
+        title: "DUPLICATE ANALGESIC / NSAID THERAPY",
+        message: "Multiple analgesics/NSAIDs prescribed together. Monitor hepatic and renal safety.",
+      });
+    }
+
+    return alerts;
+  }, [drugs, patientAllergies]);
+
+  // Vitals State
+  const [vitals, setVitals] = useState<ClinicalVitals>({
+    bp_systolic: "120",
+    bp_diastolic: "80",
+    heart_rate: "76",
+    temperature: "98.4",
+    spo2: "99",
+    weight_kg: "70",
+  });
+
+  // Clinical Notes & Diagnosis
+  const [symptoms, setSymptoms] = useState("Fever and mild dry cough for 3 days");
+  const [clinicalNotes, setClinicalNotes] = useState("Bilateral chest clear on auscultation. Throat mild erythema.");
+  const [primaryDiagnosis, setPrimaryDiagnosis] = useState("Acute Upper Respiratory Infection");
 
   // Active Hospital Document Template State
   const [templateSettings, setTemplateSettings] = useState<HospitalDocumentTemplateSettings | null>(null);
@@ -195,22 +303,15 @@ export default function DoctorConsultationScreen() {
 
   return (
     <View style={styles.container} testID="doctor-consultation-screen">
-      {/* Top Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          testID="back-to-doctor-queue"
-          accessibilityRole="button"
-          accessibilityLabel="Back to Queue"
-        >
-          <ArrowLeft size={20} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTitles}>
-          <Text style={styles.screenTitle}>Clinical Encounter</Text>
-          <Text style={styles.screenSubtitle}>Doctor Consultation & RxPad</Text>
-        </View>
-      </View>
+      {/* Global Standardized Header: White Card + Subtle Blue Divider + Outlined Notification & Profile */}
+      <AppHeader
+        title="Clinical Encounter"
+        subtitle="Doctor Consultation & RxPad"
+        showBackButton={true}
+        backButtonTestID="back-to-doctor-queue"
+        showDivider={true}
+        showDefaultActions={true}
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Patient Identity Banner */}
@@ -226,6 +327,25 @@ export default function DoctorConsultationScreen() {
             </View>
           </View>
         </Card>
+
+        {/* Patient Known Allergies Banner */}
+        {patientAllergies.length > 0 && (
+          <View style={styles.allergyBanner} testID="allergy-alert-banner">
+            <View style={styles.allergyHeaderRow}>
+              <AlertCircle size={15} color={COLORS.error[600]} />
+              <Text style={styles.allergyTitle}>
+                KNOWN ALLERGIES ({patientAllergies.length})
+              </Text>
+            </View>
+            <View style={styles.allergyChipsRow}>
+              {patientAllergies.map((allergy, idx) => (
+                <View key={idx} style={styles.allergyChip}>
+                  <Text style={styles.allergyChipText}>{typeof allergy === "string" ? allergy : ((allergy as any)?.allergen || (allergy as any)?.name || "Allergen")}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Active Hospital Templates Banner */}
         <View style={styles.activeTemplatesBar}>
@@ -485,6 +605,45 @@ export default function DoctorConsultationScreen() {
             </View>
           </Card>
         </View>
+
+        {/* Clinical Safety & Drug Interactions */}
+        {safetyAlerts.length > 0 && (
+          <View style={styles.safetyAlertsContainer} testID="clinical-safety-alerts">
+            {safetyAlerts.map((alert) => (
+              <View
+                key={alert.id}
+                style={[
+                  styles.safetyAlertCard,
+                  alert.type === "CRITICAL"
+                    ? styles.safetyAlertCritical
+                    : styles.safetyAlertWarning,
+                ]}
+                testID="interaction-warning-badge"
+              >
+                <View style={styles.safetyAlertHeader}>
+                  <AlertTriangle
+                    size={14}
+                    color={alert.type === "CRITICAL" ? COLORS.error[700] : COLORS.warning[700]}
+                  />
+                  <Text
+                    style={[
+                      styles.safetyAlertTitle,
+                      {
+                        color:
+                          alert.type === "CRITICAL"
+                            ? COLORS.error[700]
+                            : COLORS.warning[700],
+                      },
+                    ]}
+                  >
+                    {alert.title}
+                  </Text>
+                </View>
+                <Text style={styles.safetyAlertMessage}>{alert.message}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Finalize Button */}
         <TouchableOpacity
@@ -1128,6 +1287,76 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     color: COLORS.textPrimary,
+  },
+  allergyBanner: {
+    backgroundColor: COLORS.error[50],
+    borderWidth: 1,
+    borderColor: COLORS.error[200],
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    gap: 6,
+  },
+  allergyHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  allergyTitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.error[700],
+    letterSpacing: 0.5,
+  },
+  allergyChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  allergyChip: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.error[300],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+  },
+  allergyChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.error[800],
+  },
+  safetyAlertsContainer: {
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  safetyAlertCard: {
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    gap: 3,
+  },
+  safetyAlertCritical: {
+    backgroundColor: COLORS.error[50],
+    borderColor: COLORS.error[300],
+  },
+  safetyAlertWarning: {
+    backgroundColor: COLORS.warning[50],
+    borderColor: COLORS.warning[300],
+  },
+  safetyAlertHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  safetyAlertTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  safetyAlertMessage: {
+    fontSize: 11,
+    color: COLORS.neutral[700],
+    lineHeight: 15,
   },
   previewSub: {
     fontSize: 11,

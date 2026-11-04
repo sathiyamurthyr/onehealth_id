@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     KMS_PROVIDER: str = os.getenv("KMS_PROVIDER", "local")  # 'local', 'mock_cloud_kms', 'aws_kms'
     KMS_KEY_ARN: str = os.getenv("KMS_KEY_ARN", "")
 
+    # Backblaze B2 Encrypted Document Cloud Storage (Private Bucket, S3-Compatible)
+    B2_KEY_ID: str = os.getenv("B2_KEY_ID", "")
+    B2_APPLICATION_KEY: str = os.getenv("B2_APPLICATION_KEY", "")
+    B2_BUCKET_NAME: str = os.getenv("B2_BUCKET_NAME", "ohid-medical-documents-private")
+    B2_ENDPOINT_URL: str = os.getenv("B2_ENDPOINT_URL", "https://s3.us-east-005.backblazeb2.com")
+    B2_REGION: str = os.getenv("B2_REGION", "us-east-005")
+    B2_STORAGE_MOCK: bool = os.getenv("B2_STORAGE_MOCK", "false").lower() in ("true", "1", "yes")
+
     # Application-Layer API Request/Response Payload Encryption (AES-256-GCM + ECDH)
     PAYLOAD_ENCRYPTION_ENABLED: bool = os.getenv("PAYLOAD_ENCRYPTION_ENABLED", "true").lower() in ("true", "1", "yes")
     PAYLOAD_ENCRYPTION_STRICT: bool = os.getenv("PAYLOAD_ENCRYPTION_STRICT", "false").lower() in ("true", "1", "yes")

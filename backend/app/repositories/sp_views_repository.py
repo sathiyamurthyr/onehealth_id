@@ -1917,12 +1917,15 @@ class SPViewsRepository(
                        OR phone = %s 
                        OR RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g'), 10) = %s
                        OR username = %s
+                       OR username = %s
+                       OR RIGHT(REGEXP_REPLACE(COALESCE(username,''), '[^0-9]', '', 'g'), 10) = %s
                     ORDER BY 
                        (phone = %s) DESC,
+                       (username = %s) DESC,
                        (password_hash NOT LIKE '%%uninitialized%%') DESC,
                        is_active DESC
                     LIMIT 1;
-                """, (last_10, clean_val, last_10, clean_val, last_10))
+                """, (last_10, clean_val, last_10, clean_val, last_10, last_10, last_10, last_10))
             else:
                 cur.execute("""
                     SELECT * FROM oh_id.vw_user_auth 
@@ -2432,7 +2435,9 @@ class SPViewsRepository(
                     d.qualification AS doctor_qualification,
                     a.hospital_id, COALESCE(h.name, 'Hospital Facility') AS hospital_name,
                     a.department_id, COALESCE(dept.name, 'General OPD') AS department_name,
-                    a.slot, a.status, a.token_number, a.priority, a.notes, a.created_at
+                    a.slot, a.status, a.token_number, a.priority, a.notes, a.created_at,
+                    COALESCE(a.appointment_date::TEXT, SPLIT_PART(a.slot, ' ', 1)) AS appointment_date,
+                    a.appointment_time, a.appointment_type, a.reason, a.checkin_token
                 FROM oh_id.appointments a
                 LEFT JOIN oh_id.doctors d ON a.doctor_id = d.id
                 LEFT JOIN oh_id.hospitals h ON a.hospital_id = h.id
@@ -3072,8 +3077,24 @@ class SPViewsRepository(
             params: List[Any] = [patient_id]
 
             if category and category.upper() != "ALL":
-                clauses.append("UPPER(category) = %s")
-                params.append(category.upper())
+                cat_upper = category.upper()
+                if cat_upper in ("PRESCRIPTION", "PRESCRIPTIONS"):
+                    clauses.append("UPPER(category) IN ('PRESCRIPTION', 'PREVIOUS_PRESCRIPTION')")
+                elif cat_upper in ("LAB_REPORT", "LAB_REPORTS", "LABORATORY_REPORT"):
+                    clauses.append("UPPER(category) IN ('LAB_REPORT', 'PREVIOUS_LAB_REPORT')")
+                elif cat_upper in ("DIAGNOSTIC_REPORT", "IMAGING_REPORT", "SCANS_AND_IMAGING", "MEDICAL_SCANS"):
+                    clauses.append("UPPER(category) IN ('DIAGNOSTIC_REPORT', 'IMAGING_REPORT')")
+                elif cat_upper in ("CLINICAL_DOCUMENT", "CONSULTATION_REPORT", "CONSULTATION_REPORTS", "CLINICAL_NOTE"):
+                    clauses.append("UPPER(category) IN ('CLINICAL_DOCUMENT', 'CONSULTATION_REPORT', 'CLINICAL_NOTE')")
+                elif cat_upper in ("DISCHARGE_SUMMARY", "DISCHARGE_SUMMARIES"):
+                    clauses.append("UPPER(category) = 'DISCHARGE_SUMMARY'")
+                elif cat_upper in ("MEDICAL_CERTIFICATE", "MEDICAL_CERTIFICATES"):
+                    clauses.append("UPPER(category) = 'MEDICAL_CERTIFICATE'")
+                elif cat_upper in ("OTHER_DOCUMENT", "OTHER_DOCUMENTS", "OTHER"):
+                    clauses.append("UPPER(category) IN ('OTHER_DOCUMENT', 'OTHER', 'REFERRAL_LETTER', 'INSURANCE_DOCUMENT', 'PATIENT_ID', 'MEDICAL_RECORD', 'BILL')")
+                else:
+                    clauses.append("UPPER(category) = %s")
+                    params.append(cat_upper)
 
             if hospital_id and hospital_id.upper() != "ALL":
                 clauses.append("hospital_id = %s")
@@ -3233,6 +3254,296 @@ class SPViewsRepository(
                 "categories": cat_breakdown
             }
 
+    def get_patient_storage_quota(self, patient_id: str) -> Dict[str, Any]:
+        """
+        Retrieves real-time storage quota usage and folder breakdown for the patient's Health Vault.
+        Default allowance: 1 GB (1,073,741,824 bytes).
+        """
+        with get_readonly_cursor() as cur:
+            # 1. Quota config
+            cur.execute("""
+                SELECT total_quota_bytes, plan_name, plan_tier
+                FROM oh_id.patient_storage_quotas
+                WHERE patient_id = %s;
+            """, (patient_id,))
+            q_row = cur.fetchone()
+            total_quota_bytes = q_row["total_quota_bytes"] if q_row else 1073741824
+            plan_name = q_row["plan_name"] if q_row else "Free Tier"
+            plan_tier = q_row["plan_tier"] if q_row else "FREE"
+
+            # 2. Used bytes from actual active documents
+            cur.execute("""
+                SELECT 
+                    COALESCE(SUM(file_size_kb * 1024), 0) AS used_bytes,
+                    COUNT(*) AS total_active_documents
+                FROM oh_id.medical_documents
+                WHERE patient_id = %s AND status != 'DELETED' AND deleted_at IS NULL;
+            """, (patient_id,))
+            u_row = cur.fetchone()
+            used_bytes = int(u_row["used_bytes"]) if u_row else 0
+            total_docs = int(u_row["total_active_documents"]) if u_row else 0
+
+            # 3. Category & Folder breakdown
+            cur.execute("""
+                SELECT 
+                    category,
+                    COUNT(*) AS doc_count,
+                    COALESCE(SUM(file_size_kb * 1024), 0) AS category_bytes
+                FROM oh_id.medical_documents
+                WHERE patient_id = %s AND status != 'DELETED' AND deleted_at IS NULL
+                GROUP BY category;
+            """, (patient_id,))
+            cat_rows = cur.fetchall()
+
+            folders = [
+                {
+                    "key": "PRESCRIPTION",
+                    "name": "Prescriptions",
+                    "icon": "Pill",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["PRESCRIPTION", "PREVIOUS_PRESCRIPTION"]
+                },
+                {
+                    "key": "LAB_REPORT",
+                    "name": "Lab Reports",
+                    "icon": "FlaskConical",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["LAB_REPORT", "PREVIOUS_LAB_REPORT"]
+                },
+                {
+                    "key": "DIAGNOSTIC_REPORT",
+                    "name": "Medical Scans & Imaging",
+                    "icon": "Activity",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["DIAGNOSTIC_REPORT", "IMAGING_REPORT"]
+                },
+                {
+                    "key": "CLINICAL_DOCUMENT",
+                    "name": "Consultation Reports",
+                    "icon": "Stethoscope",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["CLINICAL_DOCUMENT", "CONSULTATION_REPORT", "CLINICAL_NOTE"]
+                },
+                {
+                    "key": "DISCHARGE_SUMMARY",
+                    "name": "Discharge Summaries",
+                    "icon": "FileText",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["DISCHARGE_SUMMARY"]
+                },
+                {
+                    "key": "MEDICAL_CERTIFICATE",
+                    "name": "Medical Certificates",
+                    "icon": "Award",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["MEDICAL_CERTIFICATE"]
+                },
+                {
+                    "key": "OTHER_DOCUMENT",
+                    "name": "Other Medical Documents",
+                    "icon": "Folder",
+                    "count": 0,
+                    "used_bytes": 0,
+                    "categories": ["OTHER_DOCUMENT", "OTHER", "REFERRAL_LETTER", "INSURANCE_DOCUMENT", "PATIENT_ID", "MEDICAL_RECORD", "BILL"]
+                }
+            ]
+
+            folder_map = {}
+            for f in folders:
+                for c in f["categories"]:
+                    folder_map[c] = f
+
+            for r in cat_rows:
+                c_name = (r["category"] or "OTHER").upper()
+                c_count = r["doc_count"]
+                c_bytes = int(r["category_bytes"])
+                target_f = folder_map.get(c_name, folders[6])
+                target_f["count"] += c_count
+                target_f["used_bytes"] += c_bytes
+
+            for f in folders:
+                f["used_mb"] = round(f["used_bytes"] / (1024 * 1024), 2)
+
+            available_bytes = max(0, total_quota_bytes - used_bytes)
+            percent_used = min(100.0, round((used_bytes / total_quota_bytes) * 100.0, 1)) if total_quota_bytes > 0 else 100.0
+
+            return {
+                "patient_id": patient_id,
+                "total_bytes": total_quota_bytes,
+                "used_bytes": used_bytes,
+                "available_bytes": available_bytes,
+                "total_mb": round(total_quota_bytes / (1024 * 1024), 1),
+                "used_mb": round(used_bytes / (1024 * 1024), 1),
+                "available_mb": round(available_bytes / (1024 * 1024), 1),
+                "percent_used": percent_used,
+                "plan_name": plan_name,
+                "plan_tier": plan_tier,
+                "total_documents": total_docs,
+                "folders": folders,
+                "is_at_quota": used_bytes >= total_quota_bytes,
+                "is_near_quota": percent_used >= 85.0
+            }
+
+    def check_and_lock_storage_quota(self, patient_id: str, incoming_bytes: int) -> Dict[str, Any]:
+        """
+        Atomically evaluates and enforces storage quota within an exclusive transaction.
+        Protects against race conditions from concurrent uploads.
+        """
+        with get_db_cursor() as cur:
+            cur.execute("""
+                INSERT INTO oh_id.patient_storage_quotas (patient_id, total_quota_bytes, plan_name, plan_tier)
+                VALUES (%s, 1073741824, 'Free Tier', 'FREE')
+                ON CONFLICT (patient_id) DO NOTHING;
+            """, (patient_id,))
+            cur.execute("""
+                SELECT total_quota_bytes, plan_name, plan_tier
+                FROM oh_id.patient_storage_quotas
+                WHERE patient_id = %s
+                FOR UPDATE;
+            """, (patient_id,))
+            q_row = cur.fetchone()
+            total_quota_bytes = q_row["total_quota_bytes"] if q_row else 1073741824
+            plan_name = q_row["plan_name"] if q_row else "Free Tier"
+            plan_tier = q_row["plan_tier"] if q_row else "FREE"
+
+            cur.execute("""
+                SELECT COALESCE(SUM(file_size_kb * 1024), 0) AS used_bytes
+                FROM oh_id.medical_documents
+                WHERE patient_id = %s AND status != 'DELETED' AND deleted_at IS NULL;
+            """, (patient_id,))
+            u_row = cur.fetchone()
+            used_bytes = int(u_row["used_bytes"]) if u_row else 0
+
+            available_bytes = max(0, total_quota_bytes - used_bytes)
+            allowed = (used_bytes + incoming_bytes) <= total_quota_bytes
+
+            return {
+                "allowed": allowed,
+                "patient_id": patient_id,
+                "total_quota_bytes": total_quota_bytes,
+                "used_bytes": used_bytes,
+                "incoming_bytes": incoming_bytes,
+                "available_bytes": available_bytes,
+                "total_mb": round(total_quota_bytes / (1024 * 1024), 1),
+                "used_mb": round(used_bytes / (1024 * 1024), 1),
+                "available_mb": round(available_bytes / (1024 * 1024), 1),
+                "plan_name": plan_name,
+                "plan_tier": plan_tier
+            }
+
+    def update_patient_document(
+        self,
+        document_id: str,
+        patient_id: str,
+        title: Optional[str] = None,
+        category: Optional[str] = None,
+        actor_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Renames a document or moves it to a new folder (category) without modifying stored files.
+        """
+        updates = []
+        params = []
+        action = None
+
+        if title and title.strip():
+            updates.append("title = %s")
+            params.append(title.strip())
+            action = "RENAME"
+
+        if category and category.strip():
+            cat_clean = category.strip().upper()
+            updates.append("category = %s")
+            params.append(cat_clean)
+            action = "MOVE_FOLDER" if not action else "RENAME_AND_MOVE"
+
+        if not updates:
+            return self.get_patient_document_detail(document_id, patient_id)
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.extend([document_id, document_id, patient_id])
+
+        with get_db_cursor() as cur:
+            cur.execute(f"""
+                UPDATE oh_id.medical_documents
+                SET {', '.join(updates)}
+                WHERE (id = %s OR document_code = %s) AND patient_id = %s;
+            """, tuple(params))
+
+        if action:
+            self.log_document_audit(document_id, patient_id, actor_id or patient_id, action)
+
+        return self.get_patient_document_detail(document_id, patient_id)
+
+    def delete_patient_document(
+        self,
+        document_id: str,
+        patient_id: str,
+        actor_id: Optional[str] = None,
+        reason: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Safely soft-deletes a medical document from the patient's Health Vault and frees storage quota.
+        Preserves audit trail and never deletes without confirmation.
+        """
+        doc = self.get_patient_document_detail(document_id, patient_id)
+        if not doc:
+            raise ValueError("Document not found or unauthorized.")
+
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE oh_id.medical_documents
+                SET status = 'DELETED',
+                    deleted_at = CURRENT_TIMESTAMP,
+                    notes = CONCAT(COALESCE(notes, ''), ' [Deleted by patient on ', CURRENT_TIMESTAMP::text, ']'),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE (id = %s OR document_code = %s) AND patient_id = %s;
+            """, (document_id, document_id, patient_id))
+
+        self.log_document_audit(document_id, patient_id, actor_id or patient_id, "DELETE")
+        return {
+            "id": document_id,
+            "deleted": True,
+            "freed_kb": doc.get("file_size_kb", 0),
+            "title": doc.get("title")
+        }
+
+    def upgrade_patient_storage_quota(
+        self,
+        patient_id: str,
+        plan_tier: str
+    ) -> Dict[str, Any]:
+        """
+        Upgrades patient Health Vault storage quota.
+        """
+        tier = plan_tier.upper().strip()
+        tier_map = {
+            "FREE": (1073741824, "Free Tier"),
+            "PLUS_5GB": (5 * 1073741824, "Plus Plan (5 GB)"),
+            "FAMILY_20GB": (20 * 1073741824, "Family Plan (20 GB)"),
+            "ENTERPRISE_100GB": (100 * 1073741824, "Vault Pro (100 GB)")
+        }
+        bytes_val, name_val = tier_map.get(tier, (1073741824, "Free Tier"))
+
+        with get_db_cursor() as cur:
+            cur.execute("""
+                INSERT INTO oh_id.patient_storage_quotas (patient_id, total_quota_bytes, plan_name, plan_tier, updated_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (patient_id) DO UPDATE
+                SET total_quota_bytes = EXCLUDED.total_quota_bytes,
+                    plan_name = EXCLUDED.plan_name,
+                    plan_tier = EXCLUDED.plan_tier,
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (patient_id, bytes_val, name_val, tier))
+
+        return self.get_patient_storage_quota(patient_id)
+
     def create_patient_uploaded_document(
         self,
         patient_id: str,
@@ -3261,7 +3572,20 @@ class SPViewsRepository(
         code = f"DOC-UP-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
         token = f"vtok-doc-{uuid.uuid4().hex}"
         sig = f"SHA256:{hashlib.sha256((title + patient_id + code).encode()).hexdigest()}"
-        doc_date = document_date or datetime.now().strftime("%Y-%m-%d")
+        # Safely normalize document_date to ISO YYYY-MM-DD
+        import re
+        doc_date = datetime.now().strftime("%Y-%m-%d")
+        if document_date:
+            clean_date = str(document_date).strip()
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", clean_date):
+                doc_date = clean_date
+            else:
+                for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y", "%d %b %Y", "%d %B %Y"):
+                    try:
+                        doc_date = datetime.strptime(clean_date, fmt).strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        continue
         h_id = hospital_id or "hosp-kedar"
 
         meta = metadata or {}
@@ -3483,8 +3807,24 @@ class SPViewsRepository(
                 params.append(hospital_id)
 
             if category and category.upper() != "ALL":
-                clauses.append("UPPER(category) = %s")
-                params.append(category.upper())
+                cat_upper = category.upper()
+                if cat_upper in ("PRESCRIPTION", "PRESCRIPTIONS"):
+                    clauses.append("UPPER(category) IN ('PRESCRIPTION', 'PREVIOUS_PRESCRIPTION')")
+                elif cat_upper in ("LAB_REPORT", "LAB_REPORTS", "LABORATORY_REPORT"):
+                    clauses.append("UPPER(category) IN ('LAB_REPORT', 'PREVIOUS_LAB_REPORT')")
+                elif cat_upper in ("DIAGNOSTIC_REPORT", "IMAGING_REPORT", "SCANS_AND_IMAGING", "MEDICAL_SCANS"):
+                    clauses.append("UPPER(category) IN ('DIAGNOSTIC_REPORT', 'IMAGING_REPORT')")
+                elif cat_upper in ("CLINICAL_DOCUMENT", "CONSULTATION_REPORT", "CONSULTATION_REPORTS", "CLINICAL_NOTE"):
+                    clauses.append("UPPER(category) IN ('CLINICAL_DOCUMENT', 'CONSULTATION_REPORT', 'CLINICAL_NOTE')")
+                elif cat_upper in ("DISCHARGE_SUMMARY", "DISCHARGE_SUMMARIES"):
+                    clauses.append("UPPER(category) = 'DISCHARGE_SUMMARY'")
+                elif cat_upper in ("MEDICAL_CERTIFICATE", "MEDICAL_CERTIFICATES"):
+                    clauses.append("UPPER(category) = 'MEDICAL_CERTIFICATE'")
+                elif cat_upper in ("OTHER_DOCUMENT", "OTHER_DOCUMENTS", "OTHER"):
+                    clauses.append("UPPER(category) IN ('OTHER_DOCUMENT', 'OTHER', 'REFERRAL_LETTER', 'INSURANCE_DOCUMENT', 'PATIENT_ID', 'MEDICAL_RECORD', 'BILL')")
+                else:
+                    clauses.append("UPPER(category) = %s")
+                    params.append(cat_upper)
 
             if triage_bucket and triage_bucket.upper() != "ALL":
                 clauses.append("UPPER(triage_bucket) = %s")
@@ -4149,7 +4489,8 @@ class SPViewsRepository(
         with get_db_cursor() as cur:
             allowed_fields = [
                 "phone", "email", "address", "city", "state",
-                "emergency_contact", "blood_group", "diagnosis"
+                "emergency_contact", "blood_group", "diagnosis",
+                "avatar_url", "profile_photo_url"
             ]
             set_clauses = []
             params = []
@@ -4825,7 +5166,7 @@ class SPViewsRepository(
                 FROM oh_id.doctors d
                 LEFT JOIN oh_id.departments dept ON d.department_id = dept.id
                 WHERE d.hospital_id = %s AND d.is_available = TRUE
-                ORDER BY d.rating DESC, d.name ASC;
+                ORDER BY (CASE WHEN LEFT(d.id, 9) = 'doc-duty-' THEN 1 ELSE 0 END) ASC, d.rating DESC, d.name ASC;
             """, (hospital_id,))
             res["doctors"] = [dict(r) for r in cur.fetchall()]
 
@@ -4861,7 +5202,7 @@ class SPViewsRepository(
                 params.append(department_id)
             if specialty:
                 pattern = f"%{specialty}%"
-                clauses.append("(d.specialty ILIKE %s OR dept.name ILIKE %s)")
+                clauses.append("(d.specialty ILIKE %s OR dept.name ILIKE %s OR LEFT(d.id, 9) = 'doc-duty-')")
                 params.extend([pattern, pattern])
             if search:
                 pattern = f"%{search}%"
@@ -4881,7 +5222,7 @@ class SPViewsRepository(
                 LEFT JOIN oh_id.hospitals h ON d.hospital_id = h.id
                 LEFT JOIN oh_id.departments dept ON d.department_id = dept.id
                 {where_str}
-                ORDER BY d.rating DESC, d.name ASC;
+                ORDER BY (CASE WHEN LEFT(d.id, 9) = 'doc-duty-' THEN 1 ELSE 0 END) ASC, d.rating DESC, d.name ASC;
             """, tuple(params))
             return [dict(r) for r in cur.fetchall()]
 
@@ -4918,7 +5259,7 @@ class SPViewsRepository(
         ]
 
         with get_readonly_cursor() as cur:
-            if doctor_id and doctor_id.lower() != "any":
+            if doctor_id and doctor_id.lower() != "any" and not doctor_id.startswith("doc-duty-"):
                 cur.execute("""
                     SELECT appointment_time, slot FROM oh_id.appointments
                     WHERE doctor_id = %s
@@ -5013,20 +5354,21 @@ class SPViewsRepository(
         assigned_id = appointment_id or f"APT-{appointment_date.replace('-', '')}-{uuid.uuid4().hex[:6].upper()}"
 
         with get_db_cursor() as cur:
-            # 1. Transactional Slot Concurrency Check
-            cur.execute("""
-                SELECT id FROM oh_id.appointments
-                WHERE doctor_id = %s
-                  AND (
-                      (appointment_date = %s AND appointment_time = %s)
-                      OR slot = %s
-                  )
-                  AND status NOT IN ('cancelled', 'CANCELLED', 'no_show', 'NO_SHOW')
-                FOR UPDATE;
-            """, (doctor_id, appointment_date, appointment_time, target_slot))
-            conflict = cur.fetchone()
-            if conflict:
-                raise ValueError(f"The selected time slot {appointment_time} on {appointment_date} has already been reserved. Please choose another slot.")
+            # 1. Transactional Slot Concurrency Check (skip for duty doctor or allow duty doctor pooling)
+            if not doctor_id.startswith("doc-duty-") and doctor_id.lower() != "any":
+                cur.execute("""
+                    SELECT id FROM oh_id.appointments
+                    WHERE doctor_id = %s
+                      AND (
+                          (appointment_date = %s AND appointment_time = %s)
+                          OR slot = %s
+                      )
+                      AND status NOT IN ('cancelled', 'CANCELLED', 'no_show', 'NO_SHOW')
+                    FOR UPDATE;
+                """, (doctor_id, appointment_date, appointment_time, target_slot))
+                conflict = cur.fetchone()
+                if conflict:
+                    raise ValueError(f"The selected time slot {appointment_time} on {appointment_date} has already been reserved. Please choose another slot.")
 
             # 2. Call Stored Procedure
             cur.execute("""
@@ -5051,21 +5393,39 @@ class SPViewsRepository(
         new_date: str,
         new_time: str,
         new_slot: Optional[str] = None,
+        doctor_id: Optional[str] = None,
         changed_by_name: str = "Patient",
         changed_by_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Reschedules an appointment with concurrency check and preserves full historical audit trail.
+        Supports changing doctor as well.
         """
         appt = self.get_appointment_by_id(appointment_id)
         if not appt:
             raise ValueError("Appointment not found.")
 
         target_slot = new_slot or f"{new_date} {new_time}"
-        doctor_id = appt.get("doctor_id")
+        target_doctor_id = doctor_id or appt.get("doctor_id")
 
         with get_db_cursor() as cur:
-            # Check slot conflict on new date/time
+            # Verify target doctor exists in oh_id.doctors if specified
+            if target_doctor_id:
+                cur.execute("SELECT id, name FROM oh_id.doctors WHERE id = %s;", (target_doctor_id,))
+                doc_exists = cur.fetchone()
+                if not doc_exists:
+                    # Fallback to appointment's existing doctor if valid, else raise clear error
+                    existing_doc = appt.get("doctor_id")
+                    if existing_doc and existing_doc != target_doctor_id:
+                        cur.execute("SELECT id FROM oh_id.doctors WHERE id = %s;", (existing_doc,))
+                        if cur.fetchone():
+                            target_doctor_id = existing_doc
+                        else:
+                            raise ValueError(f"Selected doctor '{target_doctor_id}' is not registered or active.")
+                    else:
+                        raise ValueError(f"Selected doctor '{target_doctor_id}' is not registered or active.")
+
+            # Check slot conflict on new date/time with target doctor
             cur.execute("""
                 SELECT id FROM oh_id.appointments
                 WHERE doctor_id = %s
@@ -5076,7 +5436,7 @@ class SPViewsRepository(
                   )
                   AND status NOT IN ('cancelled', 'CANCELLED', 'no_show', 'NO_SHOW')
                 FOR UPDATE;
-            """, (doctor_id, appointment_id, new_date, new_time, target_slot))
+            """, (target_doctor_id, appointment_id, new_date, new_time, target_slot))
             conflict = cur.fetchone()
             if conflict:
                 raise ValueError(f"The new slot {new_time} on {new_date} is already booked. Please choose another time.")
@@ -5093,14 +5453,23 @@ class SPViewsRepository(
                 "previous_date": str(appt.get("appointment_date")),
                 "previous_time": str(appt.get("appointment_time")),
                 "previous_slot": str(appt.get("slot")),
+                "previous_doctor_id": str(appt.get("doctor_id")),
                 "new_date": str(new_date),
                 "new_time": str(new_time),
                 "new_slot": str(target_slot),
+                "new_doctor_id": str(target_doctor_id),
                 "changed_by": changed_by_name,
                 "changed_by_id": changed_by_id,
                 "changed_at": datetime.utcnow().isoformat() + "Z"
             }
             updated_history = old_history + [new_entry]
+
+            # Also resolve department if doctor changed
+            new_dept_id = appt.get("department_id")
+            if doctor_id and doctor_id != appt.get("doctor_id"):
+                doc_row = self.get_doctor_by_id(doctor_id)
+                if doc_row and doc_row.get("department_id"):
+                    new_dept_id = doc_row["department_id"]
 
             cur.execute("""
                 UPDATE oh_id.appointments
@@ -5108,11 +5477,78 @@ class SPViewsRepository(
                     appointment_date = %s,
                     appointment_time = %s,
                     slot = %s,
+                    doctor_id = %s,
+                    department_id = %s,
                     status = 'rescheduled',
                     reschedule_history = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
-            """, (new_date, new_time, target_slot, json.dumps(updated_history), appointment_id))
+            """, (new_date, new_time, target_slot, target_doctor_id, new_dept_id, json.dumps(updated_history), appointment_id))
+
+        return self.get_appointment_by_id(appointment_id)
+
+    def update_appointment_details(
+        self,
+        appointment_id: str,
+        reason: Optional[str] = None,
+        department_id: Optional[str] = None,
+        doctor_id: Optional[str] = None,
+        appointment_date: Optional[str] = None,
+        appointment_time: Optional[str] = None,
+        notes: Optional[str] = None,
+        changed_by_name: str = "Patient",
+        changed_by_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Updates permitted appointment details (Reason, Department, Doctor, Date, Time, Notes).
+        """
+        appt = self.get_appointment_by_id(appointment_id)
+        if not appt:
+            raise ValueError("Appointment not found.")
+
+        target_doctor_id = doctor_id or appt.get("doctor_id")
+        target_date = appointment_date or str(appt.get("appointment_date"))
+        target_time = appointment_time or str(appt.get("appointment_time"))
+        target_slot = f"{target_date} {target_time}"
+        target_reason = reason if reason is not None else appt.get("reason")
+        target_notes = notes if notes is not None else appt.get("notes")
+        target_dept_id = department_id or appt.get("department_id")
+
+        if doctor_id and doctor_id != appt.get("doctor_id") and not department_id:
+            doc_row = self.get_doctor_by_id(doctor_id)
+            if doc_row and doc_row.get("department_id"):
+                target_dept_id = doc_row["department_id"]
+
+        with get_db_cursor() as cur:
+            if appointment_date or appointment_time or doctor_id:
+                cur.execute("""
+                    SELECT id FROM oh_id.appointments
+                    WHERE doctor_id = %s
+                      AND id != %s
+                      AND (
+                          (appointment_date = %s AND appointment_time = %s)
+                          OR slot = %s
+                      )
+                      AND status NOT IN ('cancelled', 'CANCELLED', 'no_show', 'NO_SHOW')
+                    FOR UPDATE;
+                """, (target_doctor_id, appointment_id, target_date, target_time, target_slot))
+                conflict = cur.fetchone()
+                if conflict:
+                    raise ValueError(f"The selected slot {target_time} on {target_date} is already booked.")
+
+            cur.execute("""
+                UPDATE oh_id.appointments
+                SET 
+                    doctor_id = %s,
+                    department_id = %s,
+                    appointment_date = %s,
+                    appointment_time = %s,
+                    slot = %s,
+                    reason = %s,
+                    notes = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (target_doctor_id, target_dept_id, target_date, target_time, target_slot, target_reason, target_notes, appointment_id))
 
         return self.get_appointment_by_id(appointment_id)
 

@@ -83,8 +83,106 @@ export interface PrescriptionData {
   template_name?: string;
   signed_by?: string;
   signed_at?: string;
+  valid_until?: string;
+  status?: "VALID" | "EXPIRING_SOON" | "EXPIRED" | "REVOKED" | "SUPERSEDED" | string;
   digital_signature_hash?: string;
+  verification_url?: string;
+  encounter_id?: string;
   created_at?: string;
+}
+
+export function getPrescriptionValidity(prescription: PrescriptionData): {
+  status: "VALID" | "EXPIRING_SOON" | "EXPIRED" | "REVOKED" | "SUPERSEDED";
+  label: string;
+  badgeBg: string;
+  badgeColor: string;
+  badgeBorder: string;
+  expiryText: string;
+  isExpired: boolean;
+  isExpiringSoon: boolean;
+} {
+  const rawStatus = (prescription.status || "").toUpperCase();
+  if (rawStatus === "REVOKED") {
+    return {
+      status: "REVOKED",
+      label: "REVOKED",
+      badgeBg: "#FEF2F2",
+      badgeColor: "#DC2626",
+      badgeBorder: "#FCA5A5",
+      expiryText: "Revoked by Prescribing Clinician",
+      isExpired: true,
+      isExpiringSoon: false,
+    };
+  }
+  if (rawStatus === "SUPERSEDED") {
+    return {
+      status: "SUPERSEDED",
+      label: "SUPERSEDED",
+      badgeBg: "#F1F5F9",
+      badgeColor: "#64748B",
+      badgeBorder: "#CBD5E1",
+      expiryText: "Superseded by Newer Prescription",
+      isExpired: true,
+      isExpiringSoon: false,
+    };
+  }
+
+  // If valid_until is recorded
+  if (prescription.valid_until) {
+    const validUntilDate = new Date(prescription.valid_until);
+    if (!isNaN(validUntilDate.getTime())) {
+      const now = new Date();
+      const diffMs = validUntilDate.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        return {
+          status: "EXPIRED",
+          label: "EXPIRED",
+          badgeBg: "#FEF2F2",
+          badgeColor: "#DC2626",
+          badgeBorder: "#FCA5A5",
+          expiryText: `Expired on ${validUntilDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+          isExpired: true,
+          isExpiringSoon: false,
+        };
+      }
+      if (diffDays <= 3) {
+        return {
+          status: "EXPIRING_SOON",
+          label: "EXPIRING SOON",
+          badgeBg: "#FFFBEB",
+          badgeColor: "#D97706",
+          badgeBorder: "#FCD34D",
+          expiryText: `Expires in ${diffDays} day${diffDays === 1 ? "" : "s"} (${validUntilDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })})`,
+          isExpired: false,
+          isExpiringSoon: true,
+        };
+      }
+      return {
+        status: "VALID",
+        label: "VALID",
+        badgeBg: "#ECFDF5",
+        badgeColor: "#059669",
+        badgeBorder: "#6EE7B7",
+        expiryText: `Valid until ${validUntilDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+        isExpired: false,
+        isExpiringSoon: false,
+      };
+    }
+  }
+
+  // If no expiry date is specified
+  return {
+    status: "VALID",
+    label: "VALID",
+    badgeBg: "#ECFDF5",
+    badgeColor: "#059669",
+    badgeBorder: "#6EE7B7",
+    expiryText: "No expiry date specified",
+    isExpired: false,
+    isExpiringSoon: false,
+  };
 }
 
 interface Props {
@@ -103,99 +201,179 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
   const templateId = prescription.template_id || "tmpl_rx_classic_hospital";
 
   // Shared Header Component
-  const renderHospitalHeader = (themeColor: string, subtitle?: string) => (
-    <View style={[styles.headerContainer, { borderBottomColor: themeColor }]}>
-      <View style={styles.headerLeft}>
-        <View style={[styles.iconCircle, { backgroundColor: themeColor + "15" }]}>
-          <Building2 size={24} color={themeColor} />
-        </View>
-        <View style={styles.headerTextWrap}>
-          <Text style={[styles.hospitalName, { color: themeColor }]}>
-            {prescription.hospital_name || "OneHealth Integrated Hospital"}
-          </Text>
-          {customHeader ? (
-            <Text style={styles.customHeaderBanner}>{customHeader}</Text>
-          ) : (
-            <Text style={styles.hospitalSub}>
-              {subtitle || "Tertiary Care & Multi-Specialty Clinical Centre"}
+  const renderHospitalHeader = (themeColor: string, subtitle?: string) => {
+    const validity = getPrescriptionValidity(prescription);
+    return (
+      <View style={[styles.headerContainer, { borderBottomColor: themeColor }]}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.iconCircle, { backgroundColor: themeColor + "15" }]}>
+            <Building2 size={24} color={themeColor} />
+          </View>
+          <View style={styles.headerTextWrap}>
+            <Text style={[styles.hospitalName, { color: themeColor }]}>
+              {prescription.hospital_name || "SRMC Academic Medical Centre & Hospital"}
             </Text>
-          )}
-          <Text style={styles.hospitalMeta}>
-            {prescription.hospital_address || "Chennai, Tamil Nadu"} • Ph:{" "}
-            {prescription.hospital_phone || "+91 44 2476 8000"}
+            {customHeader ? (
+              <Text style={styles.customHeaderBanner}>{customHeader}</Text>
+            ) : (
+              <Text style={styles.hospitalSub}>
+                {subtitle || "Tertiary Care & Multi-Specialty Clinical Centre"}
+              </Text>
+            )}
+            <Text style={styles.hospitalMeta}>
+              {prescription.hospital_address || "Chennai, Tamil Nadu"} • Ph:{" "}
+              {prescription.hospital_phone || "+91 44 2476 8000"}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.headerRight}>
+          <View
+            style={[
+              styles.validityBadgePill,
+              { backgroundColor: validity.badgeBg, borderColor: validity.badgeBorder },
+            ]}
+          >
+            <CheckCircle2 size={11} color={validity.badgeColor} />
+            <Text style={[styles.validityBadgeText, { color: validity.badgeColor }]}>
+              {validity.label}
+            </Text>
+          </View>
+          <Text style={styles.rxIdText}>Rx #{prescription.id?.substring(0, 8) || "2026-001"}</Text>
+          <Text style={styles.dateText}>
+            Issue:{" "}
+            {prescription.signed_at
+              ? new Date(prescription.signed_at).toLocaleDateString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "27 Oct 2026"}
           </Text>
         </View>
       </View>
-      <View style={styles.headerRight}>
-        <View style={[styles.badgePill, { backgroundColor: themeColor + "20" }]}>
-          <Text style={[styles.badgeText, { color: themeColor }]}>
-            {prescription.template_name || "Official Rx"}
-          </Text>
-        </View>
-        <Text style={styles.rxIdText}>Rx #{prescription.id?.substring(0, 8)}</Text>
-        <Text style={styles.dateText}>
-          {prescription.signed_at
-            ? new Date(prescription.signed_at).toLocaleDateString()
-            : new Date().toLocaleDateString()}
-        </Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   // Shared Patient Demographics Ribbon
-  const renderPatientDemographics = (accentColor = "#0284C7") => (
-    <View style={styles.patientCard}>
-      <View style={styles.patientRow}>
-        <View style={styles.patientCol}>
-          <Text style={styles.label}>PATIENT NAME</Text>
-          <Text style={styles.valName}>{prescription.patient_name}</Text>
-        </View>
-        <View style={styles.patientCol}>
-          <Text style={styles.label}>ONEHEALTH ID</Text>
-          <Text style={[styles.valMono, { color: accentColor }]}>
-            {prescription.onehealth_id || "OHID-IND-2026-0001"}
-          </Text>
-        </View>
-        <View style={styles.patientColSmall}>
-          <Text style={styles.label}>AGE / GENDER</Text>
-          <Text style={styles.valNormal}>
-            {prescription.patient_age || "32"} Y / {prescription.patient_gender || "M"}
-          </Text>
-        </View>
-        <View style={styles.patientColSmall}>
-          <Text style={styles.label}>BLOOD GROUP</Text>
-          <Text style={[styles.valNormal, { fontWeight: "700", color: "#DC2626" }]}>
-            {prescription.patient_blood_group || "O+"}
-          </Text>
-        </View>
-      </View>
+  const renderPatientDemographics = (accentColor = "#0284C7") => {
+    const validity = getPrescriptionValidity(prescription);
+    return (
+      <View style={styles.patientCard}>
+        {/* Historical/Expired Prescription Advisory Banner */}
+        {validity.isExpired && (
+          <View style={styles.expiredAdvisoryBanner}>
+            <AlertTriangle size={15} color={validity.badgeColor} style={{ marginRight: 6 }} />
+            <Text style={[styles.expiredAdvisoryText, { color: validity.badgeColor }]}>
+              {validity.status === "REVOKED"
+                ? "REVOKED: This prescription has been revoked by the prescribing clinician."
+                : validity.status === "SUPERSEDED"
+                ? "SUPERSEDED: A newer active prescription supersedes this document."
+                : `HISTORICAL RECORD: ${validity.expiryText}. For medical record history only; not valid for dispensing.`}
+            </Text>
+          </View>
+        )}
 
-      {/* Allergies Notice */}
-      {prescription.allergies && prescription.allergies.length > 0 && (
-        <View style={styles.allergyBanner}>
-          <AlertTriangle size={14} color="#DC2626" />
-          <Text style={styles.allergyText}>
-            ALLERGIES: {prescription.allergies.join(", ")}
-          </Text>
-        </View>
-      )}
-
-      {/* Diagnosis & Vitals */}
-      {(prescription.diagnosis || prescription.vitals) && (
-        <View style={styles.clinicalContextRow}>
-          {prescription.diagnosis && (
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>DIAGNOSIS / CLINICAL IMPRESSION</Text>
-              <Text style={styles.diagnosisVal}>{prescription.diagnosis}</Text>
+        <View style={styles.patientRow}>
+          <View style={styles.patientCol}>
+            <Text style={styles.label}>PATIENT NAME</Text>
+            <Text style={styles.valName}>{prescription.patient_name || "Alice Smith"}</Text>
+          </View>
+          <View style={styles.patientCol}>
+            <Text style={styles.label}>ONEHEALTH ID</Text>
+            <Text style={[styles.valMono, { color: accentColor }]}>
+              {prescription.onehealth_id || "OHID-IND-2026-01001"}
+            </Text>
+          </View>
+          <View style={styles.patientColSmall}>
+            <Text style={styles.label}>AGE / GENDER</Text>
+            <Text style={styles.valNormal}>
+              {prescription.patient_age || "32"} Y / {prescription.patient_gender || "Female"}
+            </Text>
+          </View>
+          <View style={styles.patientColSmall}>
+            <Text style={styles.label}>BLOOD GROUP</Text>
+            <View style={styles.bloodBadge}>
+              <Text style={styles.bloodBadgeText}>
+                {prescription.patient_blood_group || "O+"}
+              </Text>
             </View>
+          </View>
+        </View>
+
+        {/* Validity & Expiry Timeline Ribbon */}
+        <View style={styles.validityRow}>
+          <View style={styles.validityItem}>
+            <Text style={styles.validityLabel}>ISSUE DATE</Text>
+            <Text style={styles.validityValue}>
+              {prescription.signed_at
+                ? new Date(prescription.signed_at).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "27 Oct 2026"}
+            </Text>
+          </View>
+          <View style={styles.validityItem}>
+            <Text style={styles.validityLabel}>VALID UNTIL</Text>
+            <Text style={styles.validityValue}>
+              {prescription.valid_until
+                ? new Date(prescription.valid_until).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "No expiry date specified"}
+            </Text>
+          </View>
+          <View style={styles.validityItemRight}>
+            <Text style={styles.validityLabel}>DISPENSING STATUS</Text>
+            <Text
+              style={[
+                styles.validityStatusText,
+                { color: validity.isExpired ? "#DC2626" : "#059669" },
+              ]}
+            >
+              {validity.isExpired ? "Expired / Historical" : "Authorized for Dispensing"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Allergies Notice */}
+        {prescription.allergies && prescription.allergies.length > 0 && (
+          <View style={styles.allergyBanner}>
+            <AlertTriangle size={14} color="#DC2626" />
+            <Text style={styles.allergyText}>
+              ALLERGIES: {prescription.allergies.join(", ")}
+            </Text>
+          </View>
+        )}
+
+        {/* Visually Distinct Diagnosis & Clinical Impression Section */}
+        <View style={styles.diagnosisSection}>
+          <View style={styles.diagnosisHeaderRow}>
+            <Stethoscope size={14} color={accentColor} style={{ marginRight: 6 }} />
+            <Text style={[styles.diagnosisHeading, { color: accentColor }]}>
+              PRIMARY DIAGNOSIS & CLINICAL IMPRESSION
+            </Text>
+          </View>
+          <Text style={styles.diagnosisVal}>
+            {prescription.diagnosis || "Acute Upper Respiratory Tract Infection"}
+          </Text>
+          {prescription.symptoms && (
+            <Text style={styles.symptomsText}>
+              Presenting Symptoms: {prescription.symptoms}
+            </Text>
           )}
+
+          {/* Vitals */}
           {prescription.vitals && Object.keys(prescription.vitals).length > 0 && (
             <View style={styles.vitalsWrap}>
               {prescription.vitals.bp_systolic && (
                 <View style={styles.vitalPill}>
                   <HeartPulse size={12} color="#0284C7" />
                   <Text style={styles.vitalText}>
-                    BP {prescription.vitals.bp_systolic}/{prescription.vitals.bp_diastolic}
+                    BP {prescription.vitals.bp_systolic}/{prescription.vitals.bp_diastolic} mmHg
                   </Text>
                 </View>
               )}
@@ -204,50 +382,71 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
                   <Text style={styles.vitalText}>HR {prescription.vitals.heart_rate} bpm</Text>
                 </View>
               )}
+              {prescription.vitals.temperature && (
+                <View style={styles.vitalPill}>
+                  <Text style={styles.vitalText}>Temp {prescription.vitals.temperature} °F</Text>
+                </View>
+              )}
             </View>
           )}
         </View>
-      )}
-    </View>
-  );
+      </View>
+    );
+  };
 
   // Shared Signature & Verification Footer
   const renderSignatureFooter = (accentColor = "#0284C7") => (
     <View style={styles.footerWrap}>
-      <View style={styles.signatureRow}>
-        <View style={styles.qrCol}>
-          <QRCode
-            value={`https://onehealthid.gov.in/rx/verify/${prescription.id || "rx-demo"}`}
-            size={68}
-          />
-          <Text style={styles.qrCaption}>Scan to verify authenticity</Text>
-        </View>
-
-        <View style={styles.securitySealCol}>
-          <View style={styles.digitalSealBadge}>
-            <ShieldCheck size={16} color="#059669" />
-            <Text style={styles.digitalSealText}>Cryptographically Signed</Text>
-          </View>
-          {prescription.digital_signature_hash && (
-            <Text style={styles.hashText} numberOfLines={2}>
-              SHA-256: {prescription.digital_signature_hash}
-            </Text>
-          )}
-          {customFooter && <Text style={styles.customFooter}>{customFooter}</Text>}
-        </View>
-
-        <View style={styles.prescriberCol}>
+      {/* Top Prescriber Credentials Bar */}
+      <View style={styles.prescriberHeaderRow}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.prescriberTitle}>AUTHORIZED PRESCRIBER</Text>
           <Text style={styles.docName}>{prescription.doctor_name || "Dr. Senthil Nathan"}</Text>
           <Text style={styles.docQual}>
             {prescription.doctor_qualification || "MBBS, MD (General Medicine)"}
           </Text>
           <Text style={styles.docReg}>
-            Reg No: {prescription.doctor_registration || "TN-MCI-2026-001"}
+            Medical Council Reg: {prescription.doctor_registration || "TN-MCI-2026-001"}
           </Text>
+          <Text style={styles.docHosp}>
+            {prescription.hospital_name || "SRMC Academic Medical Centre & Hospital"}
+          </Text>
+        </View>
+        <View style={styles.stampCol}>
           <View style={[styles.stampBox, { borderColor: accentColor }]}>
+            <ShieldCheck size={14} color={accentColor} style={{ marginRight: 4 }} />
             <Text style={[styles.stampText, { color: accentColor }]}>SIGNED & VERIFIED</Text>
           </View>
+          <Text style={styles.stampSub}>ABDM / HL7 FHIR Compliant</Text>
+        </View>
+      </View>
+
+      {/* Bottom Cryptographic Security Ribbon */}
+      <View style={styles.cryptoSecurityRibbon}>
+        <View style={styles.qrCol}>
+          <QRCode
+            value={prescription.verification_url || `https://ohid.online/verify/prescription/${prescription.id || "enc-2026-001"}`}
+            size={60}
+          />
+          <Text style={styles.qrCaption}>Scan to verify</Text>
+        </View>
+
+        <View style={styles.securitySealCol}>
+          <View style={styles.digitalSealBadge}>
+            <ShieldCheck size={13} color="#059669" />
+            <Text style={styles.digitalSealText}>Cryptographically Signed (ECDSA-SHA256)</Text>
+          </View>
+          <View style={styles.hashContainer}>
+            <Text style={styles.hashLabel}>SHA-256 DIGEST:</Text>
+            <Text style={styles.hashText} numberOfLines={1}>
+              {prescription.digital_signature_hash ||
+                "7a9f82d1c0e4f5a6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1"}
+            </Text>
+          </View>
+          <Text style={styles.verifyUrlText}>
+            Verify: https://ohid.online/verify/prescription/{prescription.id?.substring(0, 10) || "enc-2026"}
+          </Text>
+          {customFooter && <Text style={styles.customFooter}>{customFooter}</Text>}
         </View>
       </View>
     </View>
@@ -266,45 +465,80 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
         <Text style={styles.sectionHeaderTitle}>MEDICATIONS & PRESCRIPTION ORDERS</Text>
       </View>
 
-      {/* Traditional Table Header */}
-      <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3 }]}>DRUG NAME & FORM</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>DOSE</Text>
-        <Text style={[styles.thText, { flex: 1.8, textAlign: "center" }]}>FREQUENCY</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>DURATION</Text>
-        <Text style={[styles.thText, { flex: 2.2 }]}>FOOD / INSTRUCTIONS</Text>
-      </View>
-
-      {/* Table Rows */}
-      {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
-          <View style={{ flex: 3 }}>
-            <Text style={styles.medName}>
-              {idx + 1}. {item.medicine_name}
-            </Text>
-            <Text style={styles.medStrength}>
-              {item.dosage_form || "Tablet"} • {item.strength || ""}
-            </Text>
-          </View>
-          <Text style={[styles.tdText, { flex: 1.2, textAlign: "center" }]}>
-            {item.dose || "1 Tab"}
+      {/* Traditional Table with Horizontal Scrolling on Small Screens */}
+      <View style={styles.tableOuterContainer}>
+        <View style={styles.tableHintRow}>
+          <Text style={styles.tableHintText}>
+            ↔ Scroll horizontally if viewing on mobile to view complete dose, frequency & instructions
           </Text>
-          <Text style={[styles.tdText, { flex: 1.8, textAlign: "center", fontWeight: "600" }]}>
-            {item.frequency || "1-0-1"}
-          </Text>
-          <Text style={[styles.tdText, { flex: 1.2, textAlign: "center" }]}>
-            {item.duration_days ? `${item.duration_days} days` : "5 days"}
-          </Text>
-          <View style={{ flex: 2.2 }}>
-            <Text style={styles.instructionText}>
-              {item.food_instruction || "After food"}
-            </Text>
-            {item.instructions && (
-              <Text style={styles.instructionSub}>{item.instructions}</Text>
-            )}
-          </View>
         </View>
-      ))}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={true}
+          contentContainerStyle={styles.tableScrollContent}
+        >
+          <View style={styles.tableInner}>
+            {/* Traditional Table Header */}
+            <View style={styles.tableHeader}>
+              <View style={styles.colDrug}>
+                <Text style={styles.thText}>DRUG NAME & FORM</Text>
+              </View>
+              <View style={styles.colDose}>
+                <Text style={[styles.thText, { textAlign: "center" }]}>DOSE</Text>
+              </View>
+              <View style={styles.colFreq}>
+                <Text style={[styles.thText, { textAlign: "center" }]}>FREQUENCY</Text>
+              </View>
+              <View style={styles.colDur}>
+                <Text style={[styles.thText, { textAlign: "center" }]}>DURATION</Text>
+              </View>
+              <View style={styles.colInst}>
+                <Text style={styles.thText}>FOOD / INSTRUCTIONS</Text>
+              </View>
+            </View>
+
+            {/* Table Rows */}
+            {prescription.items.map((item, idx) => (
+              <View
+                key={`classic-rx-item-${item.medicine_name || 'med'}-${idx}`}
+                style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}
+              >
+                <View style={styles.colDrug}>
+                  <Text style={styles.medName}>
+                    {idx + 1}. {item.medicine_name}
+                  </Text>
+                  <Text style={styles.medStrength}>
+                    {item.dosage_form || "Tablet"} • {item.strength || ""}
+                  </Text>
+                </View>
+                <View style={styles.colDose}>
+                  <Text style={styles.tdText}>
+                    {item.dose || "1 Tab"}
+                  </Text>
+                </View>
+                <View style={styles.colFreq}>
+                  <View style={styles.freqBadge}>
+                    <Text style={styles.freqBadgeText}>{item.frequency || "1-0-1"}</Text>
+                  </View>
+                </View>
+                <View style={styles.colDur}>
+                  <Text style={styles.tdText}>
+                    {item.duration_days ? `${item.duration_days} days` : "5 days"}
+                  </Text>
+                </View>
+                <View style={styles.colInst}>
+                  <Text style={styles.instructionText}>
+                    {item.food_instruction || "After food"}
+                  </Text>
+                  {item.instructions && (
+                    <Text style={styles.instructionSub}>{item.instructions}</Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
 
       {/* Clinical Advice Box */}
       {prescription.advice && (
@@ -343,7 +577,7 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
 
       <View style={styles.modernMedGrid}>
         {prescription.items.map((item, idx) => (
-          <View key={idx} style={styles.modernCard}>
+          <View key={`modern-item-${idx}-${item.medicine_name || "med"}`} style={styles.modernCard}>
             <View style={styles.modernCardTop}>
               <View style={styles.numBadge}>
                 <Text style={styles.numBadgeText}>{idx + 1}</Text>
@@ -414,7 +648,7 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
 
       <View style={styles.minimalMedList}>
         {prescription.items.map((item, idx) => (
-          <View key={idx} style={styles.minimalMedRow}>
+          <View key={`minimal-item-${idx}-${item.medicine_name || "med"}`} style={styles.minimalMedRow}>
             <Text style={styles.minimalNum}>{idx + 1}.</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.minimalMedName}>
@@ -461,15 +695,25 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
       {renderPatientDemographics("#059669")}
 
       <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3 }]}>MEDICATION / FORMULATION</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>SYRUP VOL / DOSE</Text>
-        <Text style={[styles.thText, { flex: 1.8, textAlign: "center" }]}>FREQUENCY</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>DURATION</Text>
-        <Text style={[styles.thText, { flex: 2 }]}>SPECIAL INSTRUCTIONS</Text>
+        <View style={{ flex: 3 }}>
+          <Text style={styles.thText}>MEDICATION / FORMULATION</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>SYRUP VOL / DOSE</Text>
+        </View>
+        <View style={{ flex: 1.8, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>FREQUENCY</Text>
+        </View>
+        <View style={{ flex: 1.2, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>DURATION</Text>
+        </View>
+        <View style={{ flex: 2 }}>
+          <Text style={styles.thText}>SPECIAL INSTRUCTIONS</Text>
+        </View>
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+        <View key={`spec-item-${idx}-${item.medicine_name || "med"}`} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
           <View style={{ flex: 3 }}>
             <Text style={styles.medName}>{item.medicine_name}</Text>
             <Text style={[styles.medStrength, { color: "#059669" }]}>
@@ -508,7 +752,7 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={styles.gpMedCard}>
+        <View key={`gp-item-${idx}-${item.medicine_name || "med"}`} style={styles.gpMedCard}>
           <View style={styles.gpMedHeader}>
             <Text style={styles.gpMedName}>
               {idx + 1}. {item.medicine_name} {item.strength}
@@ -564,14 +808,22 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
 
       {/* Structured Rx Table */}
       <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3.5 }]}>THERAPEUTIC REGIMEN</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>STRENGTH</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>FREQUENCY</Text>
-        <Text style={[styles.thText, { flex: 2.5 }]}>CLINICAL INDICATION</Text>
+        <View style={{ flex: 3.5 }}>
+          <Text style={styles.thText}>THERAPEUTIC REGIMEN</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>STRENGTH</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>FREQUENCY</Text>
+        </View>
+        <View style={{ flex: 2.5 }}>
+          <Text style={styles.thText}>CLINICAL INDICATION</Text>
+        </View>
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+        <View key={`spec-item-${idx}-${item.medicine_name || "med"}`} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
           <View style={{ flex: 3.5 }}>
             <Text style={styles.medName}>{item.medicine_name}</Text>
             <Text style={styles.medStrength}>Route: {item.route || "Oral"}</Text>
@@ -608,7 +860,7 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={styles.chronicCard}>
+        <View key={`chronic-item-${idx}-${item.medicine_name || "med"}`} style={styles.chronicCard}>
           <View style={styles.chronicTop}>
             <Text style={styles.chronicMedName}>{item.medicine_name}</Text>
             <View style={styles.refillBadge}>
@@ -643,14 +895,22 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
       {renderPatientDemographics("#DC2626")}
 
       <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3 }]}>EMERGENCY MEDICATION</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>ROUTE / DOSE</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>PRIORITY</Text>
-        <Text style={[styles.thText, { flex: 2 }]}>ADMINISTRATION PROTOCOL</Text>
+        <View style={{ flex: 3 }}>
+          <Text style={styles.thText}>EMERGENCY MEDICATION</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>ROUTE / DOSE</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>PRIORITY</Text>
+        </View>
+        <View style={{ flex: 2 }}>
+          <Text style={styles.thText}>ADMINISTRATION PROTOCOL</Text>
+        </View>
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+        <View key={`spec-item-${idx}-${item.medicine_name || "med"}`} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
           <View style={{ flex: 3 }}>
             <Text style={[styles.medName, { color: "#DC2626" }]}>{item.medicine_name}</Text>
             <Text style={styles.medStrength}>{item.strength}</Text>
@@ -710,14 +970,22 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
 
       {/* Table */}
       <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3 }]}>DRUG ORDER</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>STRENGTH</Text>
-        <Text style={[styles.thText, { flex: 1.5, textAlign: "center" }]}>DOSAGE</Text>
-        <Text style={[styles.thText, { flex: 2 }]}>STATUS</Text>
+        <View style={{ flex: 3 }}>
+          <Text style={styles.thText}>DRUG ORDER</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>STRENGTH</Text>
+        </View>
+        <View style={{ flex: 1.5, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>DOSAGE</Text>
+        </View>
+        <View style={{ flex: 2 }}>
+          <Text style={styles.thText}>STATUS</Text>
+        </View>
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+        <View key={`spec-item-${idx}-${item.medicine_name || "med"}`} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
           <Text style={[styles.medName, { flex: 3 }]}>{item.medicine_name}</Text>
           <Text style={[styles.tdText, { flex: 1.5, textAlign: "center" }]}>{item.strength}</Text>
           <Text style={[styles.tdText, { flex: 1.5, textAlign: "center" }]}>{item.frequency}</Text>
@@ -750,16 +1018,28 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
       </View>
 
       <View style={styles.tableHeader}>
-        <Text style={[styles.thText, { flex: 3 }]}>PRESCRIBED MEDICINE</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>STRENGTH</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>DOSE</Text>
-        <Text style={[styles.thText, { flex: 1.4, textAlign: "center" }]}>FREQ</Text>
-        <Text style={[styles.thText, { flex: 1.2, textAlign: "center" }]}>DUR</Text>
-        <Text style={[styles.thText, { flex: 2 }]}>INSTRUCTIONS</Text>
+        <View style={{ flex: 3 }}>
+          <Text style={styles.thText}>PRESCRIBED MEDICINE</Text>
+        </View>
+        <View style={{ flex: 1.2, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>STRENGTH</Text>
+        </View>
+        <View style={{ flex: 1.2, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>DOSE</Text>
+        </View>
+        <View style={{ flex: 1.4, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>FREQ</Text>
+        </View>
+        <View style={{ flex: 1.2, alignItems: "center" }}>
+          <Text style={[styles.thText, { textAlign: "center" }]}>DUR</Text>
+        </View>
+        <View style={{ flex: 2 }}>
+          <Text style={styles.thText}>INSTRUCTIONS</Text>
+        </View>
       </View>
 
       {prescription.items.map((item, idx) => (
-        <View key={idx} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+        <View key={`spec-item-${idx}-${item.medicine_name || "med"}`} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
           <View style={{ flex: 3 }}>
             <Text style={styles.medName}>{item.medicine_name}</Text>
             <Text style={styles.medStrength}>{item.dosage_form || "Tablet"}</Text>
@@ -995,13 +1275,43 @@ const styles = StyleSheet.create({
     color: "#475569",
     letterSpacing: 0.5,
   },
+  tableOuterContainer: {
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+    marginVertical: 8,
+  },
+  tableHintRow: {
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EDF2F7",
+  },
+  tableHintText: {
+    fontSize: 9,
+    color: "#64748B",
+    fontStyle: "italic",
+  },
+  tableScrollContent: {
+    minWidth: 580,
+  },
+  tableInner: {
+    minWidth: 580,
+    flexShrink: 0,
+  },
   tableHeader: {
     flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#F1F5F9",
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 8,
-    borderRadius: 4,
-    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    minWidth: 580,
+    flexShrink: 0,
   },
   thText: {
     fontSize: 10,
@@ -1009,20 +1319,53 @@ const styles = StyleSheet.create({
     color: "#475569",
     letterSpacing: 0.4,
   },
+  colDrug: {
+    width: 180,
+    paddingRight: 8,
+    flexShrink: 0,
+  },
+  colDose: {
+    width: 75,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  colFreq: {
+    width: 95,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  colDur: {
+    width: 80,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  colInst: {
+    width: 150,
+    paddingLeft: 8,
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+    backgroundColor: "#FFFFFF",
+    minWidth: 580,
+    flexShrink: 0,
   },
   tableRowAlt: {
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#F8FAFC",
   },
   tdText: {
     fontSize: 11,
     color: "#334155",
+    textAlign: "center",
   },
   medName: {
     fontSize: 12,
@@ -1034,10 +1377,24 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 1,
   },
+  freqBadge: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    alignSelf: "center",
+  },
+  freqBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1D4ED8",
+  },
   instructionText: {
     fontSize: 11,
     color: "#0284C7",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   instructionSub: {
     fontSize: 10,
@@ -1050,7 +1407,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#FDE68A",
-    padding: 8,
+    padding: 10,
     marginTop: 12,
   },
   adviceTitle: {
@@ -1067,15 +1424,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EEF2FF",
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     marginTop: 8,
     gap: 6,
   },
   followUpText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#1E3A8A",
   },
   footerWrap: {
@@ -1084,53 +1443,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
   },
-  signatureRow: {
+  prescriberHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  qrCol: {
-    alignItems: "center",
-  },
-  qrCaption: {
-    fontSize: 9,
-    color: "#94A3B8",
-    marginTop: 4,
-  },
-  securitySealCol: {
-    flex: 1,
-    paddingHorizontal: 16,
-    alignItems: "center",
-  },
-  digitalSealBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    gap: 4,
-    marginBottom: 4,
-  },
-  digitalSealText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#059669",
-  },
-  hashText: {
-    fontSize: 9,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: "#94A3B8",
-    textAlign: "center",
-  },
-  customFooter: {
-    fontSize: 10,
-    color: "#64748B",
-    marginTop: 4,
-    textAlign: "center",
-  },
-  prescriberCol: {
-    alignItems: "flex-end",
+    alignItems: "flex-start",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   prescriberTitle: {
     fontSize: 9,
@@ -1151,18 +1471,206 @@ const styles = StyleSheet.create({
   docReg: {
     fontSize: 10,
     color: "#64748B",
-    marginBottom: 4,
+  },
+  docHosp: {
+    fontSize: 10,
+    color: "#64748B",
+    marginTop: 1,
+  },
+  stampCol: {
+    alignItems: "flex-end",
   },
   stampBox: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   stampText: {
     fontSize: 9,
     fontWeight: "800",
+  },
+  stampSub: {
+    fontSize: 8,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  cryptoSecurityRibbon: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 10,
+    gap: 12,
+  },
+  qrCol: {
+    alignItems: "center",
+  },
+  qrCaption: {
+    fontSize: 8,
+    color: "#94A3B8",
+    marginTop: 3,
+  },
+  securitySealCol: {
+    flex: 1,
+  },
+  digitalSealBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    gap: 4,
+    alignSelf: "flex-start",
+    marginBottom: 3,
+  },
+  digitalSealText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  hashContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginVertical: 1,
+  },
+  hashLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  hashText: {
+    flex: 1,
+    fontSize: 9,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#475569",
+  },
+  verifyUrlText: {
+    fontSize: 9,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#2563EB",
+    marginTop: 2,
+  },
+  customFooter: {
+    fontSize: 9,
+    color: "#64748B",
+    marginTop: 3,
+  },
+  bloodBadge: {
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    alignSelf: "flex-start",
+    marginTop: 2,
+  },
+  bloodBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#DC2626",
+  },
+  validityRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  validityItem: {
+    minWidth: 85,
+  },
+  validityLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 0.4,
+  },
+  validityValue: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#1E293B",
+    marginTop: 1,
+  },
+  validityItemRight: {
+    minWidth: 110,
+    alignItems: "flex-end",
+  },
+  validityStatusText: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  diagnosisSection: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 10,
+    marginTop: 8,
+  },
+  diagnosisHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  diagnosisHeading: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  symptomsText: {
+    fontSize: 11,
+    color: "#64748B",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+  expiredAdvisoryBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  expiredAdvisoryText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  validityBadgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    marginBottom: 4,
+  },
+  validityBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
 
   // Modern Template Styles

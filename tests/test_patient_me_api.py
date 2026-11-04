@@ -12,8 +12,8 @@ def get_auth_token(username: str, password: str) -> str:
 class TestPatientMeAPI:
     @classmethod
     def setup_class(cls):
-        cls.patient_token = get_auth_token("patient", "patient123")
-        cls.doctor_token = get_auth_token("dr.senthil", "doctor123")
+        cls.patient_token = get_auth_token("9884240519", "Password@123")
+        cls.doctor_token = get_auth_token("9840111222", "doctor123")
         cls.headers = {"Authorization": f"Bearer {cls.patient_token}"}
 
     def test_get_me_patient(self):

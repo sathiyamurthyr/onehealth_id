@@ -16,9 +16,10 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { COLORS, TYPOGRAPHY, SPACING } from "../src/theme";
 import { AuthProvider, useAuth, resolveRoleRoute } from "../src/context/AuthContext";
+import { AppLaunchSplash } from "../src/components/loading";
 
 function RouteGuardNavigator() {
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, isAppLocked, hasConfiguredPin } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -35,37 +36,46 @@ function RouteGuardNavigator() {
       "(super)",
     ].includes(currentGroup);
 
-    if (!isAuthenticated && inProtectedGroup) {
-      // Unauthenticated access attempt to protected workspace -> Force redirect to login
-      router.replace("/(auth)/login");
-    } else if (isAuthenticated && (inAuthGroup || !segments[0])) {
-      // Authenticated user on login or gateway -> Route to authoritative workspace
-      router.replace(resolveRoleRoute(user?.role) as any);
+    if (isAppLocked && hasConfiguredPin) {
+      if (!inAuthGroup) {
+        router.replace("/(auth)/login");
+      }
+      return;
     }
-  }, [isAuthenticated, isLoading, segments, user, router]);
+
+    if (!isAuthenticated && inProtectedGroup) {
+      // Unauthenticated or locked access attempt to protected workspace -> Force redirect to login
+      router.replace("/(auth)/login");
+    } else if (isAuthenticated && !isAppLocked) {
+      const userRole = (user?.role || "").toUpperCase().trim();
+      const isDoctor = ["DOCTOR", "PHYSICIAN", "NURSE", "CLINICAL_STAFF"].includes(userRole);
+
+      if (inAuthGroup || !segments[0]) {
+        // Authenticated and unlocked user on login or gateway -> Route to authoritative workspace
+        router.replace(resolveRoleRoute(user?.role) as any);
+      } else if (currentGroup === "(doctor)" && !isDoctor) {
+        // Patient or unauthorized role attempting to access doctor workspace -> Route to permitted workspace
+        router.replace(resolveRoleRoute(user?.role) as any);
+      } else if (currentGroup === "(patient)" && isDoctor) {
+        // Doctor user attempting to access patient workspace directly -> Route to doctor workspace
+        router.replace(resolveRoleRoute(user?.role) as any);
+      }
+    }
+  }, [isAuthenticated, isAppLocked, hasConfiguredPin, isLoading, segments, user, router]);
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <>
         <StatusBar style="dark" />
-        <View style={styles.loadingContent}>
-          <Text style={styles.brandTitle}>OneHealth ID</Text>
-          <Text style={styles.brandSubtitle}>
-            One Digital Health Identity. A Connected Healthcare Journey.
-          </Text>
-          <ActivityIndicator
-            size="large"
-            color={COLORS.primary[600]}
-            style={styles.spinner}
-          />
-        </View>
-      </View>
+        <AppLaunchSplash />
+      </>
     );
   }
 
   return (
     <Stack
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: COLORS.surface,
         },
@@ -109,14 +119,21 @@ function RouteGuardNavigator() {
       <Stack.Screen
         name="(patient)/index"
         options={{
-          title: "Patient Portal",
+          title: "Patient Home",
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="(patient)/profile"
+        name="(patient)/appointments"
         options={{
-          title: "Personal Profile",
+          title: "Appointments & Queue",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(patient)/prescriptions"
+        options={{
+          title: "Prescriptions",
           headerShown: false,
         }}
       />
@@ -124,6 +141,20 @@ function RouteGuardNavigator() {
         name="(patient)/timeline"
         options={{
           title: "Health Timeline",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(patient)/upload"
+        options={{
+          title: "Upload Medical Document",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(patient)/profile"
+        options={{
+          title: "Patient Profile",
           headerShown: false,
         }}
       />
@@ -138,7 +169,28 @@ function RouteGuardNavigator() {
         name="(doctor)/index"
         options={{
           title: "Doctor Workspace",
-          headerShown: true,
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(doctor)/consultation"
+        options={{
+          title: "Clinical Encounter",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(doctor)/rxpad"
+        options={{
+          title: "Digital RxPad",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(doctor)/scan"
+        options={{
+          title: "Patient Intake Scanner",
+          headerShown: false,
         }}
       />
       <Stack.Screen

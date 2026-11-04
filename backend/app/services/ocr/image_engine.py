@@ -77,6 +77,16 @@ class ImageAndMediaOCREngine(BaseOCREngine):
         except Exception as e:
             raise ValueError(f"Corrupted or invalid image file: {str(e)}")
 
+        # Decompression bomb and extreme dimension protection
+        max_dim = 10_000
+        max_pixels = 50_000_000
+        if width > max_dim or height > max_dim or (width * height) > max_pixels:
+            raise ValueError(f"Image dimensions ({width}x{height}) exceed security thresholds (decompression bomb protection: max 10,000px or 50M pixels).")
+
+        # Mobile screenshot aspect ratio heuristic (typical smartphone screens 16:9 ~ 21:9 in portrait)
+        aspect_ratio = max(height, width) / max(1, min(height, width))
+        is_mobile_screenshot = (1.65 <= aspect_ratio <= 2.50) and (height > width)
+
         extracted_text = ""
         engine_used = "PIL_IMAGE_INSPECTION"
 
@@ -99,6 +109,26 @@ class ImageAndMediaOCREngine(BaseOCREngine):
             except Exception as e:
                 logger.warning(f"Tesseract OCR failed: {e}")
 
+        # Check for embedded metadata text / scanner comments if OCR binary was unavailable
+        if not extracted_text:
+            try:
+                if isinstance(file_input, bytes):
+                    with Image.open(io.BytesIO(file_input)) as img_obj:
+                        info = getattr(img_obj, "info", {})
+                else:
+                    with Image.open(file_input) as img_obj:
+                        info = getattr(img_obj, "info", {})
+                comment = info.get("comment") or info.get("text") or info.get("Description")
+                if comment:
+                    if isinstance(comment, bytes):
+                        extracted_text = comment.decode("utf-8", errors="replace").strip()
+                    elif isinstance(comment, str):
+                        extracted_text = comment.strip()
+                    if extracted_text:
+                        engine_used = "IMAGE_METADATA_EXTRACTOR"
+            except Exception:
+                pass
+
         has_tamil = any(0x0B80 <= ord(c) <= 0x0BFF for c in extracted_text)
         detected_lang = "tam+eng" if has_tamil else "eng"
 
@@ -106,9 +136,12 @@ class ImageAndMediaOCREngine(BaseOCREngine):
             "raw_text": extracted_text,
             "page_count": 1,
             "image_dimensions": f"{width}x{height}",
+            "aspect_ratio": round(aspect_ratio, 2),
+            "is_mobile_screenshot": is_mobile_screenshot,
             "image_format": format_detected,
             "language_detected": detected_lang,
             "engine_used": engine_used,
+            "is_scanned": True,
         }
 
     def _extract_docx_text(self, file_input: Any) -> Dict[str, Any]:

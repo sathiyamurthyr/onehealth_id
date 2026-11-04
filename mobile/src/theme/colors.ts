@@ -113,3 +113,22 @@ export const COLORS = {
     900: "#7f1d1d",
   },
 } as const;
+
+export const ohidTheme = {
+  colors: {
+    primary: "#155EEF",
+    primaryDark: "#102A56",
+    background: "#F7F9FC",
+    surface: "#FFFFFF",
+    textPrimary: "#101828",
+    textSecondary: "#475467",
+    border: "#E4EAF2",
+    success: "#12A76A",
+    warning: "#F79009",
+    error: "#D92D20",
+    iconMuted: "#667085",
+    bottomNavigation: "#FFFFFF",
+    activeNavigation: "#155EEF",
+    inactiveNavigation: "#667085",
+  },
+};

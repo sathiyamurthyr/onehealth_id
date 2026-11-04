@@ -103,37 +103,43 @@ export const doctorApi = {
         }),
       });
       const data = unwrap<any>(res);
-      const patient = data?.patient || data;
+      const patient = data?.patient_identity || data?.patient || data;
       return {
         patient_id: patient?.id || patient?.patient_id || "",
-        patient_name: patient?.name || "Scanned Citizen",
+        patient_name: patient?.name || patient?.patient_name || "Verified Citizen",
         onehealth_id: patient?.onehealth_id || qrInput,
         age: patient?.age,
         gender: patient?.gender,
         blood_group: patient?.blood_group,
-        phone: patient?.phone,
+        phone: patient?.phone || patient?.phone_masked,
         workflow_type: data?.workflow_type || "OPD_CONSULTATION",
         status: "RESOLVED",
         message: data?.message || "Patient identity verified successfully.",
       };
-    } catch {
-      // Fallback: direct verify endpoint if scan-workflow is bypassed
-      const cleanToken = qrInput.includes("/scan/")
-        ? qrInput.split("/scan/")[1]
-        : qrInput;
-      const res = await fetchJSON<any>(`/patients/verify-qr/${encodeURIComponent(cleanToken)}`);
-      const patient = unwrap<any>(res);
-      return {
-        patient_id: patient?.id || "",
-        patient_name: patient?.name || "Verified Citizen",
-        onehealth_id: patient?.onehealth_id || cleanToken,
-        age: patient?.age,
-        gender: patient?.gender,
-        blood_group: patient?.blood_group,
-        phone: patient?.phone,
-        workflow_type: "DIRECT_VERIFICATION",
-        status: "RESOLVED",
-      };
+    } catch (err: any) {
+      // Fallback: direct verify endpoint if scan-workflow is bypassed or not found
+      try {
+        const cleanToken = qrInput.includes("/scan/")
+          ? qrInput.split("/scan/")[1]
+          : qrInput;
+        const res = await fetchJSON<any>(`/patients/verify-qr/${encodeURIComponent(cleanToken)}`);
+        const data = unwrap<any>(res);
+        const patient = data?.patient_identity || data?.patient || data;
+        return {
+          patient_id: patient?.id || patient?.patient_id || "",
+          patient_name: patient?.name || patient?.patient_name || "Verified Citizen",
+          onehealth_id: patient?.onehealth_id || cleanToken,
+          age: patient?.age,
+          gender: patient?.gender,
+          blood_group: patient?.blood_group,
+          phone: patient?.phone || patient?.phone_masked,
+          workflow_type: "DIRECT_VERIFICATION",
+          status: "RESOLVED",
+          message: "Patient identity verified successfully via QR direct lookup.",
+        };
+      } catch {
+        throw new Error(err?.message || "OneHealth ID or QR Token could not be verified");
+      }
     }
   },
 
