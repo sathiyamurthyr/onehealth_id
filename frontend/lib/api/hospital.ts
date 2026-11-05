@@ -564,4 +564,70 @@ export const hospitalApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  getHospitalBranding: async (hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<{
+      hospital_id: string;
+      hospital_logo_url?: string;
+      hospital_logo_asset_id?: string;
+      logo_placement: "LEFT" | "CENTER" | "RIGHT";
+      logo_size: "SMALL" | "MEDIUM" | "LARGE";
+      primary_color: string;
+      secondary_color: string;
+      heading_color: string;
+      body_text_color: string;
+      page_background: string;
+      section_background: string;
+      border_color: string;
+      accent_color: string;
+      success_color: string;
+      warning_color: string;
+      error_color: string;
+      enabled_document_types: string[];
+      version: number;
+      updated_at?: string;
+      updated_by?: string;
+    }>(`/api/v1/hospital/branding${query}`);
+  },
+
+  updateHospitalBranding: async (payload: Partial<{
+    hospital_logo_url?: string;
+    hospital_logo_asset_id?: string;
+    logo_placement?: "LEFT" | "CENTER" | "RIGHT";
+    logo_size?: "SMALL" | "MEDIUM" | "LARGE";
+    primary_color?: string;
+    secondary_color?: string;
+    heading_color?: string;
+    body_text_color?: string;
+    page_background?: string;
+    section_background?: string;
+    border_color?: string;
+    accent_color?: string;
+    success_color?: string;
+    warning_color?: string;
+    error_color?: string;
+    enabled_document_types?: string[];
+  }>, hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<any>(`/api/v1/hospital/branding${query}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  resetHospitalBranding: async (hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<any>(`/api/v1/hospital/branding/reset${query}`, {
+      method: "POST",
+    });
+  },
+
+  uploadHospitalLogo: async (payload: { logo_data: string; filename?: string }, hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<any>(`/api/v1/hospital/branding/logo${query}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };

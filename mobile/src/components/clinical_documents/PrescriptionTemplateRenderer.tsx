@@ -190,6 +190,7 @@ interface Props {
   customHeader?: string;
   customFooter?: string;
   showHospitalLogo?: boolean;
+  branding?: any;
 }
 
 export const PrescriptionTemplateRenderer: React.FC<Props> = ({
@@ -197,17 +198,19 @@ export const PrescriptionTemplateRenderer: React.FC<Props> = ({
   customHeader,
   customFooter,
   showHospitalLogo = true,
+  branding,
 }) => {
   const templateId = prescription.template_id || "tmpl_rx_classic_hospital";
 
   // Shared Header Component
   const renderHospitalHeader = (themeColor: string, subtitle?: string) => {
+    const effectiveColor = branding?.primary_color || themeColor;
     const validity = getPrescriptionValidity(prescription);
     return (
-      <View style={[styles.headerContainer, { borderBottomColor: themeColor }]}>
+      <View style={[styles.headerContainer, { borderBottomColor: effectiveColor }]}>
         <View style={styles.headerLeft}>
-          <View style={[styles.iconCircle, { backgroundColor: themeColor + "15" }]}>
-            <Building2 size={24} color={themeColor} />
+          <View style={[styles.iconCircle, { backgroundColor: effectiveColor + "15" }]}>
+            <Building2 size={24} color={effectiveColor} />
           </View>
           <View style={styles.headerTextWrap}>
             <Text style={[styles.hospitalName, { color: themeColor }]}>

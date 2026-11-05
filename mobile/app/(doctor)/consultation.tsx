@@ -1797,6 +1797,7 @@ export default function DoctorConsultationScreen() {
                   customHeader={templateSettings?.custom_header_text}
                   customFooter={templateSettings?.custom_footer_notes}
                   showHospitalLogo={templateSettings?.show_hospital_logo ?? true}
+                  branding={templateSettings?.branding}
                 />
               ) : (
                 <PrescriptionTemplateRenderer
@@ -1815,6 +1816,7 @@ export default function DoctorConsultationScreen() {
                   customHeader={templateSettings?.custom_header_text}
                   customFooter={templateSettings?.custom_footer_notes}
                   showHospitalLogo={templateSettings?.show_hospital_logo ?? true}
+                  branding={templateSettings?.branding}
                 />
               )}
             </ScrollView>

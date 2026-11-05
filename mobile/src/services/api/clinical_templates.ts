@@ -26,6 +26,27 @@ export interface ClinicalDocumentTemplate {
   updated_at?: string;
 }
 
+export interface HospitalDocumentBranding {
+  hospital_id: string;
+  hospital_logo_url?: string;
+  hospital_logo_asset_id?: string;
+  logo_placement: "LEFT" | "CENTER" | "RIGHT";
+  logo_size: "SMALL" | "MEDIUM" | "LARGE";
+  primary_color: string;
+  secondary_color: string;
+  heading_color: string;
+  body_text_color: string;
+  page_background: string;
+  section_background: string;
+  border_color: string;
+  accent_color: string;
+  success_color: string;
+  warning_color: string;
+  error_color: string;
+  enabled_document_types: string[];
+  version: number;
+}
+
 export interface HospitalDocumentTemplateSettings {
   hospital_id: string;
   hospital_name?: string;
@@ -40,6 +61,7 @@ export interface HospitalDocumentTemplateSettings {
   custom_header_text?: string;
   custom_footer_notes?: string;
   show_hospital_logo: boolean;
+  branding?: HospitalDocumentBranding;
 }
 
 export interface UpdateHospitalTemplateSettingsPayload {

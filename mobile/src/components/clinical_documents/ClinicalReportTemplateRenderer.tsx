@@ -52,6 +52,7 @@ interface Props {
   customHeader?: string;
   customFooter?: string;
   showHospitalLogo?: boolean;
+  branding?: any;
 }
 
 export const ClinicalReportTemplateRenderer: React.FC<Props> = ({
@@ -59,18 +60,19 @@ export const ClinicalReportTemplateRenderer: React.FC<Props> = ({
   customHeader,
   customFooter,
   showHospitalLogo = true,
+  branding,
 }) => {
   const templateId = report.template_id || "tmpl_rep_classic_hospital";
 
   // Shared Hospital Header
   const renderHeader = (themeColor: string, subtitle?: string) => (
-    <View style={[styles.headerContainer, { borderBottomColor: themeColor }]}>
+    <View style={[styles.headerContainer, { borderBottomColor: branding?.primary_color || themeColor }]}>
       <View style={styles.headerLeft}>
-        <View style={[styles.iconCircle, { backgroundColor: themeColor + "15" }]}>
-          <Building2 size={24} color={themeColor} />
+        <View style={[styles.iconCircle, { backgroundColor: (branding?.primary_color || themeColor) + "15" }]}>
+          <Building2 size={24} color={branding?.primary_color || themeColor} />
         </View>
         <View style={styles.headerTextWrap}>
-          <Text style={[styles.hospitalName, { color: themeColor }]}>
+          <Text style={[styles.hospitalName, { color: branding?.primary_color || themeColor }]}>
             {report.hospital_name || "OneHealth Clinical Facility"}
           </Text>
           {customHeader ? (

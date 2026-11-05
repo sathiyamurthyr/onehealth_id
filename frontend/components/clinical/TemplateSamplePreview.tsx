@@ -26,6 +26,7 @@ export interface TemplateSamplePreviewProps {
   customHeaderText?: string;
   customFooterNotes?: string;
   showHospitalLogo?: boolean;
+  branding?: any;
 }
 
 export function TemplateSamplePreview({
@@ -34,6 +35,7 @@ export function TemplateSamplePreview({
   customHeaderText,
   customFooterNotes,
   showHospitalLogo = true,
+  branding,
 }: TemplateSamplePreviewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -46,8 +48,20 @@ export function TemplateSamplePreview({
   }
 
   const cfg = template.layout_config || {};
-  const primaryColor = cfg.primaryColor || (documentType === "PRESCRIPTION" ? "#1E3A8A" : "#0284C7");
-  const accentColor = cfg.accentColor || "#0284C7";
+  const primaryColor = branding?.primary_color || cfg.primaryColor || (documentType === "PRESCRIPTION" ? "#1E3A8A" : "#0284C7");
+  const secondaryColor = branding?.secondary_color || cfg.secondaryColor || "#0284C7";
+  const headingColor = branding?.heading_color || cfg.headingColor || "#0F172A";
+  const bodyTextColor = branding?.body_text_color || cfg.bodyTextColor || "#334155";
+  const pageBackground = branding?.page_background || "#FFFFFF";
+  const sectionBackground = branding?.section_background || "#F8FAFC";
+  const borderColor = branding?.border_color || "#E2E8F0";
+  const accentColor = branding?.accent_color || cfg.accentColor || "#4F46E5";
+  const successColor = branding?.success_color || "#16A34A";
+  const warningColor = branding?.warning_color || "#D97706";
+  const errorColor = branding?.error_color || "#DC2626";
+  const logoPlacement = branding?.logo_placement || "LEFT";
+  const logoSize = branding?.logo_size || "MEDIUM";
+  const hospitalLogoUrl = branding?.hospital_logo_url;
   const style = cfg.style || "classic";
   const headerStyle = cfg.headerStyle || "institutional_banner";
   const medLayout = cfg.medicationLayout || "table";
@@ -418,41 +432,88 @@ export function TemplateSamplePreview({
 
   // Full Sample Document Card
   const renderDocumentContent = (isFullModal = false) => {
+    const logoSizeClass = logoSize === "SMALL" ? "w-8 h-8" : logoSize === "LARGE" ? "w-14 h-14" : "w-10 h-10";
+
     return (
       <div
-        className={`bg-white border rounded-2xl p-5 shadow-xs space-y-4 text-xs font-sans transition-all duration-200 ${
+        className={`border rounded-2xl p-5 shadow-xs space-y-4 text-xs font-sans transition-all duration-200 ${
           isFullModal ? "max-w-3xl mx-auto border-slate-300 p-8 shadow-xl" : "border-slate-200"
         }`}
+        style={{ backgroundColor: pageBackground, color: bodyTextColor, borderColor: borderColor }}
       >
-        {/* Dynamic Header based on template style */}
+        {/* Dynamic Header with Institutional Logo & OH-ID Central Brand */}
         <div
-          className="p-4 rounded-xl text-white flex flex-wrap items-center justify-between gap-3 shadow-2xs"
+          className="p-4 rounded-xl text-white shadow-2xs space-y-3"
           style={{ backgroundColor: primaryColor }}
         >
-          <div className="flex items-center gap-3">
-            {showHospitalLogo && (
-              <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center font-bold text-white shrink-0 border border-white/20">
-                <Building2 className="w-5 h-5 text-white" />
-              </div>
-            )}
-            <div>
-              <h4 className="font-bold text-sm tracking-tight text-white">{hospitalName}</h4>
-              <p className="text-[10px] text-white/80">
-                {template.name} • {documentType === "PRESCRIPTION" ? "Outpatient RxPad" : "Clinical Consultation Report"}
-              </p>
+          {/* Top Bar: Official OH-ID Global Brand Indicator */}
+          <div className="flex items-center justify-between border-b border-white/15 pb-2 text-[10px]">
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-white text-indigo-900 flex items-center justify-center font-extrabold text-[10px] shadow-xs">
+                OH
+              </span>
+              <span className="font-bold tracking-wider uppercase text-white/95">OneHealth ID Verified Clinical Document</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-mono text-[9px] font-bold">
+                {style.toUpperCase()}
+              </span>
+              <span className="text-[9px] text-white/80">NABH Accredited</span>
             </div>
           </div>
 
-          <div className="text-right text-[10px] text-white/80 shrink-0">
-            <span className="inline-block px-2 py-0.5 rounded-full bg-white/20 text-white font-mono text-[9px] font-bold">
-              {style.toUpperCase()}
-            </span>
-            <div className="text-[9px] text-white/70 mt-0.5">NABH Accredited Facility</div>
+          {/* Hospital Identity Header with Configurable Placement & Size */}
+          <div
+            className={`flex items-center gap-3 ${
+              logoPlacement === "CENTER"
+                ? "flex-col justify-center text-center"
+                : logoPlacement === "RIGHT"
+                ? "flex-row-reverse justify-between text-left"
+                : "flex-row justify-between text-left"
+            }`}
+          >
+            <div
+              className={`flex items-center gap-3 ${
+                logoPlacement === "CENTER" ? "flex-col text-center" : "flex-row"
+              }`}
+            >
+              {showHospitalLogo && (
+                hospitalLogoUrl ? (
+                  <img
+                    src={hospitalLogoUrl}
+                    alt="Hospital Logo"
+                    className={`${logoSizeClass} object-contain rounded-xl bg-white p-1 border border-white/20 shadow-xs shrink-0`}
+                  />
+                ) : (
+                  <div
+                    className={`${logoSizeClass} rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center font-bold text-white shrink-0 border border-white/20 shadow-xs`}
+                  >
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                )
+              )}
+              <div>
+                <h4 className="font-bold text-sm tracking-tight text-white leading-tight">{hospitalName}</h4>
+                <p className="text-[10px] text-white/80 mt-0.5">
+                  {template.name} • {documentType === "PRESCRIPTION" ? "Digital RxPad Outpatient Record" : "Clinical Consultation Encounter Summary"}
+                </p>
+              </div>
+            </div>
+
+            {logoPlacement !== "CENTER" && (
+              <div className="text-right text-[10px] text-white/80 shrink-0 hidden sm:block">
+                <div className="font-semibold text-white">Facility ID: {template.id?.slice(0, 10)}</div>
+                <div className="text-[9px] text-white/70">Department of Outpatient Services</div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Patient Demographic Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 bg-slate-50 rounded-xl text-[10px] border border-slate-200/60 text-slate-700">
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-xl text-[10px] border text-slate-700"
+          style={{ backgroundColor: sectionBackground, borderColor: borderColor }}
+        >
           <div>
             <span className="text-slate-400 block text-[9px]">Patient Name</span>
             <span className="font-bold text-slate-900">Alice Smith</span>

@@ -21,11 +21,13 @@ import { ConsultationSummary } from "@/lib/types";
 interface ConsultationSummaryPrintViewProps {
   summary: ConsultationSummary;
   onReturnToQueue?: () => void;
+  branding?: any;
 }
 
 export function ConsultationSummaryPrintView({
   summary,
   onReturnToQueue,
+  branding: propBranding,
 }: ConsultationSummaryPrintViewProps) {
   const handlePrint = () => {
     if (typeof window !== "undefined") {
@@ -34,6 +36,16 @@ export function ConsultationSummaryPrintView({
   };
 
   const p = summary.patient;
+  const branding = (summary as any).branding_snapshot || propBranding || (summary as any).branding;
+  const primaryColor = branding?.primary_color || "#1E3A8A";
+  const headingColor = branding?.heading_color || "#0F172A";
+  const bodyTextColor = branding?.body_text_color || "#334155";
+  const pageBackground = branding?.page_background || "#FFFFFF";
+  const sectionBackground = branding?.section_background || "#F8FAFC";
+  const borderColor = branding?.border_color || "#E2E8F0";
+  const logoPlacement = branding?.logo_placement || "LEFT";
+  const logoSize = branding?.logo_size || "MEDIUM";
+  const hospitalLogoUrl = branding?.hospital_logo_url;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -74,21 +86,45 @@ export function ConsultationSummaryPrintView({
       </div>
 
       {/* Printable Clinical Sheet Document */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-sm print:border-none print:shadow-none print:p-0 space-y-6 text-xs text-slate-800">
+      <div
+        className="border rounded-3xl p-8 sm:p-10 shadow-sm print:border-none print:shadow-none print:p-0 space-y-6 text-xs"
+        style={{ backgroundColor: pageBackground, color: bodyTextColor, borderColor: borderColor }}
+      >
         {/* Hospital Letterhead Header */}
-        <div className="flex flex-wrap items-start justify-between gap-4 pb-6 border-b-2 border-slate-900">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 pb-6 border-b-2 ${
+            logoPlacement === "CENTER" ? "flex-col items-center text-center" : logoPlacement === "RIGHT" ? "flex-row-reverse" : "flex-row"
+          }`}
+          style={{ borderColor: primaryColor }}
+        >
+          <div className={`flex items-center gap-3 ${logoPlacement === "CENTER" ? "flex-col text-center" : "flex-row"}`}>
+            {hospitalLogoUrl ? (
+              <img
+                src={hospitalLogoUrl}
+                alt="Hospital Logo"
+                className={`${logoSize === "SMALL" ? "w-8 h-8" : logoSize === "LARGE" ? "w-14 h-14" : "w-10 h-10"} object-contain rounded-lg p-0.5`}
+              />
+            ) : (
+              <div
+                className={`${logoSize === "SMALL" ? "w-8 h-8" : logoSize === "LARGE" ? "w-14 h-14" : "w-10 h-10"} rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0`}
+                style={{ backgroundColor: primaryColor }}
+              >
                 OH
               </div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                {summary.hospital_name || "Healthcare & Medical Research Facility"}
-              </h1>
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded bg-indigo-600 text-white font-extrabold text-[9px] flex items-center justify-center shadow-xs">
+                  OH
+                </span>
+                <h1 className="text-xl font-bold tracking-tight" style={{ color: headingColor }}>
+                  {summary.hospital_name || "Healthcare & Medical Research Facility"}
+                </h1>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                National Health Grid • Unified Outpatient Clinical Consultation Summary
+              </p>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              National Health Grid • Unified Outpatient Clinical Consultation Summary
-            </p>
           </div>
 
           <div className="text-right">

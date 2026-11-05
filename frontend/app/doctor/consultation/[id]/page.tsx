@@ -609,6 +609,7 @@ export default function DoctorConsultationWorkspace() {
           <ConsultationSummaryPrintView
             summary={completedSummary}
             onReturnToQueue={() => router.push("/doctor/queue")}
+            branding={hospitalTemplateSettings?.branding}
           />
         </div>
       </AppLayout>
@@ -896,6 +897,7 @@ export default function DoctorConsultationWorkspace() {
                       customHeaderText={hospitalTemplateSettings?.custom_header_text}
                       customFooterNotes={hospitalTemplateSettings?.custom_footer_notes}
                       showHospitalLogo={hospitalTemplateSettings?.show_hospital_logo ?? true}
+                      branding={hospitalTemplateSettings?.branding}
                     />
                   </div>
                 )}
@@ -1003,6 +1005,7 @@ export default function DoctorConsultationWorkspace() {
                       customHeaderText={hospitalTemplateSettings?.custom_header_text}
                       customFooterNotes={hospitalTemplateSettings?.custom_footer_notes}
                       showHospitalLogo={hospitalTemplateSettings?.show_hospital_logo ?? true}
+                      branding={hospitalTemplateSettings?.branding}
                     />
                   </div>
                 )}

@@ -12,9 +12,46 @@ from backend.app.core.logging import logger, log_security_event
 
 router = APIRouter(tags=["Unified Clinical Document Template Management"])
 
+import re
+
 # --------------------------------------------------------------------------
 # Request Schemas
 # --------------------------------------------------------------------------
+
+HEX_COLOR_REGEX = re.compile(r"^#(?:[0-9a-fA-F]{3}){1,2}$")
+
+def validate_hex_color(color_name: str, val: Optional[str]) -> Optional[str]:
+    if val is None:
+        return None
+    val = val.strip()
+    if not HEX_COLOR_REGEX.match(val):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid HEX color for '{color_name}': '{val}'. Must be a valid 3- or 6-digit hex code starting with '#' (e.g. #1E3A8A)."
+        )
+    return val
+
+class UpdateHospitalBrandingRequest(BaseModel):
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    heading_color: Optional[str] = None
+    body_text_color: Optional[str] = None
+    page_background: Optional[str] = None
+    section_background: Optional[str] = None
+    border_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    success_color: Optional[str] = None
+    warning_color: Optional[str] = None
+    error_color: Optional[str] = None
+    logo_placement: Optional[str] = Field(None, description="LEFT, CENTER, or RIGHT")
+    logo_size: Optional[str] = Field(None, description="SMALL, MEDIUM, or LARGE")
+    hospital_logo_url: Optional[str] = None
+    hospital_logo_asset_id: Optional[str] = None
+    enabled_document_types: Optional[List[str]] = None
+
+class HospitalLogoUploadRequest(BaseModel):
+    logo_data: str = Field(..., description="Base64 encoded data URI or URL")
+    filename: Optional[str] = None
 
 class UpdateHospitalDocumentSettingsRequest(BaseModel):
     rx_template_id: Optional[str] = None
@@ -242,6 +279,136 @@ def hospital_update_document_template_settings(
         raise HTTPException(status_code=500, detail="Failed to update hospital document template settings.")
 
 # --------------------------------------------------------------------------
+# 2B. HOSPITAL ADMIN WORKSPACE: CLINICAL DOCUMENT BRANDING
+# --------------------------------------------------------------------------
+
+@router.get(
+    "/hospital/branding",
+    response_model=Dict[str, Any]
+)
+def hospital_get_branding(
+    hospital_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(require_any_permission("hospital.read", "hospital.update", "hospital.manage", "system.manage"))
+):
+    """
+    Returns the hospital's custom branding palette and logo settings.
+    Enforces strict tenant isolation.
+    """
+    target_hosp = hospital_id or current_user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(current_user, target_hosp)
+    branding = sp_repository.get_hospital_branding(target_hosp)
+    return branding
+
+@router.put(
+    "/hospital/branding",
+    response_model=Dict[str, Any]
+)
+def hospital_update_branding(
+    payload: UpdateHospitalBrandingRequest,
+    hospital_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(require_any_permission("hospital.update", "hospital.manage", "system.manage"))
+):
+    """
+    Updates tenant-specific document branding palette (11 colors) and logo placement/size.
+    Validates HEX format and enforces tenant isolation.
+    """
+    target_hosp = hospital_id or current_user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(current_user, target_hosp)
+
+    # Validate all HEX colors
+    data = payload.dict(exclude_unset=True)
+    color_fields = [
+        "primary_color", "secondary_color", "heading_color", "body_text_color",
+        "page_background", "section_background", "border_color", "accent_color",
+        "success_color", "warning_color", "error_color"
+    ]
+    for field in color_fields:
+        if field in data and data[field]:
+            data[field] = validate_hex_color(field, data[field])
+
+    # Validate placement and size
+    if "logo_placement" in data and data["logo_placement"]:
+        if data["logo_placement"] not in ("LEFT", "CENTER", "RIGHT"):
+            raise HTTPException(status_code=422, detail="logo_placement must be 'LEFT', 'CENTER', or 'RIGHT'")
+    if "logo_size" in data and data["logo_size"]:
+        if data["logo_size"] not in ("SMALL", "MEDIUM", "LARGE"):
+            raise HTTPException(status_code=422, detail="logo_size must be 'SMALL', 'MEDIUM', or 'LARGE'")
+
+    actor_name = current_user.get("name") or current_user.get("username") or "hospital_admin"
+    try:
+        updated = sp_repository.update_hospital_branding(
+            hospital_id=target_hosp,
+            branding_data=data,
+            updated_by=actor_name
+        )
+        log_security_event(
+            "HOSPITAL_BRANDING_UPDATED",
+            actor_id=current_user.get("username"),
+            resource=f"hospital:{target_hosp}",
+            status="SUCCESS",
+            details={"version": updated.get("version"), "updated_by": actor_name}
+        )
+        return updated
+    except Exception as e:
+        logger.error(f"Failed to update hospital branding: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update hospital branding.")
+
+@router.post(
+    "/hospital/branding/reset",
+    response_model=Dict[str, Any]
+)
+def hospital_reset_branding(
+    hospital_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(require_any_permission("hospital.update", "hospital.manage", "system.manage"))
+):
+    """Resets hospital branding back to the official OH-ID default palette."""
+    target_hosp = hospital_id or current_user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(current_user, target_hosp)
+
+    actor_name = current_user.get("name") or current_user.get("username") or "hospital_admin"
+    try:
+        reset = sp_repository.reset_hospital_branding(target_hosp, updated_by=actor_name)
+        log_security_event(
+            "HOSPITAL_BRANDING_RESET_TO_DEFAULT",
+            actor_id=current_user.get("username"),
+            resource=f"hospital:{target_hosp}",
+            status="SUCCESS",
+            details={"version": reset.get("version")}
+        )
+        return reset
+    except Exception as e:
+        logger.error(f"Failed to reset hospital branding: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reset hospital branding.")
+
+@router.post(
+    "/hospital/branding/logo",
+    response_model=Dict[str, Any]
+)
+def hospital_upload_logo(
+    payload: HospitalLogoUploadRequest,
+    hospital_id: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(require_any_permission("hospital.update", "hospital.manage", "system.manage"))
+):
+    """Uploads or updates the hospital logo asset."""
+    target_hosp = hospital_id or current_user.get("hospital_ref_id") or "hosp-kedar"
+    validate_hospital_tenant_scope(current_user, target_hosp)
+
+    if not payload.logo_data or len(payload.logo_data.strip()) == 0:
+        raise HTTPException(status_code=400, detail="logo_data is required.")
+
+    actor_name = current_user.get("name") or current_user.get("username") or "hospital_admin"
+    try:
+        updated = sp_repository.update_hospital_branding(
+            hospital_id=target_hosp,
+            branding_data={"hospital_logo_url": payload.logo_data},
+            updated_by=actor_name
+        )
+        return updated
+    except Exception as e:
+        logger.error(f"Failed to save hospital logo: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save hospital logo.")
+
+# --------------------------------------------------------------------------
 # 3. DOCTOR WORKSPACE: HYDRATION ENDPOINT
 # --------------------------------------------------------------------------
 
@@ -253,9 +420,11 @@ def doctor_get_hospital_templates(
     hospital_id: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
-    """Returns active hospital's selected Rx and Clinical Report templates for clinical authoring."""
+    """Returns active hospital's selected Rx and Clinical Report templates and branding for clinical authoring."""
     target_hosp = hospital_id or current_user.get("hospital_ref_id") or "hosp-kedar"
     settings = sp_repository.get_hospital_document_template_settings(target_hosp)
+    branding = sp_repository.get_hospital_branding(target_hosp)
+    settings["branding"] = branding
     return settings
 
 # --------------------------------------------------------------------------

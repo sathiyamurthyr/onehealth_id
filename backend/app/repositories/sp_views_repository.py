@@ -1063,6 +1063,12 @@ class SPViewsRepository(
             resolved_report_tmpl = resolved_report_tmpl or "tmpl_rep_classic_hospital"
             resolved_rx_tmpl = rx_template_id or "tmpl_rx_classic_hospital"
 
+            # Resolve active hospital branding snapshot for versioning & document integrity
+            cur.execute("SELECT * FROM oh_id.hospital_document_branding WHERE hospital_id = %s LIMIT 1;", (hospital_id,))
+            b_row = cur.fetchone()
+            b_ver = b_row["version"] if b_row else 1
+            b_snap = json.dumps(dict(b_row), default=str) if b_row else None
+
             # 1. Insert or update OPD consultation
             sig_hash = digital_signature_hash or f"SHA256:{uuid.uuid4().hex[:16]}"
             c_status = 'DRAFT' if is_draft else 'COMPLETED'
@@ -1080,13 +1086,13 @@ class SPViewsRepository(
                     clinical_notes, vitals, chief_complaint, examination, medical_history,
                     diagnoses, consultation_status, status, version, template_id, template_version,
                     signed_by, signed_at, digital_signature_hash, digital_signature,
-                    finalized_at, finalized_by, created_at
+                    finalized_at, finalized_by, branding_version, branding_snapshot, created_at
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s,
                     %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
                     %s::jsonb, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, CURRENT_TIMESTAMP
+                    %s, %s, %s, %s::jsonb, CURRENT_TIMESTAMP
                 ) ON CONFLICT (id) DO UPDATE SET
                     diagnosis = EXCLUDED.diagnosis,
                     symptoms = EXCLUDED.symptoms,
@@ -1106,7 +1112,9 @@ class SPViewsRepository(
                     digital_signature_hash = COALESCE(EXCLUDED.digital_signature_hash, oh_id.opd_consultations.digital_signature_hash),
                     digital_signature = COALESCE(EXCLUDED.digital_signature, oh_id.opd_consultations.digital_signature),
                     finalized_at = COALESCE(EXCLUDED.finalized_at, oh_id.opd_consultations.finalized_at),
-                    finalized_by = COALESCE(EXCLUDED.finalized_by, oh_id.opd_consultations.finalized_by);
+                    finalized_by = COALESCE(EXCLUDED.finalized_by, oh_id.opd_consultations.finalized_by),
+                    branding_version = COALESCE(oh_id.opd_consultations.branding_version, EXCLUDED.branding_version),
+                    branding_snapshot = COALESCE(oh_id.opd_consultations.branding_snapshot, EXCLUDED.branding_snapshot);
                 """,
                 (
                     new_cid, appointment_id, patient_id, doctor_id,
@@ -1119,7 +1127,8 @@ class SPViewsRepository(
                     c_status, gen_status, next_version,
                     resolved_report_tmpl, resolved_report_ver,
                     f_signed_by, f_signed_at, f_sig_hash, f_sig_hash,
-                    f_finalized_at, f_finalized_by
+                    f_finalized_at, f_finalized_by,
+                    b_ver, b_snap
                 )
             )
 
@@ -1144,11 +1153,11 @@ class SPViewsRepository(
                     INSERT INTO oh_id.prescriptions (
                         id, consultation_id, patient_id, doctor_id, hospital_id, diagnosis, instructions,
                         status, valid_from, valid_until, validity_period_not_specified, signed_by, signed_at,
-                        digital_signature_hash, template_id, template_version, created_by, created_at, version
+                        digital_signature_hash, template_id, template_version, branding_version, branding_snapshot, created_by, created_at, version
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, 1, %s, CURRENT_TIMESTAMP, 1
+                        %s, %s, 1, %s, %s::jsonb, %s, CURRENT_TIMESTAMP, 1
                     ) ON CONFLICT (id) DO UPDATE SET
                         diagnosis = EXCLUDED.diagnosis,
                         instructions = EXCLUDED.instructions,
@@ -1159,7 +1168,9 @@ class SPViewsRepository(
                         signed_by = EXCLUDED.signed_by,
                         signed_at = EXCLUDED.signed_at,
                         digital_signature_hash = EXCLUDED.digital_signature_hash,
-                        template_id = COALESCE(EXCLUDED.template_id, oh_id.prescriptions.template_id);
+                        template_id = COALESCE(EXCLUDED.template_id, oh_id.prescriptions.template_id),
+                        branding_version = COALESCE(oh_id.prescriptions.branding_version, EXCLUDED.branding_version),
+                        branding_snapshot = COALESCE(oh_id.prescriptions.branding_snapshot, EXCLUDED.branding_snapshot);
                     """,
                     (
                         rx_id, new_cid, patient_id, doctor_id, hospital_id, diagnosis,
@@ -1172,6 +1183,8 @@ class SPViewsRepository(
                         rx_signed_at,
                         rx_sig_hash,
                         resolved_rx_tmpl,
+                        b_ver,
+                        b_snap,
                         actor_id
                     )
                 )
@@ -11921,10 +11934,12 @@ class SPViewsRepository(
             """, (hospital_id,))
             row = cur.fetchone()
             if row:
-                return dict(row)
+                res = dict(row)
+                res["branding"] = self.get_hospital_branding(hospital_id)
+                return res
 
             # Fallback if not configured yet
-            return {
+            fallback = {
                 "hospital_id": hospital_id,
                 "rx_template_id": "tmpl_rx_classic_hospital",
                 "rx_template_version": 1,
@@ -11937,6 +11952,8 @@ class SPViewsRepository(
                 "custom_footer_notes": None,
                 "updated_by": "system_default"
             }
+            fallback["branding"] = self.get_hospital_branding(hospital_id)
+            return fallback
 
     def update_hospital_document_template_settings(
         self,
@@ -12144,6 +12161,191 @@ class SPViewsRepository(
                 except Exception:
                     rep["vitals"] = {}
             return rep
+
+    # -------------------------------------------------------------------------
+    # HOSPITAL DOCUMENT BRANDING MANAGEMENT
+    # -------------------------------------------------------------------------
+    def get_hospital_branding(self, hospital_id: str) -> Dict[str, Any]:
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT hospital_id, hospital_logo_url, hospital_logo_asset_id,
+                       logo_placement, logo_size, primary_color, secondary_color,
+                       heading_color, body_text_color, page_background, section_background,
+                       border_color, accent_color, success_color, warning_color, error_color,
+                       enabled_document_types, version, updated_at, updated_by
+                FROM oh_id.hospital_document_branding
+                WHERE hospital_id = %s;
+            """, (hospital_id,))
+            row = cur.fetchone()
+            if row:
+                res = dict(row)
+                if isinstance(res.get("enabled_document_types"), str):
+                    try:
+                        res["enabled_document_types"] = json.loads(res["enabled_document_types"])
+                    except Exception:
+                        res["enabled_document_types"] = ["CLINICAL_REPORT", "PRESCRIPTION", "DISCHARGE_SUMMARY", "MEDICAL_CERTIFICATE"]
+                return res
+
+            # Return defaults
+            return {
+                "hospital_id": hospital_id,
+                "hospital_logo_url": None,
+                "hospital_logo_asset_id": None,
+                "logo_placement": "LEFT",
+                "logo_size": "MEDIUM",
+                "primary_color": "#1E3A8A",
+                "secondary_color": "#0284C7",
+                "heading_color": "#0F172A",
+                "body_text_color": "#334155",
+                "page_background": "#FFFFFF",
+                "section_background": "#F8FAFC",
+                "border_color": "#E2E8F0",
+                "accent_color": "#4F46E5",
+                "success_color": "#16A34A",
+                "warning_color": "#D97706",
+                "error_color": "#DC2626",
+                "enabled_document_types": ["CLINICAL_REPORT", "PRESCRIPTION", "DISCHARGE_SUMMARY", "MEDICAL_CERTIFICATE"],
+                "version": 1,
+                "updated_by": "system_default"
+            }
+
+    def update_hospital_branding(
+        self,
+        hospital_id: str,
+        branding_data: Dict[str, Any],
+        updated_by: str = "hospital_admin"
+    ) -> Dict[str, Any]:
+        with get_db_cursor() as cur:
+            # 1. Fetch current branding
+            cur.execute("SELECT * FROM oh_id.hospital_document_branding WHERE hospital_id = %s;", (hospital_id,))
+            current = cur.fetchone()
+
+            if current:
+                current_dict = dict(current)
+                current_ver = current_dict.get("version", 1)
+                # Snapshot current state into history table
+                hist_id = f"brh-{uuid.uuid4().hex[:12]}"
+                cur.execute("""
+                    INSERT INTO oh_id.hospital_document_branding_history (
+                        id, hospital_id, version, branding_config, created_at, created_by
+                    ) VALUES (%s, %s, %s, %s::jsonb, CURRENT_TIMESTAMP, %s);
+                """, (
+                    hist_id,
+                    hospital_id,
+                    current_ver,
+                    json.dumps(current_dict, default=str),
+                    updated_by
+                ))
+                new_ver = current_ver + 1
+            else:
+                new_ver = 1
+
+            # 2. Extract allowed fields with fallback to existing or default
+            def val(key, default):
+                if key in branding_data and branding_data[key] is not None:
+                    return branding_data[key]
+                if current and key in current:
+                    return current[key]
+                return default
+
+            p_col = val("primary_color", "#1E3A8A")
+            s_col = val("secondary_color", "#0284C7")
+            h_col = val("heading_color", "#0F172A")
+            b_col = val("body_text_color", "#334155")
+            page_bg = val("page_background", "#FFFFFF")
+            sec_bg = val("section_background", "#F8FAFC")
+            bor_col = val("border_color", "#E2E8F0")
+            acc_col = val("accent_color", "#4F46E5")
+            succ_col = val("success_color", "#16A34A")
+            warn_col = val("warning_color", "#D97706")
+            err_col = val("error_color", "#DC2626")
+            l_place = val("logo_placement", "LEFT")
+            l_size = val("logo_size", "MEDIUM")
+            h_logo = val("hospital_logo_url", None)
+            h_asset = val("hospital_logo_asset_id", None)
+            doc_types = val("enabled_document_types", ["CLINICAL_REPORT", "PRESCRIPTION", "DISCHARGE_SUMMARY", "MEDICAL_CERTIFICATE"])
+
+            cur.execute("""
+                INSERT INTO oh_id.hospital_document_branding (
+                    hospital_id, hospital_logo_url, hospital_logo_asset_id,
+                    logo_placement, logo_size, primary_color, secondary_color,
+                    heading_color, body_text_color, page_background, section_background,
+                    border_color, accent_color, success_color, warning_color, error_color,
+                    enabled_document_types, version, updated_by, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s::jsonb, %s, %s, CURRENT_TIMESTAMP
+                ) ON CONFLICT (hospital_id) DO UPDATE SET
+                    hospital_logo_url = EXCLUDED.hospital_logo_url,
+                    hospital_logo_asset_id = EXCLUDED.hospital_logo_asset_id,
+                    logo_placement = EXCLUDED.logo_placement,
+                    logo_size = EXCLUDED.logo_size,
+                    primary_color = EXCLUDED.primary_color,
+                    secondary_color = EXCLUDED.secondary_color,
+                    heading_color = EXCLUDED.heading_color,
+                    body_text_color = EXCLUDED.body_text_color,
+                    page_background = EXCLUDED.page_background,
+                    section_background = EXCLUDED.section_background,
+                    border_color = EXCLUDED.border_color,
+                    accent_color = EXCLUDED.accent_color,
+                    success_color = EXCLUDED.success_color,
+                    warning_color = EXCLUDED.warning_color,
+                    error_color = EXCLUDED.error_color,
+                    enabled_document_types = EXCLUDED.enabled_document_types,
+                    version = EXCLUDED.version,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *;
+            """, (
+                hospital_id, h_logo, h_asset,
+                l_place, l_size, p_col, s_col,
+                h_col, b_col, page_bg, sec_bg,
+                bor_col, acc_col, succ_col, warn_col, err_col,
+                json.dumps(doc_types), new_ver, updated_by
+            ))
+            row = cur.fetchone()
+
+            # Audit
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, created_at
+                ) VALUES (
+                    %s, %s, %s, 'HOSPITAL_BRANDING_UPDATED', 'hospital_document_branding', %s, %s::jsonb, CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:12]}",
+                updated_by,
+                updated_by,
+                hospital_id,
+                json.dumps({"version": new_ver, "primary_color": p_col, "updated_by": updated_by})
+            ))
+            res = dict(row)
+            if isinstance(res.get("enabled_document_types"), str):
+                try:
+                    res["enabled_document_types"] = json.loads(res["enabled_document_types"])
+                except Exception:
+                    pass
+            return res
+
+    def reset_hospital_branding(self, hospital_id: str, updated_by: str = "hospital_admin") -> Dict[str, Any]:
+        return self.update_hospital_branding(hospital_id, {
+            "primary_color": "#1E3A8A",
+            "secondary_color": "#0284C7",
+            "heading_color": "#0F172A",
+            "body_text_color": "#334155",
+            "page_background": "#FFFFFF",
+            "section_background": "#F8FAFC",
+            "border_color": "#E2E8F0",
+            "accent_color": "#4F46E5",
+            "success_color": "#16A34A",
+            "warning_color": "#D97706",
+            "error_color": "#DC2626",
+            "logo_placement": "LEFT",
+            "logo_size": "MEDIUM",
+            "hospital_logo_url": None,
+            "hospital_logo_asset_id": None,
+            "enabled_document_types": ["CLINICAL_REPORT", "PRESCRIPTION", "DISCHARGE_SUMMARY", "MEDICAL_CERTIFICATE"]
+        }, updated_by=updated_by)
 
 sp_repository = SPViewsRepository()
 
