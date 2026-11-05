@@ -29,6 +29,7 @@ import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
+import { TemplateSamplePreview } from "@/components/clinical/TemplateSamplePreview";
 
 export default function SettingsPage() {
   const { workspace } = useWorkspace();
@@ -444,18 +445,37 @@ export default function SettingsPage() {
                     </>
                   )}
                 </select>
-                {/* Active Description */}
+                {/* Active Description & Live Layout Preview */}
                 {(() => {
-                  const curr = availableRxTemplates.find((t) => t.id === templateSettings.rxTemplateId);
-                  return curr ? (
-                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                      <p className="font-semibold text-slate-800">{curr.name}</p>
-                      <p>{curr.description}</p>
-                      {curr.best_suited_for && (
-                        <p className="text-[10px] text-indigo-600 font-medium">Best suited for: {curr.best_suited_for}</p>
-                      )}
+                  const curr =
+                    availableRxTemplates.find((t) => t.id === templateSettings.rxTemplateId) ||
+                    availableRxTemplates[0] || {
+                      id: "tmpl_rx_classic_hospital",
+                      name: "Classic Hospital Rx",
+                      description: "Traditional tertiary hospital prescription with formal hospital letterhead.",
+                      best_suited_for: "Tertiary care and general outpatient clinics",
+                      layout_config: { style: "classic", primaryColor: "#1E3A8A", medicationLayout: "table" },
+                    };
+                  return (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                        <p className="font-semibold text-slate-800">{curr.name}</p>
+                        <p>{curr.description}</p>
+                        {curr.best_suited_for && (
+                          <p className="text-[10px] text-indigo-600 font-medium">Best suited for: {curr.best_suited_for}</p>
+                        )}
+                      </div>
+
+                      {/* Live Template Sample Document Preview */}
+                      <TemplateSamplePreview
+                        documentType="PRESCRIPTION"
+                        template={curr}
+                        customHeaderText={templateSettings.customHeaderText}
+                        customFooterNotes={templateSettings.customFooterNotes}
+                        showHospitalLogo={templateSettings.showHospitalLogo}
+                      />
                     </div>
-                  ) : null;
+                  );
                 })()}
               </div>
 
@@ -491,18 +511,37 @@ export default function SettingsPage() {
                     </>
                   )}
                 </select>
-                {/* Active Description */}
+                {/* Active Description & Live Layout Preview */}
                 {(() => {
-                  const curr = availableReportTemplates.find((t) => t.id === templateSettings.clinicalReportTemplateId);
-                  return curr ? (
-                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                      <p className="font-semibold text-slate-800">{curr.name}</p>
-                      <p>{curr.description}</p>
-                      {curr.best_suited_for && (
-                        <p className="text-[10px] text-blue-600 font-medium">Best suited for: {curr.best_suited_for}</p>
-                      )}
+                  const curr =
+                    availableReportTemplates.find((t) => t.id === templateSettings.clinicalReportTemplateId) ||
+                    availableReportTemplates[0] || {
+                      id: "tmpl_rep_classic_hospital",
+                      name: "Classic Hospital Clinical Report",
+                      description: "Comprehensive inpatient and outpatient clinical documentation sheet.",
+                      best_suited_for: "Multi-departmental and general hospital practices",
+                      layout_config: { style: "classic", primaryColor: "#0284C7" },
+                    };
+                  return (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                        <p className="font-semibold text-slate-800">{curr.name}</p>
+                        <p>{curr.description}</p>
+                        {curr.best_suited_for && (
+                          <p className="text-[10px] text-blue-600 font-medium">Best suited for: {curr.best_suited_for}</p>
+                        )}
+                      </div>
+
+                      {/* Live Template Sample Document Preview */}
+                      <TemplateSamplePreview
+                        documentType="CLINICAL_REPORT"
+                        template={curr}
+                        customHeaderText={templateSettings.customHeaderText}
+                        customFooterNotes={templateSettings.customFooterNotes}
+                        showHospitalLogo={templateSettings.showHospitalLogo}
+                      />
                     </div>
-                  ) : null;
+                  );
                 })()}
               </div>
             </div>
