@@ -541,4 +541,27 @@ export const hospitalApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  getDocumentTemplateSettings: async (hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<{
+      settings: any;
+      available_prescription_templates: any[];
+      available_clinical_report_templates: any[];
+    }>(`/api/v1/hospital/document-template-settings${query}`);
+  },
+
+  updateDocumentTemplateSettings: async (payload: {
+    rx_template_id?: string;
+    clinical_report_template_id?: string;
+    custom_header_text?: string;
+    custom_footer_notes?: string;
+    show_hospital_logo?: boolean;
+  }, hospitalId?: string) => {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<any>(`/api/v1/hospital/document-template-settings${query}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
 };

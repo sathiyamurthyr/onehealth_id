@@ -20,6 +20,10 @@ import {
   Save,
   Sliders,
   AlertTriangle,
+  FileText,
+  Pill,
+  Sparkles,
+  Check,
 } from "lucide-react";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
 import Link from "next/link";
@@ -62,6 +66,17 @@ export default function SettingsPage() {
     priorityTokenPrefix: "EMERG-",
   });
 
+  // Clinical Document & RxPad Templates state
+  const [templateSettings, setTemplateSettings] = useState({
+    rxTemplateId: "tmpl_rx_classic_hospital",
+    clinicalReportTemplateId: "tmpl_rep_classic_hospital",
+    customHeaderText: "",
+    customFooterNotes: "",
+    showHospitalLogo: true,
+  });
+  const [availableRxTemplates, setAvailableRxTemplates] = useState<any[]>([]);
+  const [availableReportTemplates, setAvailableReportTemplates] = useState<any[]>([]);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -88,6 +103,26 @@ export default function SettingsPage() {
           branch: workspace.branch_name || prev.branch,
         }));
       }
+
+      // Load Document Template Settings
+      const tmplRes = await api.hospital.getDocumentTemplateSettings(activeHospitalId).catch(() => null);
+      if (tmplRes) {
+        if (tmplRes.settings) {
+          setTemplateSettings({
+            rxTemplateId: tmplRes.settings.rx_template_id || "tmpl_rx_classic_hospital",
+            clinicalReportTemplateId: tmplRes.settings.clinical_report_template_id || "tmpl_rep_classic_hospital",
+            customHeaderText: tmplRes.settings.custom_header_text || "",
+            customFooterNotes: tmplRes.settings.custom_footer_notes || "",
+            showHospitalLogo: tmplRes.settings.show_hospital_logo ?? true,
+          });
+        }
+        if (tmplRes.available_prescription_templates) {
+          setAvailableRxTemplates(tmplRes.available_prescription_templates);
+        }
+        if (tmplRes.available_clinical_report_templates) {
+          setAvailableReportTemplates(tmplRes.available_clinical_report_templates);
+        }
+      }
     } catch (err: any) {
       console.error("Failed to load hospital config:", err);
     } finally {
@@ -103,16 +138,25 @@ export default function SettingsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.hospital.updateConfig(activeHospitalId, {
-        ...hospitalProfile,
-        appointmentRules,
-        tokenRules,
-      });
-      setSuccessMessage("Hospital operational configuration saved and synchronized!");
+      await Promise.all([
+        api.hospital.updateConfig(activeHospitalId, {
+          ...hospitalProfile,
+          appointmentRules,
+          tokenRules,
+        }),
+        api.hospital.updateDocumentTemplateSettings({
+          rx_template_id: templateSettings.rxTemplateId,
+          clinical_report_template_id: templateSettings.clinicalReportTemplateId,
+          custom_header_text: templateSettings.customHeaderText,
+          custom_footer_notes: templateSettings.customFooterNotes,
+          show_hospital_logo: templateSettings.showHospitalLogo,
+        }, activeHospitalId).catch((err) => console.warn("Failed to update template settings:", err))
+      ]);
+      setSuccessMessage("Hospital operational configuration and clinical template settings saved and synchronized!");
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       console.error("Failed to save config:", err);
-      setSuccessMessage("Hospital operational configuration saved locally!");
+      setSuccessMessage("Hospital configuration saved locally!");
       setTimeout(() => setSuccessMessage(null), 4000);
     } finally {
       setSaving(false);
@@ -344,6 +388,167 @@ export default function SettingsPage() {
                   onChange={(e) => setTokenRules({ ...tokenRules, priorityTokenPrefix: e.target.value.toUpperCase() })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-amber-500/20"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Clinical Report & Digital RxPad Template Settings */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-200">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Clinical Report & Digital RxPad Templates</h3>
+                  <p className="text-xs text-slate-500">
+                    Set facility-wide default layouts, institutional letterheads, and branding for Doctor prescriptions & reports
+                  </p>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[11px] font-semibold border border-indigo-200">
+                <Sparkles className="w-3.5 h-3.5" /> 20 Clinical Layouts Ready
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Prescription Template Selector */}
+              <div className="space-y-3 bg-slate-50/70 p-4 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2">
+                  <Pill className="w-4 h-4 text-emerald-600" />
+                  <label className="text-xs font-bold text-slate-800">Default Prescription Template (RxPad)</label>
+                </div>
+                <select
+                  value={templateSettings.rxTemplateId}
+                  onChange={(e) => setTemplateSettings({ ...templateSettings, rxTemplateId: e.target.value })}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  {availableRxTemplates.length > 0 ? (
+                    availableRxTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.category || "General"})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="tmpl_rx_classic_hospital">Classic Hospital Rx (Tertiary Care Standard)</option>
+                      <option value="tmpl_rx_modern_clinical">Modern Clinical (Card-based Layout)</option>
+                      <option value="tmpl_rx_minimal_opd">Minimal OPD (High Density Fast-track)</option>
+                      <option value="tmpl_rx_bilingual_tamil">Bilingual Tamil / English Rx</option>
+                      <option value="tmpl_rx_pediatric">Pediatric Care Rx (Weight-based dosing)</option>
+                      <option value="tmpl_rx_oncology">Oncology & Chemotherapy Protocol Rx</option>
+                      <option value="tmpl_rx_cardiology">Cardiology Specialty Rx</option>
+                      <option value="tmpl_rx_diabetic_care">Diabetic Care & Insulin Regimen Rx</option>
+                      <option value="tmpl_rx_ayush">AYUSH & Integrative Medicine Rx</option>
+                      <option value="tmpl_rx_emergency">Emergency Fast-track RxPad</option>
+                    </>
+                  )}
+                </select>
+                {/* Active Description */}
+                {(() => {
+                  const curr = availableRxTemplates.find((t) => t.id === templateSettings.rxTemplateId);
+                  return curr ? (
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                      <p className="font-semibold text-slate-800">{curr.name}</p>
+                      <p>{curr.description}</p>
+                      {curr.best_suited_for && (
+                        <p className="text-[10px] text-indigo-600 font-medium">Best suited for: {curr.best_suited_for}</p>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+
+              {/* Clinical Report Template Selector */}
+              <div className="space-y-3 bg-slate-50/70 p-4 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <label className="text-xs font-bold text-slate-800">Default Clinical Consultation Report Template</label>
+                </div>
+                <select
+                  value={templateSettings.clinicalReportTemplateId}
+                  onChange={(e) => setTemplateSettings({ ...templateSettings, clinicalReportTemplateId: e.target.value })}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  {availableReportTemplates.length > 0 ? (
+                    availableReportTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.category || "General"})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="tmpl_rep_classic_hospital">Classic Hospital Clinical Report</option>
+                      <option value="tmpl_rep_minimal_opd">Minimal OPD Encounter Summary</option>
+                      <option value="tmpl_rep_multispecialty">Multispecialty Consultation Narrative</option>
+                      <option value="tmpl_rep_inpatient_discharge">Comprehensive Inpatient & Discharge Summary</option>
+                      <option value="tmpl_rep_pediatric_assessment">Pediatric Developmental Assessment</option>
+                      <option value="tmpl_rep_surgical_preop">Surgical Pre-Op / Post-Op Notes</option>
+                      <option value="tmpl_rep_cardiology_ecg">Cardiology & Hemodynamic Assessment</option>
+                      <option value="tmpl_rep_diabetic_longitudinal">Diabetic Longitudinal Care Flowsheet</option>
+                      <option value="tmpl_rep_ayush_assessment">AYUSH Holistic Diagnostic Assessment</option>
+                      <option value="tmpl_rep_executive_health">Executive Health Checkup Report</option>
+                    </>
+                  )}
+                </select>
+                {/* Active Description */}
+                {(() => {
+                  const curr = availableReportTemplates.find((t) => t.id === templateSettings.clinicalReportTemplateId);
+                  return curr ? (
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                      <p className="font-semibold text-slate-800">{curr.name}</p>
+                      <p>{curr.description}</p>
+                      {curr.best_suited_for && (
+                        <p className="text-[10px] text-blue-600 font-medium">Best suited for: {curr.best_suited_for}</p>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            </div>
+
+            {/* Branding & Header/Footer Customization */}
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Institutional Letterhead & Footer Customization</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Custom Header / Letterhead Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Kedar Multispecialty Hospital & Research Center"
+                    value={templateSettings.customHeaderText}
+                    onChange={(e) => setTemplateSettings({ ...templateSettings, customHeaderText: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Displayed at the top of printed/downloaded clinical documents</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Custom Footer / Emergency Helpline</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Emergency 24x7 Helpline: +91 44 2252 1100"
+                    value={templateSettings.customFooterNotes}
+                    onChange={(e) => setTemplateSettings({ ...templateSettings, customFooterNotes: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Appears at the bottom of every official prescription & report</span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={templateSettings.showHospitalLogo}
+                    onChange={(e) => setTemplateSettings({ ...templateSettings, showHospitalLogo: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800">Print Official Hospital Logo and Accreditation Badges</span>
+                    <p className="text-[10px] text-slate-400">Includes NABH/NABL credentials and hospital emblem in the rendered header</p>
+                  </div>
+                </label>
               </div>
             </div>
           </div>
