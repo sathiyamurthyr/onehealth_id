@@ -60,6 +60,8 @@ export interface ClinicalVitals {
 
 export interface PrescriptionDrugItem {
   medicine_name: string;
+  generic_name?: string;
+  brand_name?: string;
   strength?: string;
   dosage_form?: string; // Tablet, Capsule, Syrup, Injection, Ointment
   dose?: string;
@@ -68,12 +70,20 @@ export interface PrescriptionDrugItem {
   quantity?: number | string;
   route?: string; // Oral, Sublingual, IV, Topical
   food_instruction?: string; // Before food, After food, With food
+  timing_morning?: boolean;
+  timing_afternoon?: boolean;
+  timing_evening?: boolean;
+  timing_night?: boolean;
+  is_prn?: boolean;
+  prn_indication?: string;
   specific_instructions?: string;
   additional_instructions?: string;
 }
 
 export interface ConsultationPayload {
   appointment_id?: string;
+  consultation_id?: string;
+  version?: number;
   diagnosis: string;
   symptoms?: string;
   clinical_notes?: string;
@@ -99,7 +109,10 @@ export interface ConsultationPayload {
     days?: number;
     date?: string;
     notes?: string;
+    department?: string;
   };
+  report_template_id?: string;
+  rx_template_id?: string;
   is_draft?: boolean;
 }
 

@@ -216,6 +216,23 @@ export default function DoctorConsultationWorkspace() {
   const [completedSummary, setCompletedSummary] = useState<ConsultationSummary | null>(null);
   const [draftSavedMessage, setDraftSavedMessage] = useState(false);
 
+  // Draft & Version State (Web <-> Mobile Parity)
+  const [consultationId, setConsultationId] = useState<string | null>(null);
+  const [consultationVersion, setConsultationVersion] = useState<number>(1);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [selectedReportTemplateId, setSelectedReportTemplateId] = useState("tmpl_rep_classic_hospital");
+
+  // Appointment Reschedule & Cancel Modals State
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("2026-11-10");
+  const [rescheduleTime, setRescheduleTime] = useState("10:00 AM");
+  const [rescheduleReason, setRescheduleReason] = useState("Doctor requested schedule adjustment");
+
+  const [isCancelApptModalOpen, setIsCancelApptModalOpen] = useState(false);
+  const [cancelApptReason, setCancelApptReason] = useState("");
+  const [appointmentActionNotice, setAppointmentActionNotice] = useState<string | null>(null);
+
   // Initial Data Fetch
   useEffect(() => {
     const cur = api.auth.getCurrentUser();
@@ -246,6 +263,52 @@ export default function DoctorConsultationWorkspace() {
         if (ctx.patient_intake.description) {
           setHpiText(`Patient reports: "${ctx.patient_intake.description}". Duration: ${ctx.patient_intake.duration || "N/A"}.`);
         }
+      }
+
+      // Hydrate Active Server Draft (Web <-> Mobile Parity Sync)
+      try {
+        const draftRes = await doctorWorkspaceApi.getConsultationDraft(patientId, appointmentId || undefined);
+        if (draftRes?.draft) {
+          const d = draftRes.draft;
+          setConsultationId(d.id);
+          setConsultationVersion(d.version || 1);
+          if (d.symptoms) setChiefComplaintText(d.symptoms);
+          if (d.clinical_notes) setHpiText(d.clinical_notes);
+          if (d.vitals && typeof d.vitals === "object") {
+            setVitals((prev) => ({ ...prev, ...d.vitals }));
+          }
+          if (d.diagnoses && Array.isArray(d.diagnoses) && d.diagnoses.length > 0) {
+            setDiagnoses(d.diagnoses);
+          }
+          if (d.prescription?.items && Array.isArray(d.prescription.items) && d.prescription.items.length > 0) {
+            setPrescriptionItems(d.prescription.items.map((it: any) => ({
+              id: it.id || String(Math.random()),
+              medicine_name: it.medicine_name,
+              generic_name: it.generic_name,
+              strength: it.strength || "500 mg",
+              dosage_form: it.dosage_form || "Tablet",
+              dose: it.dose || "1 tablet",
+              frequency: it.frequency || "Once daily",
+              duration_days: it.duration_days || it.duration_value || 5,
+              duration_unit: it.duration_unit || "Days",
+              quantity: it.quantity || 10,
+              route: it.route || "Oral",
+              food_instruction: it.food_instruction || "After food",
+              specific_instructions: it.specific_instructions || "",
+            })));
+            if (d.prescription.instructions) setPrescriptionInstructions(d.prescription.instructions);
+          }
+          if (d.template_id) setSelectedReportTemplateId(d.template_id);
+          if (d.follow_up) {
+            setFollowUpRequired(true);
+            if (d.follow_up.scheduled_date) setFollowUpDate(d.follow_up.scheduled_date);
+            if (d.follow_up.reason) setFollowUpNotes(d.follow_up.reason);
+          }
+          setDraftNotice(`Loaded active draft consultation from server (v${d.version || 1})`);
+          setTimeout(() => setDraftNotice(null), 4000);
+        }
+      } catch {
+        // Safe fallback
       }
     } catch (err: any) {
       console.error("Failed to load patient consultation context:", err);
@@ -301,10 +364,118 @@ export default function DoctorConsultationWorkspace() {
     setHpiText(parts);
   };
 
-  // Handler: Save Draft
-  const handleSaveDraft = () => {
-    setDraftSavedMessage(true);
-    setTimeout(() => setDraftSavedMessage(false), 3000);
+  // Handler: Save Draft (Web <-> Mobile Parity)
+  const handleSaveDraft = async () => {
+    if (!patient) return;
+    setIsSavingDraft(true);
+    setDraftNotice(null);
+    try {
+      const primaryDiag =
+        diagnoses.find((d) => d.tier === "PRIMARY")?.description ||
+        diagnoses[0]?.description ||
+        "Outpatient Consultation";
+
+      const payload = {
+        appointment_id: appointmentId,
+        consultation_id: consultationId || undefined,
+        version: consultationVersion || undefined,
+        diagnosis: primaryDiag,
+        symptoms: chiefComplaintText || "Outpatient Consultation",
+        clinical_notes: [
+          hpiText ? `HPI: ${hpiText}` : "",
+          examinationNotes ? `Examination: ${examinationNotes}` : "",
+          assessmentText ? `Assessment: ${assessmentText}` : "",
+          treatmentPlanText ? `Plan: ${treatmentPlanText}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        vitals: vitals,
+        chief_complaint: {
+          reason: chiefComplaintText,
+          reason_for_visit: chiefComplaintText,
+          notes: hpiText,
+        },
+        examination: {
+          doctor_notes: examinationNotes,
+        },
+        diagnoses: diagnoses,
+        prescription: {
+          diagnosis: primaryDiag,
+          instructions: prescriptionInstructions,
+          valid_from: rxValidFrom || undefined,
+          valid_until: rxValidUntil || undefined,
+          items: prescriptionItems.map((item) => ({
+            medicine_name: item.medicine_name,
+            generic_name: item.generic_name,
+            strength: item.strength,
+            form: item.dosage_form || "Tablet",
+            dose: item.dose || "1 tablet",
+            frequency: item.frequency || "Once daily",
+            duration: item.duration_days ? `${item.duration_days} days` : "7 days",
+            route: item.route || "Oral",
+            instructions: item.specific_instructions || item.food_instruction || "After food",
+            quantity: item.quantity || 10,
+            refills: item.refills || 0,
+          })),
+        },
+        follow_up: followUpRequired
+          ? {
+              required: true,
+              date: followUpDate,
+              department: followUpDepartment,
+              notes: followUpNotes,
+            }
+          : undefined,
+        report_template_id: selectedReportTemplateId,
+        is_draft: true,
+      };
+
+      const res = await doctorWorkspaceApi.saveConsultation(patient.id, payload as any);
+      if (res.consultation_id) setConsultationId(res.consultation_id);
+      if ((res as any).version) setConsultationVersion((res as any).version);
+      setDraftSavedMessage(true);
+      setDraftNotice("Draft successfully saved to server.");
+      setTimeout(() => {
+        setDraftSavedMessage(false);
+        setDraftNotice(null);
+      }, 4000);
+    } catch (err: any) {
+      alert(err.message || "Failed to save draft consultation");
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleExecuteReschedule = async () => {
+    if (!appointmentId) return;
+    try {
+      await api.appointments.reschedule(appointmentId, {
+        new_date: rescheduleDate,
+        new_time: rescheduleTime,
+        reason: rescheduleReason,
+      });
+      setIsRescheduleModalOpen(false);
+      setAppointmentActionNotice(`Appointment successfully rescheduled to ${rescheduleDate} at ${rescheduleTime}`);
+      setTimeout(() => setAppointmentActionNotice(null), 4000);
+    } catch (err: any) {
+      alert(err.message || "Failed to reschedule appointment");
+    }
+  };
+
+  const handleExecuteCancelAppt = async () => {
+    if (!appointmentId) return;
+    if (!cancelApptReason.trim()) {
+      alert("Please provide a cancellation reason.");
+      return;
+    }
+    try {
+      await api.appointments.cancel(appointmentId, cancelApptReason.trim());
+      setIsCancelApptModalOpen(false);
+      setAppointmentActionNotice("Appointment cancelled successfully. History is preserved.");
+      setTimeout(() => setAppointmentActionNotice(null), 4000);
+    } catch (err: any) {
+      alert(err.message || "Failed to cancel appointment");
+    }
   };
 
   // Handler: Finalize Consultation Execution
@@ -319,6 +490,8 @@ export default function DoctorConsultationWorkspace() {
 
       const payload = {
         appointment_id: appointmentId,
+        consultation_id: consultationId || undefined,
+        version: consultationVersion || undefined,
         diagnosis: primaryDiag,
         symptoms: chiefComplaintText || "Outpatient Consultation",
         clinical_notes: [
@@ -622,6 +795,20 @@ export default function DoctorConsultationWorkspace() {
           {/* TAB 2: CONSULTATION (MAIN DOCTOR WORKSPACE) */}
           {activeTab === "CONSULTATION" && (
             <div className="space-y-5">
+              {/* Draft & Action Notifications */}
+              {draftNotice && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span className="font-semibold">{draftNotice}</span>
+                </div>
+              )}
+              {appointmentActionNotice && (
+                <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                  <span className="font-semibold">{appointmentActionNotice}</span>
+                </div>
+              )}
+
               {/* Doctor AI Copilot Quick Assist Banner */}
               <DoctorAICopilotPanel
                 patientId={patientId}
@@ -793,6 +980,33 @@ export default function DoctorConsultationWorkspace() {
                         onChange={(e) => setFollowUpNotes(e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900"
                       />
+                    </div>
+                  )}
+
+                  {/* Appointment Management (Reschedule / Cancel) */}
+                  {appointmentId && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">
+                        Current Appointment ({appointmentId})
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsRescheduleModalOpen(true)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center gap-1 border border-indigo-200 cursor-pointer"
+                        >
+                          <Clock className="w-3 h-3" />
+                          Reschedule
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelApptModalOpen(true)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center gap-1 border border-rose-200 cursor-pointer"
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          Cancel Appt
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

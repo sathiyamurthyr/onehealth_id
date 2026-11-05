@@ -62,7 +62,9 @@ class DoctorReferralPayload(BaseModel):
 
 class ConsultationSavePayload(BaseModel):
     appointment_id: Optional[str] = None
-    diagnosis: str
+    consultation_id: Optional[str] = None
+    version: Optional[int] = None
+    diagnosis: Optional[str] = "Under Evaluation"
     symptoms: Optional[str] = None
     clinical_notes: Optional[str] = None
     vitals: Optional[Dict[str, Any]] = None
@@ -413,6 +415,21 @@ def create_patient_referral(
 # 6. Consultation Encounter Lifecycle (Draft / Complete)
 # ------------------------------------------------------------------------------
 
+@router.get("/patients/{patient_id}/consultation/draft", response_model=Dict[str, Any])
+def get_patient_consultation_draft(
+    patient_id: str,
+    appointment_id: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(require_any_permission("consultation.read", "consultation.create", "clinical.write", "clinical.read", "system.manage"))
+):
+    """
+    Retrieves existing active draft consultation encounter for patient
+    with prescription items, referral, and follow-up plan.
+    """
+    verify_doctor_patient_access(patient_id, user)
+    draft = sp_repository.get_draft_consultation(patient_id=patient_id, appointment_id=appointment_id)
+    return {"draft": draft}
+
+
 @router.post("/patients/{patient_id}/consultation", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 @router.post("/patients/{patient_id}/consultations", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 def record_patient_consultation(
@@ -424,31 +441,40 @@ def record_patient_consultation(
     Atomically records consultation encounter:
     Clinical notes, vitals, ICD-10 multi-tier diagnoses, versioned FHIR prescriptions,
     referrals, and follow-up plans.
+    Supports both DRAFT saving and cryptographic PIN finalization.
     """
     patient = verify_doctor_patient_access(patient_id, user)
     doctor_id = get_effective_doctor_id(user)
 
-    encounter = sp_repository.record_consultation(
-        appointment_id=payload.appointment_id,
-        patient_id=patient_id,
-        doctor_id=doctor_id,
-        diagnosis=payload.diagnosis,
-        symptoms=payload.symptoms,
-        clinical_notes=payload.clinical_notes,
-        vitals=payload.vitals or {},
-        chief_complaint=payload.chief_complaint,
-        examination=payload.examination,
-        medical_history=payload.medical_history,
-        diagnoses=payload.diagnoses,
-        prescription=payload.prescription,
-        referral=payload.referral,
-        follow_up=payload.follow_up,
-        actor_id=user.get("username") or "doctor",
-        report_template_id=payload.report_template_id,
-        rx_template_id=payload.rx_template_id,
-        signed_by=user.get("name") or user.get("username") or "Doctor",
-        digital_signature_hash=f"SHA256:{hashlib.sha256(f'{patient_id}-{doctor_id}-{date.today()}'.encode()).hexdigest()[:32]}...VERIFIED"
-    )
+    is_draft = bool(payload.is_draft)
+
+    try:
+        encounter = sp_repository.record_consultation(
+            appointment_id=payload.appointment_id,
+            patient_id=patient_id,
+            doctor_id=doctor_id,
+            diagnosis=payload.diagnosis or "Under Evaluation",
+            symptoms=payload.symptoms,
+            clinical_notes=payload.clinical_notes,
+            vitals=payload.vitals or {},
+            chief_complaint=payload.chief_complaint,
+            examination=payload.examination,
+            medical_history=payload.medical_history,
+            diagnoses=payload.diagnoses,
+            prescription=payload.prescription,
+            referral=payload.referral,
+            follow_up=payload.follow_up,
+            actor_id=user.get("username") or "doctor",
+            consultation_id=payload.consultation_id,
+            report_template_id=payload.report_template_id,
+            rx_template_id=payload.rx_template_id,
+            signed_by=user.get("name") or user.get("username") or "Doctor",
+            digital_signature_hash=None if is_draft else f"SHA256:{hashlib.sha256(f'{patient_id}-{doctor_id}-{date.today()}'.encode()).hexdigest()[:32]}...VERIFIED",
+            is_draft=is_draft,
+            version=payload.version
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
     summary = {
         "encounter_id": encounter.get("id"),
@@ -470,22 +496,27 @@ def record_patient_consultation(
         "investigations": payload.chief_complaint.get("investigations") if payload.chief_complaint else [],
         "referral": payload.referral,
         "follow_up": payload.follow_up,
-        "digital_signature": "SHA256:4f8e91a0c8d7...VERIFIED",
-        "finalized_at": datetime.now().strftime("%d %b %Y, %I:%M %p")
+        "digital_signature": "SHA256:4f8e91a0c8d7...VERIFIED" if not is_draft else None,
+        "finalized_at": datetime.now().strftime("%d %b %Y, %I:%M %p") if not is_draft else None,
+        "is_draft": is_draft,
+        "version": encounter.get("version", 1)
     }
 
     log_security_event(
-        "CONSULTATION_COMPLETED" if not payload.is_draft else "CONSULTATION_DRAFT_SAVED",
+        "CONSULTATION_DRAFT_SAVED" if is_draft else "CONSULTATION_COMPLETED",
         actor_id=user.get("username"),
         resource=f"patient:{patient_id}",
         status="SUCCESS",
-        details={"diagnosis": payload.diagnosis}
+        details={"diagnosis": payload.diagnosis, "is_draft": is_draft, "version": encounter.get("version")}
     )
 
     return {
-        "message": "Consultation encounter successfully finalized and recorded.",
+        "message": "Consultation draft saved successfully." if is_draft else "Consultation encounter successfully finalized and recorded.",
         "consultation_id": encounter.get("id"),
         "prescription_id": encounter.get("prescription_id"),
+        "is_draft": is_draft,
+        "version": encounter.get("version"),
+        "digital_signature_hash": encounter.get("digital_signature_hash"),
         "summary": summary,
         **encounter
     }

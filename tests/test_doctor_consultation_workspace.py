@@ -23,7 +23,7 @@ def doctor_token():
 
 @pytest.fixture(scope="module")
 def patient_self_token():
-    return get_auth_token("patient", "patient123")
+    return get_auth_token("9884240519", "Password@123")
 
 
 def test_doctor_get_patient_consultation_context(doctor_token):

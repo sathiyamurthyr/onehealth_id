@@ -51,7 +51,7 @@ export const doctorApi = {
   },
 
   /**
-   * Finalizes and records clinical consultation encounter (notes, vitals, diagnoses, prescriptions).
+   * Finalizes or saves draft of clinical consultation encounter (notes, vitals, diagnoses, prescriptions).
    */
   async recordConsultation(
     patientId: string,
@@ -65,6 +65,67 @@ export const doctorApi = {
       }
     );
     return unwrap<ConsultationResponse>(res);
+  },
+
+  /**
+   * Retrieves active draft consultation for this patient (and optional appointment).
+   */
+  async getConsultationDraft(
+    patientId: string,
+    appointmentId?: string
+  ): Promise<{ draft?: Record<string, any> }> {
+    const query = appointmentId ? `?appointment_id=${encodeURIComponent(appointmentId)}` : "";
+    const res = await fetchJSON<any>(
+      `/doctor/patients/${encodeURIComponent(patientId)}/consultation/draft${query}`
+    );
+    return unwrap(res);
+  },
+
+  /**
+   * Reschedules an appointment.
+   */
+  async rescheduleAppointment(
+    appointmentId: string,
+    payload: { new_date: string; new_time: string; reason?: string }
+  ): Promise<any> {
+    const res = await fetchJSON<any>(
+      `/appointments/${encodeURIComponent(appointmentId)}/reschedule`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return unwrap(res);
+  },
+
+  /**
+   * Cancels an appointment with mandatory cancellation reason.
+   */
+  async cancelAppointment(
+    appointmentId: string,
+    reason: string
+  ): Promise<any> {
+    const res = await fetchJSON<any>(
+      `/appointments/${encodeURIComponent(appointmentId)}/cancel`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }
+    );
+    return unwrap(res);
+  },
+
+  /**
+   * Retrieves patient clinical documents and supporting records.
+   */
+  async getPatientDocuments(patientId: string): Promise<any[]> {
+    try {
+      const res = await fetchJSON<any>(`/doctor/patients/${encodeURIComponent(patientId)}/documents`);
+      const data = unwrap<any>(res);
+      return Array.isArray(data) ? data : data?.data || [];
+    } catch {
+      return [];
+    }
   },
 
   /**

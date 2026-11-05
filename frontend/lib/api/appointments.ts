@@ -31,4 +31,16 @@ export const appointmentsApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+
+  reschedule: (id: string, data: { new_date: string; new_time: string; reason?: string }) =>
+    fetchJSON<Appointment>(`/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  cancel: (id: string, reason: string) =>
+    fetchJSON<Appointment>(`/appointments/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
 };

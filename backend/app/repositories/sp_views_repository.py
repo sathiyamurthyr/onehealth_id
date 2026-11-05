@@ -1003,10 +1003,41 @@ class SPViewsRepository(
         report_template_id: Optional[str] = None,
         rx_template_id: Optional[str] = None,
         signed_by: Optional[str] = None,
-        digital_signature_hash: Optional[str] = None
+        digital_signature_hash: Optional[str] = None,
+        is_draft: bool = False,
+        version: Optional[int] = None
     ) -> Dict[str, Any]:
         with get_db_cursor() as cur:
-            new_cid = consultation_id or f"c-{uuid.uuid4().hex[:10]}"
+            # Check for existing draft or record
+            existing_con = None
+            if consultation_id:
+                cur.execute("SELECT * FROM oh_id.opd_consultations WHERE id = %s LIMIT 1;", (consultation_id,))
+                existing_con = cur.fetchone()
+            elif appointment_id:
+                cur.execute(
+                    "SELECT * FROM oh_id.opd_consultations WHERE patient_id = %s AND appointment_id = %s AND (consultation_status = 'DRAFT' OR status = 'DRAFT') ORDER BY created_at DESC LIMIT 1;",
+                    (patient_id, appointment_id)
+                )
+                existing_con = cur.fetchone()
+            else:
+                cur.execute(
+                    "SELECT * FROM oh_id.opd_consultations WHERE patient_id = %s AND (consultation_status = 'DRAFT' OR status = 'DRAFT') ORDER BY created_at DESC LIMIT 1;",
+                    (patient_id,)
+                )
+                existing_con = cur.fetchone()
+
+            if existing_con:
+                new_cid = existing_con["id"]
+                # Duplicate finalization protection
+                if not is_draft and existing_con.get("consultation_status") in ("COMPLETED", "FINALIZED"):
+                    raise ValueError("This consultation encounter has already been signed and finalized. Modifications require an amendment.")
+                # Concurrency check
+                if version is not None and existing_con.get("version") is not None and existing_con.get("version") != version:
+                    raise ValueError(f"Encounter version conflict (server version {existing_con.get('version')} vs client version {version}). Please refresh.")
+                next_version = (existing_con.get("version") or 1) + 1
+            else:
+                new_cid = consultation_id or f"c-{uuid.uuid4().hex[:10]}"
+                next_version = 1
 
             # Resolve hospital
             cur.execute("SELECT hospital_id FROM oh_id.doctors WHERE id = %s LIMIT 1;", (doctor_id,))
@@ -1034,32 +1065,48 @@ class SPViewsRepository(
 
             # 1. Insert or update OPD consultation
             sig_hash = digital_signature_hash or f"SHA256:{uuid.uuid4().hex[:16]}"
+            c_status = 'DRAFT' if is_draft else 'COMPLETED'
+            gen_status = 'DRAFT' if is_draft else 'FINALIZED'
+            f_signed_by = None if is_draft else (signed_by or actor_id)
+            f_signed_at = None if is_draft else datetime.now(timezone.utc)
+            f_sig_hash = None if is_draft else sig_hash
+            f_finalized_at = None if is_draft else datetime.now(timezone.utc)
+            f_finalized_by = None if is_draft else doctor_id
+
             cur.execute(
                 """
                 INSERT INTO oh_id.opd_consultations (
                     id, appointment_id, patient_id, doctor_id, symptoms, diagnosis,
                     clinical_notes, vitals, chief_complaint, examination, medical_history,
-                    diagnoses, consultation_status, template_id, template_version,
-                    signed_by, signed_at, digital_signature_hash, created_at
+                    diagnoses, consultation_status, status, version, template_id, template_version,
+                    signed_by, signed_at, digital_signature_hash, digital_signature,
+                    finalized_at, finalized_by, created_at
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s,
                     %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-                    %s::jsonb, 'COMPLETED', %s, %s,
-                    %s, CURRENT_TIMESTAMP, %s, CURRENT_TIMESTAMP
+                    %s::jsonb, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, CURRENT_TIMESTAMP
                 ) ON CONFLICT (id) DO UPDATE SET
                     diagnosis = EXCLUDED.diagnosis,
+                    symptoms = EXCLUDED.symptoms,
                     clinical_notes = EXCLUDED.clinical_notes,
                     vitals = EXCLUDED.vitals,
                     chief_complaint = EXCLUDED.chief_complaint,
                     examination = EXCLUDED.examination,
                     medical_history = EXCLUDED.medical_history,
                     diagnoses = EXCLUDED.diagnoses,
+                    consultation_status = EXCLUDED.consultation_status,
+                    status = EXCLUDED.status,
+                    version = EXCLUDED.version,
                     template_id = COALESCE(EXCLUDED.template_id, oh_id.opd_consultations.template_id),
                     template_version = COALESCE(EXCLUDED.template_version, oh_id.opd_consultations.template_version),
                     signed_by = COALESCE(EXCLUDED.signed_by, oh_id.opd_consultations.signed_by),
                     signed_at = COALESCE(EXCLUDED.signed_at, oh_id.opd_consultations.signed_at),
                     digital_signature_hash = COALESCE(EXCLUDED.digital_signature_hash, oh_id.opd_consultations.digital_signature_hash),
-                    consultation_status = 'COMPLETED';
+                    digital_signature = COALESCE(EXCLUDED.digital_signature, oh_id.opd_consultations.digital_signature),
+                    finalized_at = COALESCE(EXCLUDED.finalized_at, oh_id.opd_consultations.finalized_at),
+                    finalized_by = COALESCE(EXCLUDED.finalized_by, oh_id.opd_consultations.finalized_by);
                 """,
                 (
                     new_cid, appointment_id, patient_id, doctor_id,
@@ -1069,19 +1116,28 @@ class SPViewsRepository(
                     json.dumps(examination or {}),
                     json.dumps(medical_history or {}),
                     json.dumps(diagnoses or []),
+                    c_status, gen_status, next_version,
                     resolved_report_tmpl, resolved_report_ver,
-                    signed_by or actor_id, sig_hash
+                    f_signed_by, f_signed_at, f_sig_hash, f_sig_hash,
+                    f_finalized_at, f_finalized_by
                 )
             )
 
             # 2. Insert or update FHIR Prescription & Prescription Items
-            if prescription and prescription.get("items"):
-                rx_id = prescription.get("id") or f"rx-{uuid.uuid4().hex[:10]}"
+            if prescription and (prescription.get("items") or is_draft):
+                cur.execute("SELECT id FROM oh_id.prescriptions WHERE consultation_id = %s LIMIT 1;", (new_cid,))
+                exist_rx = cur.fetchone()
+                rx_id = prescription.get("id") or (exist_rx["id"] if exist_rx else f"rx-{uuid.uuid4().hex[:10]}")
                 val_from = prescription.get("valid_from")
                 val_until = prescription.get("valid_until")
                 val_unspec = prescription.get("validity_period_not_specified")
                 if val_unspec is None:
                     val_unspec = (val_from is None and val_until is None)
+
+                rx_status = "DRAFT" if is_draft else (prescription.get("status") or "ACTIVE")
+                rx_signed_by = None if is_draft else (prescription.get("signed_by") or actor_id)
+                rx_signed_at = None if is_draft else datetime.now(timezone.utc)
+                rx_sig_hash = None if is_draft else (prescription.get("digital_signature_hash") or sig_hash)
 
                 cur.execute(
                     """
@@ -1108,13 +1164,13 @@ class SPViewsRepository(
                     (
                         rx_id, new_cid, patient_id, doctor_id, hospital_id, diagnosis,
                         prescription.get("instructions"),
-                        prescription.get("status") or "ACTIVE",
+                        rx_status,
                         val_from,
                         val_until,
                         val_unspec,
-                        prescription.get("signed_by") or actor_id,
-                        datetime.now() if prescription.get("signed_by") or actor_id else None,
-                        prescription.get("digital_signature_hash") or sig_hash,
+                        rx_signed_by,
+                        rx_signed_at,
+                        rx_sig_hash,
                         resolved_rx_tmpl,
                         actor_id
                     )
@@ -1173,20 +1229,27 @@ class SPViewsRepository(
                             it.get("dispensed_quantity") or 0,
                             it.get("batch_number"),
                             it.get("expiry_date"),
-                            it.get("status") or "ACTIVE"
+                            it.get("item_status") or it.get("status") or "ACTIVE"
                         )
                     )
 
             # 3. Create Doctor Referral if requested
             if referral and referral.get("specialty"):
-                ref_id = f"ref-{uuid.uuid4().hex[:10]}"
+                ref_id = referral.get("id") or f"ref-{uuid.uuid4().hex[:10]}"
                 cur.execute(
                     """
                     INSERT INTO oh_id.referrals (
                         id, patient_id, referring_doctor_id, receiving_doctor_id, referral_type,
                         specialty, receiving_doctor_name, reason, clinical_summary, priority,
                         requested_evaluation, attached_reports, status
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, 'PENDING');
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, 'PENDING')
+                    ON CONFLICT (id) DO UPDATE SET
+                        specialty = EXCLUDED.specialty,
+                        receiving_doctor_name = EXCLUDED.receiving_doctor_name,
+                        reason = EXCLUDED.reason,
+                        clinical_summary = EXCLUDED.clinical_summary,
+                        priority = EXCLUDED.priority,
+                        attached_reports = EXCLUDED.attached_reports;
                     """,
                     (
                         ref_id, patient_id, doctor_id, referral.get("receiving_doctor_id"),
@@ -1199,51 +1262,62 @@ class SPViewsRepository(
                 )
 
             # 4. Create Follow-up Plan if requested
-            if follow_up and follow_up.get("scheduled_date"):
-                fup_id = f"fup-{uuid.uuid4().hex[:10]}"
+            if follow_up and (follow_up.get("scheduled_date") or follow_up.get("date")):
+                fup_id = follow_up.get("id") or f"fup-{uuid.uuid4().hex[:10]}"
+                target_fup_date = follow_up.get("scheduled_date") or follow_up.get("date")
+                raw_dept = follow_up.get("department_id") or follow_up.get("department")
+                valid_dept_id = None
+                if raw_dept:
+                    cur.execute("SELECT id FROM oh_id.departments WHERE id = %s OR name ILIKE %s LIMIT 1;", (raw_dept, f"%{raw_dept}%"))
+                    d_row = cur.fetchone()
+                    if d_row:
+                        valid_dept_id = d_row["id"]
+
                 cur.execute(
                     """
                     INSERT INTO oh_id.follow_up_plans (
                         id, patient_id, doctor_id, department_id, scheduled_date, scheduled_time,
                         duration_minutes, reason, required_investigations, instructions, status
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, 'PLANNED');
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, 'PLANNED')
+                    ON CONFLICT (id) DO UPDATE SET
+                        scheduled_date = EXCLUDED.scheduled_date,
+                        scheduled_time = EXCLUDED.scheduled_time,
+                        reason = EXCLUDED.reason,
+                        instructions = EXCLUDED.instructions;
                     """,
                     (
-                        fup_id, patient_id, doctor_id, follow_up.get("department_id"),
-                        follow_up.get("scheduled_date"), follow_up.get("scheduled_time", "10:30 AM"),
-                        follow_up.get("duration_minutes", 15), follow_up.get("reason"),
+                        fup_id, patient_id, doctor_id, valid_dept_id,
+                        target_fup_date, follow_up.get("scheduled_time", "10:30 AM"),
+                        follow_up.get("duration_minutes", 15), follow_up.get("reason") or follow_up.get("notes"),
                         json.dumps(follow_up.get("required_investigations", [])),
                         follow_up.get("instructions")
                     )
                 )
 
-            # 5. Mark appointment and queue token completed
-            if appointment_id:
+            # 5. Mark appointment and queue token completed ONLY IF NOT DRAFT
+            if not is_draft and appointment_id:
                 cur.execute("UPDATE oh_id.appointments SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = %s;", (appointment_id,))
                 cur.execute("UPDATE oh_id.queue_entries SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP WHERE appointment_id = %s;", (appointment_id,))
 
             # 6. Audit Trail
+            action_code = "CONSULTATION_DRAFT_SAVED" if is_draft else "CONSULTATION_RECORDED"
             cur.execute(
                 """
                 INSERT INTO oh_id.audit_logs (
                     id, actor_id, actor_name, action, resource_type, resource_id, details
                 ) VALUES 
-                (%s, %s, 'Doctor', 'CONSULTATION_RECORDED', 'CONSULTATION', %s, %s::jsonb),
-                (%s, %s, 'Doctor', 'CONSULTATION_CREATE', 'CONSULTATION', %s, %s::jsonb);
+                (%s, %s, 'Doctor', %s, 'CONSULTATION', %s, %s::jsonb);
                 """,
                 (
-                    f"aud-{uuid.uuid4().hex[:10]}", actor_id, new_cid,
+                    f"aud-{uuid.uuid4().hex[:10]}", actor_id, action_code, new_cid,
                     json.dumps({
                         "patient_id": patient_id,
                         "diagnosis": diagnosis,
+                        "is_draft": is_draft,
+                        "version": next_version,
                         "has_prescription": bool(prescription and prescription.get("items")),
                         "has_referral": bool(referral),
                         "has_follow_up": bool(follow_up)
-                    }),
-                    f"aud-{uuid.uuid4().hex[:10]}", actor_id, new_cid,
-                    json.dumps({
-                        "patient_id": patient_id,
-                        "diagnosis": diagnosis
                     })
                 )
             )
@@ -1251,7 +1325,78 @@ class SPViewsRepository(
         with get_readonly_cursor() as cur:
             cur.execute("SELECT * FROM oh_id.vw_opd_encounters WHERE id = %s;", (new_cid,))
             row = cur.fetchone()
-            return dict(row) if row else {"id": new_cid, "diagnosis": diagnosis}
+            res = dict(row) if row else {"id": new_cid, "diagnosis": diagnosis}
+            res["version"] = next_version
+            res["is_draft"] = is_draft
+            res["consultation_status"] = c_status
+            res["digital_signature_hash"] = f_sig_hash
+            return res
+
+    def get_draft_consultation(
+        self,
+        patient_id: str,
+        appointment_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        with get_readonly_cursor() as cur:
+            if appointment_id:
+                cur.execute(
+                    """
+                    SELECT * FROM oh_id.opd_consultations 
+                    WHERE patient_id = %s AND appointment_id = %s AND (consultation_status = 'DRAFT' OR status = 'DRAFT')
+                    ORDER BY created_at DESC LIMIT 1;
+                    """,
+                    (patient_id, appointment_id)
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT * FROM oh_id.opd_consultations 
+                    WHERE patient_id = %s AND (consultation_status = 'DRAFT' OR status = 'DRAFT')
+                    ORDER BY created_at DESC LIMIT 1;
+                    """,
+                    (patient_id,)
+                )
+            con = cur.fetchone()
+            if not con:
+                return None
+
+            draft = dict(con)
+            cid = draft["id"]
+
+            # Load prescription
+            cur.execute(
+                "SELECT * FROM oh_id.prescriptions WHERE consultation_id = %s ORDER BY created_at DESC LIMIT 1;",
+                (cid,)
+            )
+            rx = cur.fetchone()
+            if rx:
+                rx_dict = dict(rx)
+                cur.execute(
+                    "SELECT * FROM oh_id.prescription_items WHERE prescription_id = %s ORDER BY id;",
+                    (rx_dict["id"],)
+                )
+                rx_dict["items"] = [dict(it) for it in cur.fetchall()]
+                draft["prescription"] = rx_dict
+            else:
+                draft["prescription"] = None
+
+            # Load referral
+            cur.execute(
+                "SELECT * FROM oh_id.referrals WHERE patient_id = %s AND created_at >= %s ORDER BY created_at DESC LIMIT 1;",
+                (patient_id, draft["created_at"])
+            )
+            ref = cur.fetchone()
+            draft["referral"] = dict(ref) if ref else None
+
+            # Load follow-up
+            cur.execute(
+                "SELECT * FROM oh_id.follow_up_plans WHERE patient_id = %s AND created_at >= %s ORDER BY created_at DESC LIMIT 1;",
+                (patient_id, draft["created_at"])
+            )
+            fup = cur.fetchone()
+            draft["follow_up"] = dict(fup) if fup else None
+
+            return draft
 
     def list_prescriptions(
         self,

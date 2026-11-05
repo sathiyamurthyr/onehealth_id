@@ -40,6 +40,8 @@ export interface DoctorReferralPayload {
 
 export interface ConsultationSavePayload {
   appointment_id?: string;
+  consultation_id?: string;
+  version?: number;
   diagnosis: string;
   symptoms?: string;
   clinical_notes?: string;
@@ -81,6 +83,8 @@ export interface ConsultationSavePayload {
     doctor_name?: string;
     notes?: string;
   };
+  report_template_id?: string;
+  rx_template_id?: string;
   is_draft?: boolean;
 }
 
@@ -262,6 +266,19 @@ export const doctorWorkspaceApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  /**
+   * Get active draft consultation for the selected patient.
+   */
+  async getConsultationDraft(
+    patientId: string,
+    appointmentId?: string
+  ): Promise<{ draft?: Record<string, any> }> {
+    const query = appointmentId ? `?appointment_id=${encodeURIComponent(appointmentId)}` : "";
+    return fetchJSON<{ draft?: Record<string, any> }>(
+      `/doctor/patients/${patientId}/consultation/draft${query}`
+    );
   },
 
   /**
