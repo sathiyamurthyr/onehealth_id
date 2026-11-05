@@ -455,4 +455,14 @@ export const doctorWorkspaceApi = {
       `/doctor/consultations/${consultationId}/attached-documents`
     );
   },
+
+  /**
+   * Get active hospital document template configuration (RxPad & Clinical Report templates).
+   */
+  async getHospitalDocumentTemplates(
+    hospitalId?: string
+  ): Promise<any> {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    return fetchJSON<any>(`/api/v1/doctor/hospital-document-templates${query}`);
+  },
 };

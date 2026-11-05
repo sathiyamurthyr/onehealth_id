@@ -71,6 +71,7 @@ import { ConsultationSummaryPrintView } from "@/components/clinical/Consultation
 import { FollowUpPlanSection } from "@/components/clinical/FollowUpPlanSection";
 import { PrescriptionSignModal } from "@/components/clinical/PrescriptionSignModal";
 import { PatientClinicalTimeline } from "@/components/clinical/PatientClinicalTimeline";
+import { TemplateSamplePreview } from "@/components/clinical/TemplateSamplePreview";
 
 // Document Management Subcomponents
 import {
@@ -222,6 +223,9 @@ export default function DoctorConsultationWorkspace() {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [selectedReportTemplateId, setSelectedReportTemplateId] = useState("tmpl_rep_classic_hospital");
+  const [hospitalTemplateSettings, setHospitalTemplateSettings] = useState<any | null>(null);
+  const [isReportLayoutPreviewOpen, setIsReportLayoutPreviewOpen] = useState(false);
+  const [isRxLayoutPreviewOpen, setIsRxLayoutPreviewOpen] = useState(false);
 
   // Appointment Reschedule & Cancel Modals State
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
@@ -247,15 +251,23 @@ export default function DoctorConsultationWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [ctx, hist, docsRes] = await Promise.all([
+      const [ctx, hist, docsRes, tmplSettings] = await Promise.all([
         doctorWorkspaceApi.getPatientContext(patientId),
         doctorWorkspaceApi.getLongitudinalHistory(patientId),
         doctorWorkspaceApi.getPatientDocuments(patientId).catch(() => ({ data: [], total: 0 })),
+        doctorWorkspaceApi.getHospitalDocumentTemplates().catch(() => null),
       ]);
 
       setContextData(ctx);
       setHistoryEvents(hist.events || []);
       setPatientDocs(docsRes.data || []);
+
+      if (tmplSettings) {
+        setHospitalTemplateSettings(tmplSettings);
+        if (tmplSettings.clinical_report_template_id) {
+          setSelectedReportTemplateId(tmplSettings.clinical_report_template_id);
+        }
+      }
 
       // If patient reported pre-consultation intake, prepopulate complaint text
       if (ctx.patient_intake) {
@@ -426,7 +438,8 @@ export default function DoctorConsultationWorkspace() {
               notes: followUpNotes,
             }
           : undefined,
-        report_template_id: selectedReportTemplateId,
+        report_template_id: hospitalTemplateSettings?.clinical_report_template_id || selectedReportTemplateId || "tmpl_rep_classic_hospital",
+        rx_template_id: hospitalTemplateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
         is_draft: true,
       };
 
@@ -539,6 +552,8 @@ export default function DoctorConsultationWorkspace() {
               notes: followUpNotes,
             }
           : undefined,
+        report_template_id: hospitalTemplateSettings?.clinical_report_template_id || selectedReportTemplateId || "tmpl_rep_classic_hospital",
+        rx_template_id: hospitalTemplateSettings?.rx_template_id || "tmpl_rx_classic_hospital",
         is_draft: false,
       };
 
@@ -843,6 +858,48 @@ export default function DoctorConsultationWorkspace() {
                   </div>
                 </div>
 
+                {/* Active Hospital Clinical Report Template Banner & Preview */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="font-semibold text-slate-800">
+                      Active Hospital Report Template:{" "}
+                      <strong className="text-indigo-900">
+                        {hospitalTemplateSettings?.clinical_report_template_name || "Classic Hospital Clinical Report"}
+                      </strong>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-white border border-indigo-200 font-mono text-[10px] text-indigo-700">
+                      {hospitalTemplateSettings?.clinical_report_template_id || selectedReportTemplateId}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReportLayoutPreviewOpen(!isReportLayoutPreviewOpen)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-xs border border-indigo-200 shadow-2xs transition cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {isReportLayoutPreviewOpen ? "Hide Report Preview" : "Preview Hospital Report Layout"}
+                  </button>
+                </div>
+
+                {isReportLayoutPreviewOpen && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl animate-in fade-in duration-150">
+                    <TemplateSamplePreview
+                      documentType="CLINICAL_REPORT"
+                      template={{
+                        name: hospitalTemplateSettings?.clinical_report_template_name || "Classic Hospital Clinical Report",
+                        layout_config: hospitalTemplateSettings?.clinical_report_template_layout_config || {
+                          style: "classic",
+                          primaryColor: "#0284C7",
+                        },
+                      }}
+                      customHeaderText={hospitalTemplateSettings?.custom_header_text}
+                      customFooterNotes={hospitalTemplateSettings?.custom_footer_notes}
+                      showHospitalLogo={hospitalTemplateSettings?.show_hospital_logo ?? true}
+                    />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   {/* Chief Complaint */}
                   <div>
@@ -906,16 +963,61 @@ export default function DoctorConsultationWorkspace() {
               <ICD10DiagnosisSelector diagnoses={diagnoses} onChange={setDiagnoses} />
 
               {/* 5. FHIR Prescription Builder (Requirement 14) */}
-              <FHIRPrescriptionBuilder
-                items={prescriptionItems}
-                instructions={prescriptionInstructions}
-                validFrom={rxValidFrom}
-                onValidFromChange={setRxValidFrom}
-                validUntil={rxValidUntil}
-                onValidUntilChange={setRxValidUntil}
-                onItemsChange={setPrescriptionItems}
-                onInstructionsChange={setPrescriptionInstructions}
-              />
+              <div className="space-y-3">
+                {/* Active Hospital RxPad Template Banner & Preview */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
+                  <div className="flex items-center gap-2">
+                    <Pill className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-slate-800">
+                      Active Hospital RxPad Template:{" "}
+                      <strong className="text-emerald-900">
+                        {hospitalTemplateSettings?.rx_template_name || "Classic Hospital Rx"}
+                      </strong>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-white border border-emerald-200 font-mono text-[10px] text-emerald-700">
+                      {hospitalTemplateSettings?.rx_template_id || "tmpl_rx_classic_hospital"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsRxLayoutPreviewOpen(!isRxLayoutPreviewOpen)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-xs border border-emerald-200 shadow-2xs transition cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {isRxLayoutPreviewOpen ? "Hide RxPad Preview" : "Preview Hospital RxPad Layout"}
+                  </button>
+                </div>
+
+                {isRxLayoutPreviewOpen && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl animate-in fade-in duration-150">
+                    <TemplateSamplePreview
+                      documentType="PRESCRIPTION"
+                      template={{
+                        name: hospitalTemplateSettings?.rx_template_name || "Classic Hospital Rx",
+                        layout_config: hospitalTemplateSettings?.rx_template_layout_config || {
+                          style: "classic",
+                          primaryColor: "#1E3A8A",
+                          medicationLayout: "table",
+                        },
+                      }}
+                      customHeaderText={hospitalTemplateSettings?.custom_header_text}
+                      customFooterNotes={hospitalTemplateSettings?.custom_footer_notes}
+                      showHospitalLogo={hospitalTemplateSettings?.show_hospital_logo ?? true}
+                    />
+                  </div>
+                )}
+
+                <FHIRPrescriptionBuilder
+                  items={prescriptionItems}
+                  instructions={prescriptionInstructions}
+                  validFrom={rxValidFrom}
+                  onValidFromChange={setRxValidFrom}
+                  validUntil={rxValidUntil}
+                  onValidUntilChange={setRxValidUntil}
+                  onItemsChange={setPrescriptionItems}
+                  onInstructionsChange={setPrescriptionInstructions}
+                />
+              </div>
 
               {/* 6. Multi-Category Investigation Ordering (Requirement 15, 16, 17) */}
               <InvestigationOrderer
