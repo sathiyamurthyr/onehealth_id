@@ -43,4 +43,19 @@ export const appointmentsApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+
+  getAvailableSlots: (doctorId: string, date: string, hospitalId?: string, departmentId?: string) => {
+    const q = new URLSearchParams();
+    q.set("doctor_id", doctorId);
+    q.set("date", date);
+    if (hospitalId) q.set("hospital_id", hospitalId);
+    if (departmentId) q.set("department_id", departmentId);
+    return fetchJSON<{
+      doctor_id: string;
+      date: string;
+      total_slots: number;
+      available_slots: any[];
+      slots: any[];
+    }>(`/appointments/available-slots?${q.toString()}`);
+  },
 };

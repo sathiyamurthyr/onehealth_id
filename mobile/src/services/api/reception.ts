@@ -22,20 +22,22 @@ export const receptionApi = {
   async scanAndVerifyQr(qrCode: string): Promise<ScannedPatientSummary> {
     try {
       const res = await apiClient.post<any>("/patients/qr/scan-workflow", {
+        qr_input: qrCode.trim(),
         token: qrCode.trim(),
         role_context: "RECEPTIONIST",
       });
 
-      const p = res.data?.patient || res.data;
+      const identity = res.data?.patient_identity || res.data?.patient || res.data?.data || res.data;
       return {
-        patient_id: p.patient_id || p.id || `p-${Date.now()}`,
-        onehealth_id: p.onehealth_id || (qrCode.startsWith("OHID-") ? qrCode : "OHID-CITIZEN-001"),
-        name: p.patient_name || p.name || "Citizen Patient",
-        age: p.age ?? 35,
-        gender: p.gender || "Male",
-        blood_group: p.blood_group || "B+",
+        patient_id: identity.patient_id || identity.id || `p-${Date.now()}`,
+        onehealth_id: identity.onehealth_id || (qrCode.startsWith("OHID-") ? qrCode : "OHID-CITIZEN-001"),
+        name: identity.patient_name || identity.name || "Citizen Patient",
+        age: identity.age ?? 35,
+        gender: identity.gender || "Male",
+        blood_group: identity.blood_group || "B+",
         verification_status: "VERIFIED",
-        registered_phone: p.phone || p.mobile,
+        registered_phone: identity.phone || identity.mobile,
+        family_link: identity.family_link || null,
       };
     } catch {
       // Fallback deterministic resolution for offline/demo/staging harnesses

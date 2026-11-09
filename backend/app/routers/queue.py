@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 from backend.app.schemas.models import QueueEntryResponse, QueueActionRequest
 from backend.app.repositories.sp_views_repository import sp_repository
 from backend.app.core.rbac import (
@@ -201,3 +202,94 @@ def complete_patient(
         return {"success": True, "message": "Queue token marked as completed", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to complete queue token.")
+
+
+# ------------------------------------------------------------------------------
+# Module 1 Enhancements: Patient Live Status & Walk-In Reception Check-In
+# ------------------------------------------------------------------------------
+
+class WalkInCheckInRequest(BaseModel):
+    patient_id: str = Field(..., description="Patient ID (e.g. p-101)")
+    hospital_id: Optional[str] = Field(None, description="Hospital ID (defaults to staff context)")
+    department_id: Optional[str] = Field(None, description="Target department ID or name")
+    doctor_id: Optional[str] = Field(None, description="Target doctor ID if selected")
+    priority: Optional[str] = Field("NORMAL", description="NORMAL, URGENT, EMERGENCY")
+    reason: Optional[str] = Field("Walk-in OPD Consultation", description="Reason for arrival")
+
+
+@router.get("/patient/status")
+def get_patient_live_queue_status(
+    patient_id: Optional[str] = Query(None),
+    hospital_id: Optional[str] = Query(None),
+    user: Dict[str, Any] = Depends(get_current_user_context),
+):
+    """
+    Returns real-time OPD Queue tracking information for a checked-in patient today.
+    Allows patients to view their active token, patients ahead, and estimated wait.
+    """
+    role = user.get("role", "PATIENT")
+    user_ref = user.get("user_ref_id") or user.get("id")
+
+    # If patient role, resolve their patient profile
+    target_patient_id = patient_id
+    if role == "PATIENT":
+        patient_row = sp_repository.get_patient_by_user_ref(user_ref, user.get("email"))
+        if patient_row:
+            target_patient_id = patient_row["id"]
+        elif not target_patient_id and user.get("username") == "patient":
+            target_patient_id = "p-101"
+
+    if not target_patient_id:
+        return {"active": False, "message": "No patient context identified."}
+
+    status_data = sp_repository.get_patient_active_queue_status(
+        patient_id=target_patient_id,
+        hospital_id=hospital_id
+    )
+
+    if not status_data:
+        return {"active": False, "message": "No active OPD queue token found for today."}
+
+    return {
+        "active": True,
+        "data": status_data
+    }
+
+
+@router.post("/check-in/walk-in")
+def check_in_walk_in_arrival(
+    payload: WalkInCheckInRequest,
+    user: Dict[str, Any] = Depends(require_any_permission("queue.manage", "patient.create", "reception.manage", "system.manage")),
+):
+    """
+    Reception Fast-Desk Walk-In Check-In:
+    Immediately issues a department token, creates visit, and places patient into live queue.
+    """
+    caller_hospital = user.get("hospital_ref_id") or user.get("hospital_id")
+    target_hospital = payload.hospital_id or caller_hospital
+
+    if not target_hospital:
+        raise HTTPException(status_code=400, detail="hospital_id is required.")
+
+    validate_hospital_tenant_scope(user, target_hospital)
+
+    actor = user.get("user_ref_id") or user.get("username", "receptionist")
+
+    try:
+        result = sp_repository.generate_walk_in_visit(
+            hospital_id=target_hospital,
+            patient_id=payload.patient_id,
+            department_id=payload.department_id,
+            doctor_id=payload.doctor_id,
+            priority=payload.priority or "NORMAL",
+            reason=payload.reason or "Walk-in Consultation",
+            actor_id=actor
+        )
+        return {
+            "success": True,
+            "message": f"Walk-in patient checked in successfully with Token {result.get('token_str')}",
+            "data": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check in walk-in patient: {str(e)}")
+

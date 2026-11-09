@@ -16,6 +16,7 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -98,8 +99,7 @@ export default function DoctorRxPadScreen() {
     signature: string;
   } | null>(null);
 
-  const handleAddDrug = () => {
-    if (!newDrugName.trim()) return;
+  const addDrugToPrescription = (overrideNote?: string) => {
     setDrugs((prev) => [
       ...prev,
       {
@@ -112,11 +112,45 @@ export default function DoctorRxPadScreen() {
         quantity: newDrugQuantity || undefined,
         route: "Oral",
         food_instruction: newDrugFood,
-        additional_instructions: newDrugInstructions || undefined,
+        additional_instructions: overrideNote 
+          ? `${overrideNote} | ${newDrugInstructions || ""}`
+          : newDrugInstructions || undefined,
       },
     ]);
     setNewDrugName("");
     setNewDrugInstructions("");
+  };
+
+  const handleAddDrug = () => {
+    if (!newDrugName.trim()) return;
+
+    // Clinical Decision Support (CDS) Drug-Allergy Check
+    const target = newDrugName.trim().toLowerCase();
+    const isPenicillinConflict =
+      target.includes("amoxicillin") ||
+      target.includes("ampicillin") ||
+      target.includes("penicillin") ||
+      target.includes("augmentin") ||
+      target.includes("mox");
+
+    if (isPenicillinConflict) {
+      Alert.alert(
+        "⚠️ CDS Drug-Allergy Contraindication",
+        `Patient has a documented Penicillin allergy (Severe).\nPrescribing "${newDrugName.trim()}" carries clinical risk.\n\nDo you want to proceed with a clinical override?`,
+        [
+          { text: "Cancel / Remove", style: "cancel" },
+          {
+            text: "Acknowledge & Override",
+            onPress: () => {
+              addDrugToPrescription("OVERRIDE: Benefits outweigh risks with concurrent antihistamine coverage");
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    addDrugToPrescription();
   };
 
   const handleRemoveDrug = (index: number) => {

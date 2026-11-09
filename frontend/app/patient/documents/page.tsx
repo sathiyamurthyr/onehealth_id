@@ -19,8 +19,10 @@ import {
   LayoutGrid,
   ListTree,
   ChevronDown,
-  X
+  X,
+  HardDrive
 } from "lucide-react";
+import { api } from "@/lib/api";
 import {
   MedicalDocument,
   MedicalDocumentDetail,
@@ -53,6 +55,7 @@ export default function PatientMedicalDocumentsPage() {
   const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>([]);
   const [selectedRequestForUpload, setSelectedRequestForUpload] = useState<DocumentRequest | null>(null);
   const [countsSummary, setCountsSummary] = useState<DocumentCountsSummary | null>(null);
+  const [storageQuota, setStorageQuota] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,7 +118,7 @@ export default function PatientMedicalDocumentsPage() {
         fromDate = d.toISOString().split("T")[0];
       }
 
-      const [docsRes, countsRes, reqsRes] = await Promise.all([
+      const [docsRes, countsRes, reqsRes, quotaRes] = await Promise.all([
         medicalDocumentsAPI.listDocuments({
           patient_id: selectedPersonId || undefined,
           hospital_id: selectedHospital !== "ALL" ? selectedHospital : undefined,
@@ -129,12 +132,16 @@ export default function PatientMedicalDocumentsPage() {
           sort_by: selectedSort
         }),
         medicalDocumentsAPI.getDocumentCounts(selectedPersonId || undefined),
-        medicalDocumentsAPI.listDocumentRequests(selectedPersonId || undefined).catch(() => ({ data: [] }))
+        medicalDocumentsAPI.listDocumentRequests(selectedPersonId || undefined).catch(() => ({ data: [] })),
+        api.patient.getStorageQuota(selectedPersonId || undefined).catch(() => null)
       ]);
 
       setDocuments(docsRes.data || []);
       setCountsSummary(countsRes.data || null);
       setDocumentRequests(reqsRes.data || []);
+      if (quotaRes && quotaRes.data) {
+        setStorageQuota(quotaRes.data);
+      }
     } catch (err: any) {
       console.error("Failed to load medical documents:", err);
       setError(err?.message || "Failed to load medical documents. Please try again.");
@@ -304,6 +311,44 @@ export default function PatientMedicalDocumentsPage() {
             </button>
           </div>
         </div>
+
+        {/* HEALTH VAULT STORAGE QUOTA GAUGE */}
+        {storageQuota && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span className="font-bold text-slate-900 dark:text-white">Health Vault Storage Usage</span>
+                <span className="text-slate-500 text-[11px]">
+                  ({storageQuota.used_mb} MB of {storageQuota.total_quota_mb} MB used)
+                </span>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  storageQuota.percent_used >= 90
+                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                    : storageQuota.percent_used >= 70
+                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                }`}
+              >
+                {storageQuota.percent_used}% Used
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+              <div
+                className={`h-2.5 rounded-full transition-all duration-500 ${
+                  storageQuota.percent_used >= 90
+                    ? "bg-rose-600"
+                    : storageQuota.percent_used >= 70
+                    ? "bg-amber-500"
+                    : "bg-indigo-600"
+                }`}
+                style={{ width: `${Math.min(100, Math.max(3, storageQuota.percent_used))}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* PENDING DOCTOR REQUESTS BANNER (Requirement 2 & 11) */}
         {documentRequests.filter(r => r.status === "PENDING").length > 0 && (

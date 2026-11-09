@@ -50,7 +50,9 @@ import {
   Stethoscope,
   Pill,
   Droplet,
+  RefreshCw,
 } from "lucide-react-native";
+import QRCode from "react-native-qrcode-svg";
 import { patientApi } from "../../src/services/api/patient";
 import {
   PatientProfile,
@@ -189,6 +191,26 @@ export default function FamilyMemberProfileScreen() {
         });
         setQrModalVisible(true);
       }
+    }
+  };
+
+  const [isRotatingQr, setIsRotatingQr] = useState(false);
+
+  const handleRotateQr = async () => {
+    if (!memberId || isRotatingQr) return;
+    setIsRotatingQr(true);
+    try {
+      const res = await patientApi.rotateQrToken(memberId);
+      setQrData((prev) =>
+        prev
+          ? { ...prev, qr_token: res.qr_token }
+          : { onehealth_id: res.onehealth_id || onehealthId, qr_token: res.qr_token }
+      );
+      showToast("Healthcare pass rotated securely.");
+    } catch (err: any) {
+      Alert.alert("Rotation Failed", err?.message || "Could not rotate pass token.");
+    } finally {
+      setIsRotatingQr(false);
     }
   };
 
@@ -805,22 +827,49 @@ export default function FamilyMemberProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.qrBox}>
-              <QrCode size={180} color="#0A2540" />
+            <View style={styles.qrWhiteSurface} testID="member-qr-code-svg">
+              <QRCode
+                value={
+                  qrData?.qr_token
+                    ? `https://ohid.online/scan/${qrData.qr_token}`
+                    : (profile?.qr_token ? `https://ohid.online/scan/${profile.qr_token}` : "https://ohid.online/scan/DEMO")
+                }
+                size={180}
+                color="#0F172A"
+                backgroundColor="#FFFFFF"
+                ecl="H"
+              />
             </View>
 
             <Text style={styles.qrMemberName}>{memberName}</Text>
             <Text style={styles.qrOhidText}>{onehealthId}</Text>
+            <Text style={styles.qrTokenText}>
+              Token: {qrData?.qr_token ? `${qrData.qr_token.slice(0, 16)}...` : (profile?.qr_token ? `${profile.qr_token.slice(0, 16)}...` : "ZKP-TOKEN")}
+            </Text>
             <Text style={styles.qrInstruction}>
               Show this QR code at hospital kiosk or reception for authenticated check-in.
             </Text>
 
-            <TouchableOpacity
-              style={styles.qrDoneBtn}
-              onPress={() => setQrModalVisible(false)}
-            >
-              <Text style={styles.qrDoneBtnText}>Done</Text>
-            </TouchableOpacity>
+            <View style={styles.qrModalActions}>
+              <TouchableOpacity
+                style={styles.qrRotateBtn}
+                onPress={handleRotateQr}
+                disabled={isRotatingQr}
+                testID="rotate-member-qr-btn"
+              >
+                <RefreshCw size={13} color="#2563EB" style={{ marginRight: 5 }} />
+                <Text style={styles.qrRotateBtnText}>
+                  {isRotatingQr ? "Rotating..." : "Rotate Pass"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.qrDoneBtn}
+                onPress={() => setQrModalVisible(false)}
+              >
+                <Text style={styles.qrDoneBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1511,6 +1560,21 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     marginVertical: 12,
   },
+  qrWhiteSurface: {
+    padding: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    marginVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
   qrMemberName: {
     fontSize: 16,
     fontWeight: "800",
@@ -1518,20 +1582,50 @@ const styles = StyleSheet.create({
   },
   qrOhidText: {
     fontSize: 12,
+    fontWeight: "700",
+    color: "#2563EB",
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    marginTop: 2,
+  },
+  qrTokenText: {
+    fontSize: 10,
     fontWeight: "600",
     color: "#64748B",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
     marginTop: 2,
+    marginBottom: 4,
   },
   qrInstruction: {
     fontSize: 11,
     color: "#94A3B8",
     textAlign: "center",
-    marginTop: 6,
-    marginBottom: 16,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  qrModalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+  },
+  qrRotateBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  qrRotateBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1D4ED8",
   },
   qrDoneBtn: {
-    width: "100%",
+    flex: 1,
     backgroundColor: "#2563EB",
     paddingVertical: 10,
     borderRadius: 10,

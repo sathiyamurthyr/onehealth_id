@@ -80,6 +80,29 @@ async def upload_document_for_ocr(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
+    # 1. Binary Magic-Byte Inspection (Reject executables, scripts, and corrupted files)
+    if content.startswith(b"MZ") or content.startswith(b"\x7fELF") or content.startswith(b"#!/"):
+        log_security_event("MALICIOUS_FILE_UPLOAD_BLOCKED", actor_id=user_id, resource=file.filename or "unknown", status="BLOCKED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Security Violation: Executable file or script detected. Only authentic clinical records are permitted."
+        )
+
+    # 2. Patient Health Vault Storage Quota Enforcement (50 MB limit)
+    target_pid = patient_id
+    if not target_pid and current_user.get("role") == "PATIENT":
+        pat = sp_repository.get_patient_by_user_ref(user_id, current_user.get("email"))
+        if pat:
+            target_pid = pat["id"]
+
+    if target_pid:
+        quota = sp_repository.get_patient_storage_quota(target_pid)
+        if (quota["used_bytes"] + len(content)) > quota["total_quota_bytes"]:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Health Vault storage limit exceeded ({quota['total_quota_mb']} MB quota). Current usage: {quota['used_mb']} MB. Please delete older records to free up space."
+            )
+
     try:
         job = ocr_service.process_uploaded_document(
             file_bytes=content,

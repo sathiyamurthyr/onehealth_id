@@ -313,8 +313,13 @@ export default function DoctorConsultationWorkspace() {
           if (d.template_id) setSelectedReportTemplateId(d.template_id);
           if (d.follow_up) {
             setFollowUpRequired(true);
-            if (d.follow_up.scheduled_date) setFollowUpDate(d.follow_up.scheduled_date);
-            if (d.follow_up.reason) setFollowUpNotes(d.follow_up.reason);
+            if (d.follow_up.scheduled_date || d.follow_up.date) setFollowUpDate(d.follow_up.scheduled_date || d.follow_up.date);
+            if (d.follow_up.notes || d.follow_up.instructions || d.follow_up.reason) {
+              setFollowUpNotes(d.follow_up.notes || d.follow_up.instructions || d.follow_up.reason);
+            }
+            if (d.follow_up.department || d.follow_up.department_id) {
+              setFollowUpDepartment(d.follow_up.department || d.follow_up.department_id);
+            }
           }
           setDraftNotice(`Loaded active draft consultation from server (v${d.version || 1})`);
           setTimeout(() => setDraftNotice(null), 4000);
@@ -434,8 +439,11 @@ export default function DoctorConsultationWorkspace() {
           ? {
               required: true,
               date: followUpDate,
+              scheduled_date: followUpDate,
               department: followUpDepartment,
+              department_id: followUpDepartment,
               notes: followUpNotes,
+              instructions: followUpNotes,
             }
           : undefined,
         report_template_id: hospitalTemplateSettings?.clinical_report_template_id || selectedReportTemplateId || "tmpl_rep_classic_hospital",
@@ -460,12 +468,19 @@ export default function DoctorConsultationWorkspace() {
   };
 
   const handleExecuteReschedule = async () => {
-    if (!appointmentId) return;
+    if (!appointmentId) {
+      alert("This consultation is a walk-in visit. Please schedule future visits using the Follow-up section below.");
+      return;
+    }
+    if (!rescheduleDate || !rescheduleTime) {
+      alert("Please specify both a new date and time slot.");
+      return;
+    }
     try {
       await api.appointments.reschedule(appointmentId, {
         new_date: rescheduleDate,
         new_time: rescheduleTime,
-        reason: rescheduleReason,
+        reason: rescheduleReason.trim() || "Doctor requested schedule adjustment",
       });
       setIsRescheduleModalOpen(false);
       setAppointmentActionNotice(`Appointment successfully rescheduled to ${rescheduleDate} at ${rescheduleTime}`);
@@ -476,9 +491,12 @@ export default function DoctorConsultationWorkspace() {
   };
 
   const handleExecuteCancelAppt = async () => {
-    if (!appointmentId) return;
+    if (!appointmentId) {
+      alert("This consultation is a walk-in visit. There is no active appointment to cancel.");
+      return;
+    }
     if (!cancelApptReason.trim()) {
-      alert("Please provide a cancellation reason.");
+      alert("Please provide a clinical or administrative reason for cancelling.");
       return;
     }
     try {
@@ -548,8 +566,11 @@ export default function DoctorConsultationWorkspace() {
           ? {
               required: true,
               date: followUpDate,
+              scheduled_date: followUpDate,
               department: followUpDepartment,
+              department_id: followUpDepartment,
               notes: followUpNotes,
+              instructions: followUpNotes,
             }
           : undefined,
         report_template_id: hospitalTemplateSettings?.clinical_report_template_id || selectedReportTemplateId || "tmpl_rep_classic_hospital",
@@ -1019,6 +1040,11 @@ export default function DoctorConsultationWorkspace() {
                   onValidUntilChange={setRxValidUntil}
                   onItemsChange={setPrescriptionItems}
                   onInstructionsChange={setPrescriptionInstructions}
+                  patientAllergies={
+                    contextData?.allergies && contextData.allergies.length > 0
+                      ? contextData.allergies
+                      : [{ allergen: "Penicillin", severity: "Severe", type: "Drug" }]
+                  }
                 />
               </div>
 
@@ -1089,7 +1115,7 @@ export default function DoctorConsultationWorkspace() {
                   )}
 
                   {/* Appointment Management (Reschedule / Cancel) */}
-                  {appointmentId && (
+                  {appointmentId ? (
                     <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">
                         Current Appointment ({appointmentId})
@@ -1112,6 +1138,10 @@ export default function DoctorConsultationWorkspace() {
                           Cancel Appt
                         </button>
                       </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+                      ℹ️ Walk-in Visit: No prior appointment to reschedule or cancel. Use the fields above to schedule the next follow-up.
                     </div>
                   )}
                 </div>

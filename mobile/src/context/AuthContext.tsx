@@ -51,9 +51,10 @@ export const resolveRoleRoute = (role?: string): string => {
       return "/(patient)";
     case "DOCTOR":
     case "PHYSICIAN":
-    case "NURSE":
     case "CLINICAL_STAFF":
       return "/(doctor)";
+    case "NURSE":
+      return "/(nurse)";
     case "RECEPTIONIST":
     case "FRONT_DESK":
     case "CASHIER":

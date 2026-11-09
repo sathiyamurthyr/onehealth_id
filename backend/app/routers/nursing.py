@@ -50,6 +50,36 @@ class RecordMedicationAdminRequest(BaseModel):
     status: Optional[str] = "ADMINISTERED"
     reason_not_administered: Optional[str] = None
 
+@router.get("/patients")
+def list_nursing_patients(
+    hospital_id: Optional[str] = Query(None),
+    ward_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user_context)
+):
+    """Lists inpatients or patients assigned for nursing care and vitals triage."""
+    h_id = hospital_id or (current_user.get("hospital_id") if current_user else None) or "hosp-kedar"
+    admissions = sp_repository.list_inpatient_admissions(hospital_id=h_id, status=status)
+    if not admissions:
+        pts = sp_repository.list_patients(hospital_id=h_id, limit=20)
+        return [
+            {
+                "id": f"adm-{p.get('id')}",
+                "patient_id": p.get("id"),
+                "patient_name": p.get("name"),
+                "onehealth_id": p.get("onehealth_id"),
+                "patient_gender": p.get("gender"),
+                "patient_age": p.get("age"),
+                "bed_number": "OPD-Triage",
+                "ward_id": ward_id or "ward-general",
+                "admission_date": p.get("created_at"),
+                "reason_for_admission": "Triage & Vitals Evaluation",
+                "status": "ADMITTED",
+            }
+            for p in pts
+        ]
+    return admissions
+
 @router.get("/observations")
 def list_nursing_observations(
     patient_id: str = Query(...),
@@ -172,6 +202,7 @@ def list_medication_administrations(
     )
 
 @router.post("/medication-administrations")
+@router.post("/medication-administration")
 def record_medication_administration(
     payload: RecordMedicationAdminRequest,
     current_user: Dict[str, Any] = Depends(get_current_user_context)

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Pill,
   Plus,
@@ -14,9 +14,38 @@ import {
   HelpCircle,
   FileCheck,
   ShieldCheck,
-  ChevronDown
+  ChevronDown,
+  Edit3,
+  Check,
 } from "lucide-react";
 import { PrescriptionItem } from "@/lib/types";
+
+export function parseMedicineInput(input: string): { name: string; strength?: string } {
+  if (!input || !input.trim()) return { name: "" };
+  const raw = input.trim();
+  const match = raw.match(/^([a-zA-Z\s\+\-\/\.]+?)\s*(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|iu|tablets?|caps?|units?)?$/i);
+  if (match) {
+    const parsedName = match[1].trim();
+    const num = match[2];
+    const unit = match[3] ? match[3].toLowerCase() : "mg";
+    const formattedUnit = unit === "iu" ? "IU" : (unit.startsWith("tab") || unit.startsWith("cap") ? "mg" : unit);
+    const formattedName = parsedName
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+    return {
+      name: formattedName,
+      strength: `${num} ${formattedUnit}`,
+    };
+  }
+  const formattedName = raw
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+  return { name: formattedName };
+}
 
 interface FHIRPrescriptionBuilderProps {
   items: PrescriptionItem[];
@@ -27,6 +56,46 @@ interface FHIRPrescriptionBuilderProps {
   onValidFromChange?: (date: string) => void;
   validUntil?: string;
   onValidUntilChange?: (date: string) => void;
+  patientAllergies?: Array<{ allergen: string; severity?: string; type?: string }>;
+}
+
+// Drug-allergy cross-reactivity mapping for Clinical Decision Support (CDS)
+const DRUG_ALLERGY_MAP: Record<string, string[]> = {
+  penicillin: ["penicillin", "amoxicillin", "ampicillin", "augmentin", "piperacillin", "clavulanate", "mox"],
+  cephalosporin: ["cephalexin", "cefuroxime", "ceftriaxone", "cefixime", "cefpodoxime", "cef"],
+  nsaid: ["ibuprofen", "aspirin", "diclofenac", "naproxen", "aceclofenac", "indomethacin", "combiflam"],
+  aspirin: ["aspirin", "disprin", "ecospirin", "nsaid"],
+  sulfa: ["sulfa", "sulfamethoxazole", "bactrim", "cotrimoxazole", "sulfasalazine"],
+  fluoroquinolone: ["ciprofloxacin", "levofloxacin", "ofloxacin", "norfloxacin", "moxifloxacin", "ciptox"],
+  paracetamol: ["paracetamol", "acetaminophen", "dolo", "crocin", "calpol"],
+  metformin: ["metformin", "glycomet", "glyciphage"],
+};
+
+export function checkAllergyMatch(
+  medicineName: string,
+  genericName: string,
+  allergies?: Array<{ allergen: string; severity?: string }>
+) {
+  if (!allergies || allergies.length === 0) return null;
+  const target = `${medicineName} ${genericName}`.toLowerCase();
+
+  for (const a of allergies) {
+    const allergenKey = (a.allergen || "").toLowerCase().trim();
+    if (!allergenKey) continue;
+    // 1. Direct substring match
+    if (target.includes(allergenKey)) {
+      return { allergen: a.allergen, severity: a.severity || "Moderate" };
+    }
+    // 2. Cross-reactivity mapping
+    for (const [classKey, drugKeywords] of Object.entries(DRUG_ALLERGY_MAP)) {
+      if (allergenKey.includes(classKey)) {
+        if (drugKeywords.some((kw) => target.includes(kw))) {
+          return { allergen: a.allergen, severity: a.severity || "Severe" };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // Built-in catalog of commonly prescribed medications with standard strengths, forms, routes
@@ -164,8 +233,27 @@ export function FHIRPrescriptionBuilder({
   onValidFromChange,
   validUntil,
   onValidUntilChange,
+  patientAllergies,
 }: FHIRPrescriptionBuilderProps) {
   const todayStr = new Date().toISOString().split("T")[0];
+
+  // Real-time Clinical Decision Support (CDS) Allergy Conflict Analysis
+  const allergyConflicts = useMemo(() => {
+    return items
+      .map((item, index) => {
+        const match = checkAllergyMatch(item.medicine_name, item.generic_name || "", patientAllergies);
+        if (match) {
+          return {
+            index,
+            item,
+            allergen: match.allergen,
+            severity: match.severity,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<{ index: number; item: PrescriptionItem; allergen: string; severity: string }>;
+  }, [items, patientAllergies]);
 
   // Active Line State being edited/added
   const [activeItem, setActiveItem] = useState<PrescriptionItem>({
@@ -251,13 +339,57 @@ export function FHIRPrescriptionBuilder({
     setShowCatalog(false);
   };
 
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
   const handleAddMedicine = () => {
     if (!activeItem.medicine_name.trim()) {
       alert("Please enter or select a medicine name before adding to prescription.");
       return;
     }
 
-    onItemsChange([...items, { ...activeItem, id: `rxi-${Date.now()}` }]);
+    const parsed = parseMedicineInput(activeItem.medicine_name);
+    const effName = parsed.name || activeItem.medicine_name.trim();
+    const effStrength = parsed.strength || activeItem.strength || "500 mg";
+
+    // Duplicate Check
+    if (editingIndex === null) {
+      const isDup = items.some(
+        (it) => it.medicine_name.toLowerCase().trim() === effName.toLowerCase().trim()
+      );
+      if (isDup) {
+        const proceed = window.confirm(
+          `"${effName}" is already prescribed in this encounter.\nDo you want to add a separate course / line item for this medication?`
+        );
+        if (!proceed) return;
+      }
+    }
+
+    let itemInstructions = activeItem.specific_instructions || "";
+    const conflict = checkAllergyMatch(effName, activeItem.generic_name || "", patientAllergies);
+    if (conflict) {
+      const proceed = window.confirm(
+        `⚠️ CLINICAL DECISION SUPPORT ALERT:\n\nPatient has a documented allergy to "${conflict.allergen}" (${conflict.severity} severity).\nPrescribing "${effName}" carries a risk of allergic cross-reactivity.\n\nDo you want to proceed and provide a clinical override justification?`
+      );
+      if (!proceed) return;
+      itemInstructions = `[ALLERGY OVERRIDE: Clinician approved for ${conflict.allergen}] ${itemInstructions}`.trim();
+    }
+
+    const resolvedItem: PrescriptionItem = {
+      ...activeItem,
+      medicine_name: effName,
+      strength: effStrength,
+      specific_instructions: itemInstructions,
+      id: activeItem.id || `rxi-${Date.now()}`,
+    };
+
+    if (editingIndex !== null) {
+      const updated = [...items];
+      updated[editingIndex] = resolvedItem;
+      onItemsChange(updated);
+      setEditingIndex(null);
+    } else {
+      onItemsChange([...items, resolvedItem]);
+    }
 
     // Reset line form to standard default
     setActiveItem({
@@ -288,7 +420,48 @@ export function FHIRPrescriptionBuilder({
     setSearchTerm("");
   };
 
+  const handleStartEditItem = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    setEditingIndex(index);
+    setActiveItem({ ...item });
+    setSearchTerm(item.medicine_name);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setActiveItem({
+      medicine_name: "",
+      generic_name: "",
+      brand_name: "",
+      strength: "500 mg",
+      dosage_form: "Tablet",
+      route: "Oral",
+      dose: "1 tablet",
+      frequency: "Once daily (1-0-0)",
+      timing_morning: true,
+      timing_afternoon: false,
+      timing_evening: false,
+      timing_night: false,
+      food_instruction: "AFTER_FOOD",
+      duration_value: 5,
+      duration_unit: "Days",
+      start_date: todayStr,
+      end_date: new Date(Date.now() + 5 * 86400000).toISOString().split("T")[0],
+      quantity: 5,
+      expected_supply_duration: 5,
+      refills: 0,
+      is_prn: false,
+      prn_indication: "",
+      specific_instructions: "",
+    });
+    setSearchTerm("");
+  };
+
   const handleRemoveItem = (index: number) => {
+    if (editingIndex === index) {
+      handleCancelEdit();
+    }
     onItemsChange(items.filter((_, i) => i !== index));
   };
 
@@ -336,12 +509,22 @@ export function FHIRPrescriptionBuilder({
         <div className="p-5 rounded-2xl border border-purple-100 bg-purple-50/20 space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-              Add Medication Line Order
+              <span className={`w-2 h-2 rounded-full ${editingIndex !== null ? 'bg-amber-500 animate-pulse' : 'bg-purple-600'}`}></span>
+              {editingIndex !== null ? `Editing Medication Line #${editingIndex + 1}` : "Add Medication Line Order"}
             </h4>
-            <span className="text-[11px] text-purple-700 font-medium">
-              Select preset or type custom medication details
-            </span>
+            {editingIndex !== null ? (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 cursor-pointer"
+              >
+                Cancel Edit
+              </button>
+            ) : (
+              <span className="text-[11px] text-purple-700 font-medium">
+                Select preset or type custom medication details
+              </span>
+            )}
           </div>
 
           {/* Row 1: Search & Identity */}
@@ -634,14 +817,90 @@ export function FHIRPrescriptionBuilder({
               <button
                 type="button"
                 onClick={handleAddMedicine}
-                className="flex-1 px-4 py-2.5 text-xs font-bold rounded-xl bg-purple-600 text-white hover:bg-purple-700 transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                className={`flex-1 px-4 py-2.5 text-xs font-bold rounded-xl text-white transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                  editingIndex !== null ? "bg-amber-600 hover:bg-amber-700" : "bg-purple-600 hover:bg-purple-700"
+                }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>Add Medicine</span>
+                {editingIndex !== null ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Update Medicine Line</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    <span>Add Medicine</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
+
+        {/* Clinical Decision Support (CDS) Drug-Allergy Warning Banner */}
+        {allergyConflicts.length > 0 && (
+          <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl space-y-3 animate-in fade-in">
+            <div className="flex items-center gap-2.5 text-rose-800 font-bold text-xs">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 animate-bounce" />
+              <span className="uppercase tracking-wide">
+                Clinical Decision Support (CDS) Alert: Potential Drug-Allergy Contraindications ({allergyConflicts.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {allergyConflicts.map((conf, cIdx) => (
+                <div
+                  key={cIdx}
+                  className="p-3 bg-white rounded-xl border border-rose-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                >
+                  <div className="space-y-1">
+                    <p className="font-bold text-rose-950">
+                      {conf.item.medicine_name} contraindicates patient's documented{" "}
+                      <span className="underline decoration-rose-500 font-extrabold">{conf.allergen}</span> allergy.
+                    </p>
+                    <p className="text-[11px] text-rose-700">
+                      Documented Severity: <strong>{conf.severity}</strong>. Prescribing may trigger adverse allergic response.
+                    </p>
+                    {conf.item.specific_instructions?.includes("OVERRIDE:") && (
+                      <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                        ✓ Clinical Override Acknowledged: {conf.item.specific_instructions}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(conf.index)}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1 shadow-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove Drug</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt(
+                          `Enter clinical override justification for prescribing ${conf.item.medicine_name} to a patient with ${conf.allergen} allergy:`,
+                          "Benefits outweigh risks with concurrent antihistamine coverage"
+                        );
+                        if (reason) {
+                          const updated = [...items];
+                          updated[conf.index] = {
+                            ...updated[conf.index],
+                            specific_instructions: `OVERRIDE: ${reason.trim()} | ${updated[conf.index].specific_instructions || ""}`,
+                          };
+                          onItemsChange(updated);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] rounded-lg transition shadow-xs"
+                    >
+                      <span>Clinical Override...</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Table of Structured Prescribed Medicines */}
         <div>
@@ -739,14 +998,24 @@ export function FHIRPrescriptionBuilder({
                         </td>
 
                         <td className="py-3.5 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(idx)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                            title="Remove medication"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditItem(idx)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
+                              title="Edit medication line"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Remove medication"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

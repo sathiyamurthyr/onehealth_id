@@ -50,4 +50,25 @@ export const queueApi = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
+
+  getPatientStatus: (patientId?: string, hospitalId?: string) => {
+    const q = new URLSearchParams();
+    if (patientId) q.set("patient_id", patientId);
+    if (hospitalId) q.set("hospital_id", hospitalId);
+    const qs = q.toString();
+    return fetchJSON<{ active: boolean; data?: any; message?: string }>(`/queue/patient/status${qs ? `?${qs}` : ""}`);
+  },
+
+  checkInWalkIn: (data: {
+    patient_id: string;
+    hospital_id?: string;
+    department_id?: string;
+    doctor_id?: string;
+    priority?: string;
+    reason?: string;
+  }) =>
+    fetchJSON<{ success: boolean; message: string; data: any }>("/queue/check-in/walk-in", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

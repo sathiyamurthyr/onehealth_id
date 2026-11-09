@@ -108,8 +108,11 @@ export interface ConsultationPayload {
   follow_up?: {
     days?: number;
     date?: string;
+    scheduled_date?: string;
+    instructions?: string;
     notes?: string;
     department?: string;
+    department_id?: string;
   };
   report_template_id?: string;
   rx_template_id?: string;

@@ -17,6 +17,7 @@ import { AppointmentBookingModal } from "@/components/appointments/AppointmentBo
 import { RescheduleAppointmentModal } from "@/components/appointments/RescheduleAppointmentModal";
 import { CancelAppointmentModal } from "@/components/appointments/CancelAppointmentModal";
 import { AppointmentQRModal } from "@/components/appointments/AppointmentQRModal";
+import { PatientLiveQueueWidget } from "@/components/queue/PatientLiveQueueWidget";
 
 export default function PatientOverviewPage() {
   const { user } = useWorkspace();
@@ -153,6 +154,9 @@ export default function PatientOverviewPage() {
             </div>
           </div>
         </div>
+
+        {/* Live OPD Queue Status Widget */}
+        <PatientLiveQueueWidget />
 
         {/* Error State with Retry */}
         {error && (

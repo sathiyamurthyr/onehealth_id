@@ -16,7 +16,7 @@
  * - Profile photo avatar dynamically reflects uploaded/updated user photo
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -68,7 +68,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   testID = "app-header",
 }) => {
   const router = useRouter();
-  const [avatarLoadError, setAvatarLoadError] = React.useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   // Dynamically resolve active avatar from props, AuthContext, or user profile
   let activeAvatar = avatarUri ?? null;
@@ -87,7 +87,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     }
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     setAvatarLoadError(false);
   }, [activeAvatar]);
 

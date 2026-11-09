@@ -483,6 +483,15 @@ export const OneHealthQRScannerModal: React.FC<OneHealthQRScannerModalProps> = (
                     <p className="text-xs text-blue-200/80 font-mono mt-0.5">
                       {scanResult.patient_identity.onehealth_id}
                     </p>
+                    {scanResult.patient_identity.family_link?.is_dependent && (
+                      <div className="mt-2 py-1 px-2.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs flex items-center gap-1.5" data-testid="scanned-family-link-badge">
+                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+                        <span>
+                          <strong>{scanResult.patient_identity.family_link.relationship}</strong> of {scanResult.patient_identity.family_link.primary_patient_name} ({scanResult.patient_identity.family_link.primary_onehealth_id})
+                          {scanResult.patient_identity.family_link.is_minor ? " • Guardian Linked" : ""}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right">

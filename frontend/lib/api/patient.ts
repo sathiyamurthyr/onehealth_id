@@ -776,4 +776,29 @@ export const patientApi = {
 
   getFamilyAuditLogs: (limit = 50) =>
     fetchJSON<{ success: boolean; data: FamilyAuditLog[] }>(`/me/family/audit-logs?limit=${limit}`),
+
+  getQueueStatus: (patientId?: string, hospitalId?: string) => {
+    const q = new URLSearchParams();
+    if (patientId) q.set("patient_id", patientId);
+    if (hospitalId) q.set("hospital_id", hospitalId);
+    const qs = q.toString();
+    return fetchJSON<{ active: boolean; data?: any; message?: string }>(`/queue/patient/status${qs ? `?${qs}` : ""}`);
+  },
+
+  getStorageQuota: (patientId?: string) => {
+    const url = patientId ? `/patients/${patientId}/storage/quota` : `/patients/storage/quota`;
+    return fetchJSON<{
+      success: boolean;
+      data: {
+        patient_id: string;
+        used_bytes: number;
+        used_mb: number;
+        total_quota_bytes: number;
+        total_quota_mb: number;
+        percent_used: number;
+        document_count: number;
+        status: "NORMAL" | "WARNING" | "CRITICAL" | "EXCEEDED";
+      };
+    }>(url);
+  },
 };

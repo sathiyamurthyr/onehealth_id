@@ -304,6 +304,16 @@ export default function ReceptionHomeScreen() {
             </View>
           </View>
 
+          {scannedPatient.family_link?.is_dependent && (
+            <View style={styles.familyLinkBanner} testID="scanned-family-link-badge">
+              <ShieldCheck size={13} color="#1D4ED8" style={{ marginRight: 5 }} />
+              <Text style={styles.familyLinkText}>
+                {scannedPatient.family_link.relationship} OF {scannedPatient.family_link.primary_patient_name?.toUpperCase()} ({scannedPatient.family_link.primary_onehealth_id})
+                {scannedPatient.family_link.is_minor ? " • MINOR (GUARDIAN LINKED)" : ""}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.patientActionRow}>
             <TouchableOpacity
               style={styles.issueTokenBtn}
@@ -873,6 +883,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: COLORS.border,
+  },
+  familyLinkBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: SPACING.sm,
+  },
+  familyLinkText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1E40AF",
+    flex: 1,
   },
   metaCol: {
     flex: 1,

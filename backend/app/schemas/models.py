@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 
@@ -159,6 +159,17 @@ class QRWorkflowScanRequest(BaseModel):
     qr_input: str = Field(..., min_length=2, max_length=512)
     hospital_id: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_qr_input(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("qr_input"):
+                for alt_key in ("token", "qr_token", "code"):
+                    if data.get(alt_key):
+                        data["qr_input"] = str(data[alt_key])
+                        break
+        return data
+
 class QRWorkflowScanResponse(BaseModel):
     status: str = "SUCCESS"
     role: str
@@ -237,6 +248,7 @@ class AppointmentRescheduleRequest(BaseModel):
     new_time: str
     doctor_id: Optional[str] = None
     notes: Optional[str] = None
+    reason: Optional[str] = None
 
 class AppointmentCancelRequest(BaseModel):
     reason: str

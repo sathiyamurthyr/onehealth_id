@@ -42,8 +42,22 @@ jest.mock("../src/services/api/patient", () => ({
     getAppointments: jest.fn(),
     getHealthTimeline: jest.fn(),
     getQrPass: jest.fn(),
+    rotateQrToken: jest.fn(),
   },
 }));
+
+// Mock react-native-qrcode-svg for clean and deterministic test assertion
+jest.mock("react-native-qrcode-svg", () => {
+  const React = require("react");
+  const { View, Text } = require("react-native");
+  return function MockQRCode(props: any) {
+    return (
+      <View testID="mock-qr-code" accessibilityLabel={`QR-${props.value}`}>
+        <Text>{props.value}</Text>
+      </View>
+    );
+  };
+});
 
 describe("OH-ID Mobile — Family Member Profile & Selection Suite", () => {
   let mockPush: jest.Mock;
@@ -222,7 +236,12 @@ describe("OH-ID Mobile — Family Member Profile & Selection Suite", () => {
       expect(patientApi.getHealthTimeline).toHaveBeenCalledWith({ patient_id: "p-103", limit: 10 });
     });
 
-    it("opens Zero-Knowledge QR pass modal on button press", async () => {
+    it("opens Zero-Knowledge QR pass modal on button press and allows rotating token", async () => {
+      (patientApi.rotateQrToken as jest.Mock).mockResolvedValueOnce({
+        onehealth_id: "OHID-IND-2026-01003",
+        qr_token: "QR-NEW-ROTATED-TOKEN-12345",
+      });
+
       const { getByTestId, getByText } = await render(<FamilyMemberProfileScreen />);
 
       await waitFor(() => {
@@ -233,9 +252,19 @@ describe("OH-ID Mobile — Family Member Profile & Selection Suite", () => {
 
       await waitFor(() => {
         expect(getByText("Zero-Knowledge Healthcare Pass")).toBeTruthy();
+        expect(getByTestId("member-qr-code-svg")).toBeTruthy();
+        expect(getByTestId("mock-qr-code")).toBeTruthy();
       });
 
       expect(patientApi.getQrPass).toHaveBeenCalledWith("p-103");
+
+      // Test pass rotation
+      const rotateBtn = getByTestId("rotate-member-qr-btn");
+      fireEvent.press(rotateBtn);
+
+      await waitFor(() => {
+        expect(patientApi.rotateQrToken).toHaveBeenCalledWith("p-103");
+      });
     });
   });
 

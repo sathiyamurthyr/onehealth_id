@@ -85,7 +85,7 @@ export default function SuperAdminHomeScreen() {
     try {
       setLoadingTemplates(true);
       const data = await clinicalTemplatesApi.listTemplates();
-      setTemplates(data);
+      setTemplates(Array.isArray(data) ? data : (data as any)?.templates || (data as any)?.data || []);
     } catch (err: any) {
       console.error("Failed to load templates", err);
     } finally {
@@ -288,7 +288,7 @@ export default function SuperAdminHomeScreen() {
           <Text style={styles.sectionTitle}>Document Template System</Text>
         </View>
         <Text style={styles.templateCountText}>
-          {templates.filter((t) => t.document_type === activeTemplateTab).length} Designs
+          {(Array.isArray(templates) ? templates : []).filter((t) => t.document_type === activeTemplateTab).length} Designs
         </Text>
       </View>
 

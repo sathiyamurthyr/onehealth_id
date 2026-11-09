@@ -72,7 +72,7 @@ describe("OH-ID Mobile — Authentication & Role-Based Flow", () => {
       expect(resolveRoleRoute("CITIZEN")).toBe("/(patient)");
       expect(resolveRoleRoute("DOCTOR")).toBe("/(doctor)");
       expect(resolveRoleRoute("PHYSICIAN")).toBe("/(doctor)");
-      expect(resolveRoleRoute("NURSE")).toBe("/(doctor)");
+      expect(resolveRoleRoute("NURSE")).toBe("/(nurse)");
       expect(resolveRoleRoute("CLINICAL_STAFF")).toBe("/(doctor)");
       expect(resolveRoleRoute("RECEPTIONIST")).toBe("/(reception)");
       expect(resolveRoleRoute("FRONT_DESK")).toBe("/(reception)");

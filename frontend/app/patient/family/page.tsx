@@ -19,6 +19,8 @@ import {
   FamilyPermissions,
   ExistingPersonCandidate
 } from "@/lib/api";
+import { patientsApi } from "@/lib/api/patients";
+import { QRCodeSVG } from "qrcode.react";
 import { useFamily } from "@/lib/patient/FamilyContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WorkspaceLayout } from "@/components/workspace/WorkspaceLayout";
@@ -238,6 +240,31 @@ function FamilyManagementContent() {
       setError(err?.message || "Failed to unlink member.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [rotatingQr, setRotatingQr] = useState(false);
+
+  const handleRotateFamilyMemberQr = async () => {
+    if (!showQrModal.member || rotatingQr) return;
+    setRotatingQr(true);
+    try {
+      const res = await patientsApi.rotateQr(showQrModal.member.member_patient_id);
+      const newToken = (res as any)?.qr_token || (res as any)?.data?.qr_token;
+      if (newToken) {
+        setShowQrModal((prev) => ({
+          ...prev,
+          member: prev.member ? { ...prev.member, member_qr_token: newToken } : null,
+        }));
+      }
+      if (typeof refreshFamily === "function") {
+        await refreshFamily();
+      }
+      setSuccessMsg("Pass token rotated successfully.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to rotate QR token.");
+    } finally {
+      setRotatingQr(false);
     }
   };
 
@@ -1270,20 +1297,29 @@ function FamilyManagementContent() {
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-slate-900">{showQrModal.member.member_name}</h3>
                 <p className="text-xs text-slate-500">
-                  {showQrModal.member.relationship} • Zero-Knowledge QR Token
+                  {showQrModal.member.relationship} • Zero-Knowledge Healthcare Pass
                 </p>
                 <p className="text-xs font-mono font-bold text-blue-700 bg-blue-50 py-1 rounded-lg border border-blue-200">
                   {showQrModal.member.member_onehealth_id}
                 </p>
               </div>
 
-              {/* QR Box */}
-              <div className="p-6 bg-slate-900 rounded-2xl shadow-inner text-white flex flex-col items-center justify-center space-y-3">
-                <div className="p-3 bg-white rounded-xl">
-                  <QrCode className="w-36 h-36 text-slate-900" />
+              {/* Genuine Machine-Readable QR Box */}
+              <div className="p-5 bg-slate-900 rounded-2xl shadow-inner text-white flex flex-col items-center justify-center space-y-3">
+                <div className="p-3 bg-white rounded-xl shadow-md border border-slate-100">
+                  <QRCodeSVG
+                    value={
+                      typeof window !== "undefined"
+                        ? `${window.location.origin}/scan/${showQrModal.member.member_qr_token || "DEMO"}`
+                        : `https://ohid.online/scan/${showQrModal.member.member_qr_token || "DEMO"}`
+                    }
+                    size={180}
+                    level="H"
+                    includeMargin={false}
+                  />
                 </div>
-                <p className="text-[10px] text-slate-400 font-mono">
-                  Token: {showQrModal.member.member_qr_token || "ZKP-TOKEN-OK"}
+                <p className="text-[10px] text-slate-400 font-mono tracking-wider">
+                  Token: {showQrModal.member.member_qr_token ? `${showQrModal.member.member_qr_token.slice(0, 16)}...` : "ZKP-TOKEN-OK"}
                 </p>
               </div>
 
@@ -1291,12 +1327,24 @@ function FamilyManagementContent() {
                 Hospital reception scans this QR to locate existing OH-ID records without creating duplicates.
               </p>
 
-              <button
-                onClick={() => setShowQrModal({ open: false, member: null })}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition"
-              >
-                Close Pass
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRotateFamilyMemberQr}
+                  disabled={rotatingQr}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-blue-200"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${rotatingQr ? "animate-spin" : ""}`} />
+                  {rotatingQr ? "Rotating..." : "Rotate Pass"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal({ open: false, member: null })}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition"
+                >
+                  Close Pass
+                </button>
+              </div>
             </div>
           </div>
         )}

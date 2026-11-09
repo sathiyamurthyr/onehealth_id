@@ -306,6 +306,8 @@ def qr_issue_queue_token(
             reason=payload.chief_complaint or "OPD Walk-in Arrival via OneHealth QR Scan",
             actor_id=actor_id
         )
+        visit_result["patient_name"] = patient.get("name")
+        visit_result["onehealth_id"] = patient.get("onehealth_id")
         log_security_event(
             "WALK_IN_TOKEN_ISSUED",
             actor_id=user.get("username"),
@@ -332,9 +334,21 @@ def rotate_qr_token(
     user_perms = user.get("permissions", [])
     if "patient.self.qr" in user_perms and "patient.update" not in user_perms and "system.manage" not in user_perms:
         user_ref_id = user.get("user_ref_id") or user.get("id")
-        patient = sp_repository.get_patient_by_id(patient_id)
-        if not patient or (patient.get("id") != user_ref_id and patient.get("user_id") != user_ref_id):
-            raise HTTPException(status_code=403, detail="Forbidden: You can only rotate your own QR token.")
+        primary_patient = sp_repository.get_patient_by_user_ref(user_ref_id, user.get("email"))
+        if not primary_patient and user.get("username") == "patient":
+            primary_patient = sp_repository.get_patient_by_id("p-101")
+
+        is_self = (primary_patient and primary_patient.get("id") == patient_id) or (patient_id == user_ref_id)
+        if not is_self:
+            if not primary_patient:
+                raise HTTPException(status_code=403, detail="Forbidden: You can only rotate your own or authorized family member QR tokens.")
+            access_check = sp_repository.verify_family_access(
+                primary_patient_id=primary_patient["id"],
+                target_patient_id=patient_id,
+                required_permission="manage_profile"
+            )
+            if not access_check.get("authorized"):
+                raise HTTPException(status_code=403, detail="Forbidden: You do not have guardian or profile management permissions to rotate this family member's QR token.")
 
     updated = sp_repository.rotate_patient_qr(patient_id)
     if not updated:
@@ -494,4 +508,32 @@ def reveal_patient_field(
         data={"field_name": field, "value": raw_val},
         message=f"Field '{field}' revealed under audited justification."
     )
+
+
+@router.get("/storage/quota")
+@router.get("/{patient_id}/storage/quota")
+def get_patient_storage_quota_endpoint(
+    patient_id: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user_context),
+):
+    """
+    Returns patient's active Health Vault storage consumption and 50 MB quota status.
+    """
+    role = user.get("role", "PATIENT")
+    user_ref = user.get("user_ref_id") or user.get("id")
+
+    target_patient_id = patient_id
+    if role == "PATIENT":
+        pat = sp_repository.get_patient_by_user_ref(user_ref, user.get("email"))
+        if pat:
+            target_patient_id = pat["id"]
+        elif not target_patient_id and user.get("username") == "patient":
+            target_patient_id = "p-101"
+
+    if not target_patient_id:
+        target_patient_id = "p-101"
+
+    quota_data = sp_repository.get_patient_storage_quota(target_patient_id)
+    return success_response(data=quota_data)
+
 

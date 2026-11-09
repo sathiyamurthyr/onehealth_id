@@ -31,6 +31,7 @@ function RouteGuardNavigator() {
     const inProtectedGroup = [
       "(patient)",
       "(doctor)",
+      "(nurse)",
       "(reception)",
       "(admin)",
       "(super)",
@@ -48,7 +49,8 @@ function RouteGuardNavigator() {
       router.replace("/(auth)/login");
     } else if (isAuthenticated && !isAppLocked) {
       const userRole = (user?.role || "").toUpperCase().trim();
-      const isDoctor = ["DOCTOR", "PHYSICIAN", "NURSE", "CLINICAL_STAFF"].includes(userRole);
+      const isDoctor = ["DOCTOR", "PHYSICIAN", "CLINICAL_STAFF"].includes(userRole);
+      const isNurse = userRole === "NURSE";
 
       if (inAuthGroup || !segments[0]) {
         // Authenticated and unlocked user on login or gateway -> Route to authoritative workspace
@@ -56,8 +58,11 @@ function RouteGuardNavigator() {
       } else if (currentGroup === "(doctor)" && !isDoctor) {
         // Patient or unauthorized role attempting to access doctor workspace -> Route to permitted workspace
         router.replace(resolveRoleRoute(user?.role) as any);
-      } else if (currentGroup === "(patient)" && isDoctor) {
-        // Doctor user attempting to access patient workspace directly -> Route to doctor workspace
+      } else if (currentGroup === "(nurse)" && !isNurse) {
+        // Unauthorized role attempting to access nurse workspace -> Route to permitted workspace
+        router.replace(resolveRoleRoute(user?.role) as any);
+      } else if (currentGroup === "(patient)" && (isDoctor || isNurse)) {
+        // Clinical staff attempting to access patient workspace directly -> Route to permitted clinical workspace
         router.replace(resolveRoleRoute(user?.role) as any);
       }
     }
@@ -190,6 +195,13 @@ function RouteGuardNavigator() {
         name="(doctor)/scan"
         options={{
           title: "Patient Intake Scanner",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="(nurse)/index"
+        options={{
+          title: "Nursing Station",
           headerShown: false,
         }}
       />

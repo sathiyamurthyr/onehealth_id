@@ -120,6 +120,7 @@ export default function PatientHomeScreen() {
   const [managementModalVisible, setManagementModalVisible] = useState(false);
   const [managementMode, setManagementMode] = useState<AppointmentManagementViewMode>("details");
   const [selectedAppt, setSelectedAppt] = useState<AppointmentItem | null>(null);
+  const [liveQueue, setLiveQueue] = useState<any | null>(null);
 
   const userUsername = user?.username;
   const userName = user?.name || user?.full_name;
@@ -182,15 +183,30 @@ export default function PatientHomeScreen() {
     }
   }, []);
 
+  // Load Real-time Live OPD Queue Status
+  const loadLiveQueueData = useCallback(async () => {
+    try {
+      const res = await patientApi.getLiveQueueStatus();
+      if (res && res.active && res.data) {
+        setLiveQueue(res.data);
+      } else {
+        setLiveQueue(null);
+      }
+    } catch {
+      setLiveQueue(null);
+    }
+  }, []);
+
   // Coordinated Dashboard Refresh
   const loadAllDashboardData = useCallback(async () => {
     await Promise.allSettled([
       loadCardData(),
       loadAppointmentsData(),
       loadPrescriptionsData(),
+      loadLiveQueueData(),
     ]);
     setRefreshing(false);
-  }, [loadCardData, loadAppointmentsData, loadPrescriptionsData]);
+  }, [loadCardData, loadAppointmentsData, loadPrescriptionsData, loadLiveQueueData]);
 
   // Sync avatar on screen focus
   safeFocusEffect(
@@ -205,7 +221,11 @@ export default function PatientHomeScreen() {
 
   useEffect(() => {
     loadAllDashboardData();
-  }, [loadAllDashboardData]);
+    const qInterval = setInterval(() => {
+      loadLiveQueueData();
+    }, 15000);
+    return () => clearInterval(qInterval);
+  }, [loadAllDashboardData, loadLiveQueueData]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -524,6 +544,47 @@ export default function PatientHomeScreen() {
             testID="patient-digital-health-card"
           />
         </View>
+
+        {/* LIVE OPD QUEUE TRACKING CARD */}
+        {liveQueue && (
+          <View style={styles.liveQueueCard} testID="patient-live-queue-card">
+            <View style={styles.liveQueueHeaderRow}>
+              <View style={styles.liveQueueBadge}>
+                <Sparkles size={12} color="#F59E0B" />
+                <Text style={styles.liveQueueBadgeText}>LIVE OPD QUEUE</Text>
+              </View>
+              <Text style={[styles.liveQueueStatusText, liveQueue.status === "CALLED" && styles.liveQueueStatusCalled]}>
+                {liveQueue.status === "CALLED" ? "🔔 YOUR TOKEN IS CALLED" : liveQueue.status}
+              </Text>
+            </View>
+
+            <View style={styles.liveQueueMainRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.liveQueueTokenNumber}>{liveQueue.token_str}</Text>
+                <Text style={styles.liveQueueFacilityText} numberOfLines={1}>{liveQueue.hospital_name}</Text>
+              </View>
+              <View style={styles.liveQueueMetricsBox}>
+                <Text style={styles.liveQueueMetricLabel}>Now Serving</Text>
+                <Text style={styles.liveQueueMetricValue}>{liveQueue.currently_serving_token}</Text>
+              </View>
+              <View style={styles.liveQueueMetricsBox}>
+                <Text style={styles.liveQueueMetricLabel}>Ahead</Text>
+                <Text style={styles.liveQueueMetricValue}>{liveQueue.patients_ahead} pts</Text>
+              </View>
+              <View style={styles.liveQueueMetricsBox}>
+                <Text style={styles.liveQueueMetricLabel}>Est. Wait</Text>
+                <Text style={styles.liveQueueMetricValue}>~{liveQueue.estimated_wait_minutes}m</Text>
+              </View>
+            </View>
+
+            <View style={styles.liveQueueFooterRow}>
+              <Text style={styles.liveQueueDoctorText}>
+                Dr. {liveQueue.doctor_name} • {liveQueue.department_name}
+                {liveQueue.room_number ? ` • Room ${liveQueue.room_number}` : ""}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* C. UPCOMING APPOINTMENTS SECTION */}
         <View style={styles.dashboardSection}>
@@ -2057,5 +2118,92 @@ const styles = StyleSheet.create({
     color: "#16A34A",
     fontWeight: "600",
     marginTop: 4,
+  },
+  liveQueueCard: {
+    backgroundColor: "#0F172A",
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#334155",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  liveQueueHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  liveQueueBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+  },
+  liveQueueBadgeText: {
+    color: "#F8FAFC",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  liveQueueStatusText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#38BDF8",
+    textTransform: "uppercase",
+  },
+  liveQueueStatusCalled: {
+    color: "#4ADE80",
+  },
+  liveQueueMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  liveQueueTokenNumber: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    fontFamily: "monospace",
+  },
+  liveQueueFacilityText: {
+    fontSize: 11,
+    color: "#94A3B8",
+    maxWidth: 120,
+  },
+  liveQueueMetricsBox: {
+    alignItems: "center",
+  },
+  liveQueueMetricLabel: {
+    fontSize: 9,
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    fontWeight: "600",
+  },
+  liveQueueMetricValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FDE047",
+    marginTop: 2,
+  },
+  liveQueueFooterRow: {
+    paddingTop: 8,
+  },
+  liveQueueDoctorText: {
+    fontSize: 11,
+    color: "#CBD5E1",
+    fontWeight: "600",
   },
 });

@@ -26,6 +26,15 @@ export interface ScannedPatientSummary {
   blood_group?: string;
   verification_status: "VERIFIED" | "PENDING" | "UNKNOWN";
   registered_phone?: string;
+  family_link?: {
+    is_dependent: boolean;
+    relationship: string;
+    is_minor?: boolean;
+    is_guardian?: boolean;
+    primary_patient_name?: string;
+    primary_onehealth_id?: string;
+    primary_patient_id?: string;
+  } | null;
 }
 
 export interface OpdTokenConfirmation {

@@ -365,4 +365,13 @@ export const patientApi = {
     const res = await fetchJSON<any>(`/me/appointments/${encodeURIComponent(appointmentId)}/qr`);
     return unwrap(res);
   },
+
+  /**
+   * Fetches real-time live OPD queue tracking status for the checked-in patient today.
+   */
+  async getLiveQueueStatus(patientId?: string): Promise<{ active: boolean; data?: any }> {
+    const query = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : "";
+    const res = await fetchJSON<any>(`/queue/patient/status${query}`);
+    return res;
+  },
 };

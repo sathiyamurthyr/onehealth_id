@@ -9,5 +9,6 @@ export * from "./patient";
 export * from "./doctor";
 export * from "./reception";
 export * from "./admin";
+export * from "./nurse";
 export * from "./clinical_templates";
 export { secureStorage } from "../storage/secure_store";

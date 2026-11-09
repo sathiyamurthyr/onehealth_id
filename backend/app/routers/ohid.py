@@ -145,11 +145,26 @@ def generate_ohid_qr(
     user_ref_id = current_user.get("user_ref_id") or current_user.get("id")
 
     if role == "PATIENT":
-        patient = sp_repository.get_patient_by_user_ref(user_ref_id, current_user.get("email"))
-        if not patient and current_user.get("username") == "patient":
-            patient = sp_repository.get_patient_by_id("p-101")
-        if not patient:
+        primary_patient = sp_repository.get_patient_by_user_ref(user_ref_id, current_user.get("email"))
+        if not primary_patient and current_user.get("username") == "patient":
+            primary_patient = sp_repository.get_patient_by_id("p-101")
+        if not primary_patient:
             raise HTTPException(status_code=404, detail="Patient profile not found.")
+
+        if req.patient_id and req.patient_id != primary_patient["id"]:
+            access_check = sp_repository.verify_family_access(
+                primary_patient_id=primary_patient["id"],
+                target_patient_id=req.patient_id,
+                required_permission="view_records"
+            )
+            if not access_check.get("authorized"):
+                raise HTTPException(status_code=403, detail=access_check.get("message", "Forbidden: You do not have authorization to view this family member's QR pass."))
+            target_patient = sp_repository.get_patient_by_id(req.patient_id)
+            if not target_patient:
+                raise HTTPException(status_code=404, detail="Family member profile not found.")
+            patient = target_patient
+        else:
+            patient = primary_patient
     else:
         if not req.patient_id:
             raise HTTPException(status_code=400, detail="patient_id is required for staff QR generation.")

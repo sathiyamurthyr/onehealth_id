@@ -126,8 +126,8 @@ def create_appointment(
         )
         if not schedule_validation.get("is_valid", True):
             raise HTTPException(
-                status_code=400,
-                detail=schedule_validation.get("message", "Appointment scheduling conflict detected.")
+                status_code=status.HTTP_409_CONFLICT,
+                detail=schedule_validation.get("message", "Appointment scheduling conflict detected. This time slot is already booked.")
             )
 
     assigned_id = payload.id or f"appt-{str(uuid4())[:8]}"
@@ -193,6 +193,37 @@ def create_walk_in_appointment(
     except Exception as e:
         logger.error("Walk-in creation failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create walk-in visit: {str(e)}")
+
+
+@router.get("/available-slots")
+def get_available_appointment_slots(
+    doctor_id: str = Query(..., description="Doctor ID or 'any'"),
+    date: str = Query(..., description="Date formatted as YYYY-MM-DD"),
+    hospital_id: Optional[str] = Query(None, description="Hospital ID"),
+    department_id: Optional[str] = Query(None, description="Department ID"),
+    user: Dict[str, Any] = Depends(get_current_user_context),
+):
+    """
+    Returns real-time available time slots for a doctor on a specific date.
+    Eliminates slot collisions and double-booking.
+    """
+    try:
+        slots = sp_repository.get_doctor_available_slots(
+            doctor_id=doctor_id,
+            date_str=date,
+            hospital_id=hospital_id,
+            department_id=department_id
+        )
+        return {
+            "doctor_id": doctor_id,
+            "date": date,
+            "total_slots": len(slots),
+            "available_slots": [s for s in slots if s.get("available", True)],
+            "slots": slots
+        }
+    except Exception as e:
+        logger.error("Failed to fetch available slots: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch available appointment slots.")
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
@@ -300,7 +331,7 @@ def reschedule_appointment_endpoint(
     payload: AppointmentRescheduleRequest,
     user: Dict[str, Any] = Depends(require_any_permission(
         "appointment.manage", "appointment.update", "appointment.create",
-        "patient.self.appointments", "system.manage"
+        "appointment.reschedule", "patient.self.appointments", "system.manage"
     )),
 ):
     """
@@ -308,6 +339,12 @@ def reschedule_appointment_endpoint(
     Checks concurrency and preserves audit history.
     """
     appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        # Check if appointment_id is a queue token id
+        resolved = sp_repository.resolve_appointment_id(appointment_id)
+        if resolved:
+            appointment_id = resolved
+            appt = sp_repository.get_appointment_by_id(appointment_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
@@ -329,6 +366,7 @@ def reschedule_appointment_endpoint(
             new_date=payload.new_date,
             new_time=payload.new_time,
             doctor_id=payload.doctor_id,
+            reason=payload.reason or payload.notes,
             changed_by_name=user.get("name") or user.get("username", "Patient"),
             changed_by_id=user_ref_id
         )
@@ -347,13 +385,19 @@ def cancel_appointment_endpoint(
     payload: AppointmentCancelRequest,
     user: Dict[str, Any] = Depends(require_any_permission(
         "appointment.manage", "appointment.update", "appointment.delete",
-        "patient.self.appointments", "system.manage"
+        "appointment.cancel", "patient.self.appointments", "system.manage"
     )),
 ):
     """
     Cancels an appointment with stated reason and records cancellation policy audit.
     """
     appt = sp_repository.get_appointment_by_id(appointment_id)
+    if not appt:
+        # Check if appointment_id is a queue token id
+        resolved = sp_repository.resolve_appointment_id(appointment_id)
+        if resolved:
+            appointment_id = resolved
+            appt = sp_repository.get_appointment_by_id(appointment_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 

@@ -133,6 +133,15 @@ export interface QRWorkflowScanResult {
     address_masked?: string;
     primary_hospital_id?: string;
     primary_hospital_name?: string;
+    family_link?: {
+      is_dependent: boolean;
+      relationship: string;
+      is_minor?: boolean;
+      is_guardian?: boolean;
+      primary_patient_name?: string;
+      primary_onehealth_id?: string;
+      primary_patient_id?: string;
+    } | null;
   };
   hospital_context: {
     active_hospital_id: string;

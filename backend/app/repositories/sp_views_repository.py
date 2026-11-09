@@ -93,8 +93,9 @@ class SPViewsRepository(
             return dict(row) if row else None
 
     def get_patient_by_qr(self, qr_token: str) -> Optional[Dict[str, Any]]:
+        token = self.extract_qr_token(qr_token) if qr_token else qr_token
         with get_readonly_cursor() as cur:
-            cur.execute("SELECT * FROM oh_id.vw_patients WHERE qr_token = %s OR onehealth_id = %s;", (qr_token, qr_token))
+            cur.execute("SELECT * FROM oh_id.vw_patients WHERE qr_token = %s OR onehealth_id = %s OR id = %s;", (token, token, token))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -407,8 +408,9 @@ class SPViewsRepository(
     # --------------------------------------------------------------------------
 
     def resolve_qr_token(self, qr_token: str, scanned_by: str = "staff", hospital_id: str = "hosp-kedar") -> Optional[Dict[str, Any]]:
+        token = self.extract_qr_token(qr_token) if qr_token else qr_token
         with get_readonly_cursor() as cur:
-            cur.execute("SELECT * FROM oh_id.vw_patients WHERE qr_token = %s OR onehealth_id = %s;", (qr_token, qr_token))
+            cur.execute("SELECT * FROM oh_id.vw_patients WHERE qr_token = %s OR onehealth_id = %s OR id = %s;", (token, token, token))
             row = cur.fetchone()
             if not row:
                 return None
@@ -628,6 +630,28 @@ class SPViewsRepository(
             "primary_hospital_name": patient.get("hospital_name") or "Primary Facility"
         }
 
+        # Check if patient is a linked family member or dependent
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT relationship, is_guardian, is_minor, primary_patient_name, primary_onehealth_id, primary_patient_id
+                FROM oh_id.vw_family_members
+                WHERE member_patient_id = %s
+                LIMIT 1;
+            """, (patient["id"],))
+            fam_row = cur.fetchone()
+            if fam_row:
+                patient_identity["family_link"] = {
+                    "is_dependent": True,
+                    "relationship": fam_row["relationship"],
+                    "is_minor": bool(fam_row.get("is_minor")),
+                    "is_guardian": bool(fam_row.get("is_guardian")),
+                    "primary_patient_name": fam_row["primary_patient_name"],
+                    "primary_onehealth_id": fam_row["primary_onehealth_id"],
+                    "primary_patient_id": fam_row["primary_patient_id"]
+                }
+            else:
+                patient_identity["family_link"] = None
+
         # 1. ANONYMOUS
         if not user:
             return {
@@ -643,7 +667,8 @@ class SPViewsRepository(
                     "blood_group": patient.get("blood_group"),
                     "phone_masked": phone_masked,
                     "address_masked": "[Protected demographic]",
-                    "primary_hospital_name": patient.get("hospital_name")
+                    "primary_hospital_name": patient.get("hospital_name"),
+                    "family_link": patient_identity.get("family_link")
                 },
                 "hospital_context": {
                     "active_hospital_id": effective_hospital,
@@ -1275,9 +1300,14 @@ class SPViewsRepository(
                 )
 
             # 4. Create Follow-up Plan if requested
-            if follow_up and (follow_up.get("scheduled_date") or follow_up.get("date")):
+            if follow_up and (follow_up.get("scheduled_date") or follow_up.get("date") or follow_up.get("days")):
                 fup_id = follow_up.get("id") or f"fup-{uuid.uuid4().hex[:10]}"
                 target_fup_date = follow_up.get("scheduled_date") or follow_up.get("date")
+                if not target_fup_date and follow_up.get("days"):
+                    try:
+                        target_fup_date = (date.today() + timedelta(days=int(follow_up["days"]))).isoformat()
+                    except Exception:
+                        target_fup_date = (date.today() + timedelta(days=5)).isoformat()
                 raw_dept = follow_up.get("department_id") or follow_up.get("department")
                 valid_dept_id = None
                 if raw_dept:
@@ -1286,6 +1316,7 @@ class SPViewsRepository(
                     if d_row:
                         valid_dept_id = d_row["id"]
 
+                fup_notes = follow_up.get("instructions") or follow_up.get("notes") or follow_up.get("reason")
                 cur.execute(
                     """
                     INSERT INTO oh_id.follow_up_plans (
@@ -1301,9 +1332,9 @@ class SPViewsRepository(
                     (
                         fup_id, patient_id, doctor_id, valid_dept_id,
                         target_fup_date, follow_up.get("scheduled_time", "10:30 AM"),
-                        follow_up.get("duration_minutes", 15), follow_up.get("reason") or follow_up.get("notes"),
+                        follow_up.get("duration_minutes", 15), fup_notes,
                         json.dumps(follow_up.get("required_investigations", [])),
-                        follow_up.get("instructions")
+                        fup_notes
                     )
                 )
 
@@ -1407,7 +1438,19 @@ class SPViewsRepository(
                 (patient_id, draft["created_at"])
             )
             fup = cur.fetchone()
-            draft["follow_up"] = dict(fup) if fup else None
+            if fup:
+                fup_dict = dict(fup)
+                if fup_dict.get("scheduled_date"):
+                    try:
+                        delta = fup_dict["scheduled_date"] - date.today()
+                        fup_dict["days"] = max(1, delta.days)
+                    except Exception:
+                        fup_dict["days"] = 5
+                fup_dict["notes"] = fup_dict.get("instructions") or fup_dict.get("reason")
+                fup_dict["instructions"] = fup_dict.get("instructions") or fup_dict.get("reason")
+                draft["follow_up"] = fup_dict
+            else:
+                draft["follow_up"] = None
 
             return draft
 
@@ -5545,6 +5588,30 @@ class SPViewsRepository(
 
         return self.get_appointment_by_id(new_id)
 
+    def resolve_appointment_id(self, identifier: str) -> Optional[str]:
+        """
+        Resolves an appointment ID from either an appointment ID or a linked queue token / entry ID.
+        """
+        if not identifier:
+            return None
+        with get_readonly_cursor() as cur:
+            # 1. Direct appointment check
+            cur.execute("SELECT id FROM oh_id.appointments WHERE id = %s LIMIT 1;", (identifier,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+            # 2. Check queue_entries by id
+            cur.execute("SELECT appointment_id FROM oh_id.queue_entries WHERE id = %s AND appointment_id IS NOT NULL LIMIT 1;", (identifier,))
+            q_row = cur.fetchone()
+            if q_row and q_row.get("appointment_id"):
+                return q_row["appointment_id"]
+            # 3. Check queue_entries by token_prefix
+            cur.execute("SELECT appointment_id FROM oh_id.queue_entries WHERE (id = %s OR token_prefix = %s) AND appointment_id IS NOT NULL LIMIT 1;", (identifier, identifier))
+            q_row2 = cur.fetchone()
+            if q_row2 and q_row2.get("appointment_id"):
+                return q_row2["appointment_id"]
+        return None
+
     def reschedule_appointment(
         self,
         appointment_id: str,
@@ -5552,6 +5619,7 @@ class SPViewsRepository(
         new_time: str,
         new_slot: Optional[str] = None,
         doctor_id: Optional[str] = None,
+        reason: Optional[str] = None,
         changed_by_name: str = "Patient",
         changed_by_id: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -5559,9 +5627,11 @@ class SPViewsRepository(
         Reschedules an appointment with concurrency check and preserves full historical audit trail.
         Supports changing doctor as well.
         """
-        appt = self.get_appointment_by_id(appointment_id)
+        resolved_id = self.resolve_appointment_id(appointment_id) or appointment_id
+        appt = self.get_appointment_by_id(resolved_id)
         if not appt:
-            raise ValueError("Appointment not found.")
+            raise ValueError(f"Appointment '{appointment_id}' not found.")
+        appointment_id = resolved_id
 
         target_slot = new_slot or f"{new_date} {new_time}"
         target_doctor_id = doctor_id or appt.get("doctor_id")
@@ -5616,6 +5686,7 @@ class SPViewsRepository(
                 "new_time": str(new_time),
                 "new_slot": str(target_slot),
                 "new_doctor_id": str(target_doctor_id),
+                "reason": reason or appt.get("notes"),
                 "changed_by": changed_by_name,
                 "changed_by_id": changed_by_id,
                 "changed_at": datetime.utcnow().isoformat() + "Z"
@@ -5638,10 +5709,33 @@ class SPViewsRepository(
                     doctor_id = %s,
                     department_id = %s,
                     status = 'rescheduled',
+                    notes = COALESCE(%s, notes),
                     reschedule_history = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
-            """, (new_date, new_time, target_slot, target_doctor_id, new_dept_id, json.dumps(updated_history), appointment_id))
+            """, (new_date, new_time, target_slot, target_doctor_id, new_dept_id, reason, json.dumps(updated_history), appointment_id))
+
+            # Update active queue entry for this appointment if any
+            cur.execute("""
+                UPDATE oh_id.queue_entries
+                SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                WHERE appointment_id = %s AND status IN ('WAITING', 'CALLED');
+            """, (appointment_id,))
+
+            # Audit record
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, ip_address, created_at
+                ) VALUES (
+                    %s, %s, %s, 'APPOINTMENT_RESCHEDULED', 'APPOINTMENT', %s, %s::jsonb, '127.0.0.1', CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:10]}",
+                changed_by_id or "system",
+                changed_by_name,
+                appointment_id,
+                json.dumps({"reason": reason, "new_date": str(new_date), "new_time": str(new_time)})
+            ))
 
         return self.get_appointment_by_id(appointment_id)
 
@@ -5720,9 +5814,11 @@ class SPViewsRepository(
         """
         Cancels an appointment and records cancellation reason and timestamp.
         """
-        appt = self.get_appointment_by_id(appointment_id)
+        resolved_id = self.resolve_appointment_id(appointment_id) or appointment_id
+        appt = self.get_appointment_by_id(resolved_id)
         if not appt:
-            raise ValueError("Appointment not found.")
+            raise ValueError(f"Appointment '{appointment_id}' not found.")
+        appointment_id = resolved_id
 
         with get_db_cursor() as cur:
             cur.execute("""
@@ -5735,6 +5831,28 @@ class SPViewsRepository(
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
             """, (reason, cancelled_by_name, appointment_id))
+
+            # Update active queue entry for this appointment if any
+            cur.execute("""
+                UPDATE oh_id.queue_entries
+                SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                WHERE appointment_id = %s AND status IN ('WAITING', 'CALLED');
+            """, (appointment_id,))
+
+            # Audit record
+            cur.execute("""
+                INSERT INTO oh_id.audit_logs (
+                    id, actor_id, actor_name, action, resource_type, resource_id, details, ip_address, created_at
+                ) VALUES (
+                    %s, %s, %s, 'APPOINTMENT_CANCELLED', 'APPOINTMENT', %s, %s::jsonb, '127.0.0.1', CURRENT_TIMESTAMP
+                );
+            """, (
+                f"aud-{uuid.uuid4().hex[:10]}",
+                cancelled_by_id or "system",
+                cancelled_by_name,
+                appointment_id,
+                json.dumps({"reason": reason, "appointment_id": appointment_id})
+            ))
 
         return self.get_appointment_by_id(appointment_id)
 
@@ -12347,8 +12465,145 @@ class SPViewsRepository(
             "enabled_document_types": ["CLINICAL_REPORT", "PRESCRIPTION", "DISCHARGE_SUMMARY", "MEDICAL_CERTIFICATE"]
         }, updated_by=updated_by)
 
-sp_repository = SPViewsRepository()
+    def get_patient_active_queue_status(
+        self,
+        patient_id: str,
+        hospital_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Returns real-time OPD queue status for a checked-in patient today.
+        Computes patients ahead, serving token, and dynamic wait time.
+        """
+        with get_readonly_cursor() as cur:
+            query = """
+                SELECT 
+                    q.id AS queue_id,
+                    q.token_number,
+                    q.token_prefix,
+                    CONCAT(COALESCE(q.token_prefix, 'OPD-'), LPAD(q.token_number::text, 3, '0')) AS token_str,
+                    q.status,
+                    q.priority,
+                    q.estimated_wait_minutes,
+                    q.called_at,
+                    q.in_service_at,
+                    q.created_at,
+                    q.hospital_id,
+                    COALESCE(h.name, 'Hospital Facility') AS hospital_name,
+                    q.department_id,
+                    COALESCE(dept.name, 'General OPD') AS department_name,
+                    q.doctor_id,
+                    COALESCE(doc.name, 'Attending Physician') AS doctor_name,
+                    doc.specialty AS doctor_specialty,
+                    q.counter_id,
+                    cnt.counter_number,
+                    cnt.room_number
+                FROM oh_id.queue_entries q
+                LEFT JOIN oh_id.hospitals h ON q.hospital_id = h.id
+                LEFT JOIN oh_id.departments dept ON q.department_id = dept.id
+                LEFT JOIN oh_id.doctors doc ON q.doctor_id = doc.id
+                LEFT JOIN oh_id.opd_counters cnt ON q.counter_id = cnt.id
+                WHERE q.patient_id = %s
+                  AND q.status IN ('WAITING', 'CALLED', 'IN_CONSULTATION', 'HOLD')
+                  AND q.created_at::date = CURRENT_DATE
+            """
+            params = [patient_id]
+            if hospital_id:
+                query += " AND q.hospital_id = %s"
+                params.append(hospital_id)
+            query += " ORDER BY q.created_at DESC LIMIT 1;"
 
+            cur.execute(query, tuple(params))
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            entry = dict(row)
+            dept_id = entry.get("department_id")
+            doc_id = entry.get("doctor_id")
+            hosp_id = entry.get("hospital_id")
+            created_at = entry.get("created_at")
+
+            # 1. Serving Token: token currently IN_CONSULTATION or CALLED for this doctor / department
+            cur.execute("""
+                SELECT 
+                    token_number,
+                    token_prefix,
+                    CONCAT(COALESCE(token_prefix, 'OPD-'), LPAD(token_number::text, 3, '0')) AS token_str,
+                    status
+                FROM oh_id.queue_entries
+                WHERE hospital_id = %s
+                  AND (doctor_id = %s OR department_id = %s)
+                  AND status IN ('IN_CONSULTATION', 'CALLED')
+                  AND created_at::date = CURRENT_DATE
+                ORDER BY updated_at DESC
+                LIMIT 1;
+            """, (hosp_id, doc_id, dept_id))
+            serving_row = cur.fetchone()
+            entry["currently_serving_token"] = serving_row["token_str"] if serving_row else "None"
+            entry["currently_serving_status"] = serving_row["status"] if serving_row else "IDLE"
+
+            # 2. Patients Ahead: count waiting ahead of this patient
+            cur.execute("""
+                SELECT COUNT(*) AS ahead_count
+                FROM oh_id.queue_entries
+                WHERE hospital_id = %s
+                  AND (doctor_id = %s OR department_id = %s)
+                  AND status = 'WAITING'
+                  AND created_at < %s
+                  AND created_at::date = CURRENT_DATE;
+            """, (hosp_id, doc_id, dept_id, created_at))
+            ahead_row = cur.fetchone()
+            patients_ahead = ahead_row["ahead_count"] if ahead_row else 0
+            entry["patients_ahead"] = patients_ahead
+
+            # 3. Dynamic wait time estimate (e.g. 10 mins per patient ahead)
+            if entry["status"] in ("CALLED", "IN_CONSULTATION"):
+                entry["estimated_wait_minutes"] = 0
+            else:
+                entry["estimated_wait_minutes"] = max(5, patients_ahead * 10)
+
+            return entry
+
+    def get_patient_storage_quota(self, patient_id: str) -> Dict[str, Any]:
+        """
+        Computes patient's current storage quota consumption from active medical documents.
+        Enforces a default 50 MB (52,428,800 bytes) storage ceiling.
+        """
+        total_quota_bytes = 52428800  # 50 MB
+        with get_readonly_cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    COUNT(*) AS doc_count,
+                    COALESCE(SUM(COALESCE(file_size_kb, 0)), 0) * 1024 AS total_bytes
+                FROM oh_id.medical_documents
+                WHERE patient_id = %s AND deleted_at IS NULL;
+            """, (patient_id,))
+            row = cur.fetchone()
+            used_bytes = int(row["total_bytes"]) if row else 0
+            doc_count = int(row["doc_count"]) if row else 0
+
+            percent_used = min(100.0, round((used_bytes / total_quota_bytes) * 100, 1)) if total_quota_bytes > 0 else 0.0
+
+            status = "NORMAL"
+            if percent_used >= 100.0:
+                status = "EXCEEDED"
+            elif percent_used >= 90.0:
+                status = "CRITICAL"
+            elif percent_used >= 70.0:
+                status = "WARNING"
+
+            return {
+                "patient_id": patient_id,
+                "used_bytes": used_bytes,
+                "used_mb": round(used_bytes / (1024 * 1024), 2),
+                "total_quota_bytes": total_quota_bytes,
+                "total_quota_mb": 50.0,
+                "percent_used": percent_used,
+                "document_count": doc_count,
+                "status": status
+            }
+
+sp_repository = SPViewsRepository()
 
 
 

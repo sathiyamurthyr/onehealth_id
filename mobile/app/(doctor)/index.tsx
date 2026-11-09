@@ -60,6 +60,13 @@ export default function DoctorHomeScreen() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("WAITING");
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
+  useEffect(() => {
+    const role = (user?.role || "").toUpperCase().trim();
+    if (role === "NURSE") {
+      router.replace("/(nurse)" as any);
+    }
+  }, [user, router]);
+
   const handleSignOut = async () => {
     await logout();
     router.replace("/(auth)/login");

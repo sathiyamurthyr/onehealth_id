@@ -20,6 +20,7 @@ import {
   AppointmentManagementModal,
   AppointmentManagementViewMode,
 } from "@/components/appointments/AppointmentManagementModal";
+import { PatientLiveQueueWidget } from "@/components/queue/PatientLiveQueueWidget";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType }> = {
   SCHEDULED:        { label: "Scheduled",        color: "text-blue-700",   bg: "bg-blue-50",   border: "border-blue-200",   icon: Clock },
@@ -232,6 +233,9 @@ export default function PatientAppointmentsPage() {
             </button>
           </div>
         </div>
+
+        {/* Live OPD Queue Status Widget */}
+        <PatientLiveQueueWidget onRefresh={loadData} />
 
         {/* Top Action Card: Book Appointment (Matching Reference Screen 1) */}
         <div
